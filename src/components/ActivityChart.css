@@ -1,0 +1,171 @@
+.activity-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chart-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── Month navigation ────────────────────────────────────── */
+.chart-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-month-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 130px;
+  text-align: center;
+}
+
+.chart-nav-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+.chart-nav-btn:hover:not(:disabled) { color: var(--text); background: var(--bg-4); border-color: var(--border-light); }
+.chart-nav-btn:active:not(:disabled) { transform: scale(0.9); }
+.chart-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Calendar grid (7 wide columns × week rows) ──────────── */
+.chart-cal {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.chart-cal-next { animation: chartSlideNext 0.28s ease; }
+.chart-cal-prev { animation: chartSlidePrev 0.28s ease; }
+
+@keyframes chartSlideNext {
+  from { opacity: 0; transform: translateX(18px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes chartSlidePrev {
+  from { opacity: 0; transform: translateX(-18px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.chart-cal-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+
+.chart-cal-head { margin-bottom: 1px; }
+
+.chart-cal-dow {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-align: center;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Wide rectangle day cell */
+.chart-cell {
+  position: relative;
+  height: 38px;
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+  cursor: default;
+}
+
+.chart-cell:hover {
+  border-color: var(--accent);
+  z-index: 2;
+}
+
+.chart-cell-out { background: transparent; border-color: transparent; }
+.chart-cell-out .chart-cell-date { opacity: 0.3; }
+
+.chart-cell-today {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.chart-cell-date {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+/* When a cell is filled (coloured), make its text readable on the colour */
+.chart-cell-filled .chart-cell-date { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+
+.chart-cell-count {
+  font-size: 14px;
+  font-weight: 800;
+  font-family: var(--mono);
+  color: #fff;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+.chart-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.chart-legend-sq {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+/* ── Mobile ──────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .chart-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .chart-cell { height: 32px; }
+  .chart-cell-count { font-size: 12px; }
+  .chart-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}

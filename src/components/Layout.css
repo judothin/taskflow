@@ -1,0 +1,607 @@
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 240px;
+  background: var(--bg-2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  z-index: 100;
+  overflow: hidden;
+  /* !important beats the global `* { transition: … }` rule in index.css,
+     which otherwise drops `width` from the transition and makes it snap. */
+  transition: width 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 0.25s ease, border-color 0.25s ease !important;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.logo-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  object-fit: contain;
+  transition: filter 0.2s ease;
+}
+
+.logo-mark, .mobile-logo-img { filter: var(--logo-filter); }
+
+/* The active pet replaces the static logo image — don't apply the
+   light/dark logo-invert filter meant for the plain PNG to it.
+   This sits inside .sidebar, which gets `backdrop-filter: blur()` in
+   glassmorphism background mode — and the sidebar is on every single page,
+   not just the dashboard. Its idle animation runs continuously the whole
+   time the app is open, so (same fix as the pet widget/dashboard cards)
+   this needs its own GPU layer so it can't force the sidebar's blur to keep
+   recomputing. Safe to promote here specifically since this element itself
+   has no backdrop-filter — only its ancestor does. */
+.logo-pet-mark {
+  overflow: hidden;
+  filter: none !important;
+  contain: layout paint;
+  isolation: isolate;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.logo-text {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+
+/* Active-team switcher, sits between the logo and the nav list */
+.team-switcher {
+  position: relative;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.team-switcher-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.team-switcher-trigger:hover {
+  background: var(--bg-3);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.team-switcher-name {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-switcher-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 12px;
+  right: 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  z-index: 200;
+  animation: fadeIn 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.team-switcher-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.team-switcher-option:hover { background: var(--bg-4); color: var(--text); }
+.team-switcher-option-active { color: var(--accent); font-weight: 600; }
+
+.team-switcher-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 2px;
+}
+
+.team-switcher-manage {
+  color: var(--text-dim);
+  font-size: 12px;
+  justify-content: center;
+}
+
+/* Edge tab that toggles the sidebar collapsed/open (sits on the border) */
+.nav-toggle-tab {
+  position: fixed;
+  top: 78px;
+  left: 240px;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 150;
+  box-shadow: var(--shadow);
+  transition: left 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+              background 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;
+}
+.nav-toggle-tab:hover { color: var(--text); border-color: var(--border-light); background: var(--bg-4); }
+.layout.nav-collapsed .nav-toggle-tab { left: 64px; }
+
+/* Show the label tooltip on hover only while the rail is collapsed */
+.nav-item:hover .nav-tip { opacity: 1; }
+
+/* Keep icons at full size — the still-present (faded) labels must never
+   squeeze them via flex-shrink when the rail is narrow. */
+.nav-item > svg,
+.guest-link > svg,
+.logo-mark { flex-shrink: 0; }
+
+.sidebar-nav {
+  padding: 16px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+/* Queue lives between nav and footer, scrolls if many items */
+.sidebar-queue {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+  position: relative;
+  overflow: visible;
+}
+
+.nav-tip {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-4);
+  color: var(--text);
+  border: 1px solid var(--border-light);
+  border-left: 3px solid var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  opacity: 0;
+  display: none;
+  z-index: 9999;
+  transition: opacity 0.12s ease !important;
+}
+
+.nav-item:hover {
+  background: var(--bg-3);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.nav-item-active {
+  background: var(--accent-glow);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.nav-item-active:hover { color: var(--accent); }
+
+/* ── Nav customization (edit mode) ───────────────────────── */
+.nav-customize-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 12px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.nav-customize-btn:hover {
+  background: var(--bg-3);
+  color: var(--text-muted);
+  border-color: var(--border-light);
+}
+
+.nav-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: grab;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.nav-edit-row:hover { background: var(--bg-3); }
+.nav-edit-row:active { cursor: grabbing; }
+
+.nav-edit-row-hidden { opacity: 0.45; }
+
+.nav-edit-row-dragging { opacity: 0.3; }
+
+.nav-edit-row-insert-before { border-top-color: var(--accent); }
+.nav-edit-row-insert-after  { border-bottom-color: var(--accent); }
+
+.nav-edit-grip {
+  display: flex;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.nav-edit-locked {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.nav-edit-toggle {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav-edit-toggle:hover { background: var(--bg-4); color: var(--text); }
+.nav-edit-row:not(.nav-edit-row-hidden) .nav-edit-toggle { color: var(--accent); }
+
+.nav-unread-badge {
+  margin-left: auto;
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono);
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  flex-shrink: 0;
+}
+
+
+.sidebar-footer {
+  padding: 16px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guest-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px dashed var(--border);
+  transition: all 0.15s ease;
+}
+
+.guest-link:hover {
+  color: var(--text);
+  border-color: var(--border-light);
+  background: var(--bg-3);
+  text-decoration: none;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.user-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sign-out-btn {
+  background: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font);
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sign-out-btn:hover { color: var(--danger); }
+
+/* Theme toggle */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.theme-toggle:hover {
+  border-color: var(--border-light);
+  background: var(--bg-4);
+}
+
+.theme-icon-sun,
+.theme-icon-moon {
+  flex-shrink: 0;
+  transition: color 0.2s ease;
+}
+
+.theme-icon-sun  { color: var(--text-dim); }
+.theme-icon-moon { color: var(--text-dim); }
+
+[data-theme="light"] .theme-icon-sun  { color: var(--accent); }
+[data-theme="dark"]  .theme-icon-moon { color: var(--accent); }
+
+.theme-track {
+  flex: 1;
+  height: 18px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-light);
+  border-radius: 9px;
+  position: relative;
+}
+
+.theme-thumb {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: right 0.2s ease, left 0.2s ease;
+}
+
+.theme-thumb-light {
+  right: auto;
+  left: 2px;
+}
+
+/* Main */
+.main-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin-left: 240px;
+  transition: margin-left 0.26s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.page-content {
+  flex: 1;
+  padding: 32px 40px;
+  width: 100%;
+}
+
+/* Mobile */
+.mobile-header {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.mobile-logo-img { height: 32px; width: auto; object-fit: contain; }
+
+.user-avatar-sm {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+}
+
+.hamburger {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: none;
+  padding: 4px;
+}
+
+.hamburger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+}
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 200;
+}
+
+/* ── Collapsible sidebar (desktop) ───────────────────────── */
+@media (min-width: 769px) {
+  .layout.nav-collapsed .main-content { margin-left: 64px; }
+  /* overflow visible so the hover tooltip can escape the 64px rail */
+  .sidebar-collapsed { width: 64px; overflow: visible; }
+  .sidebar-collapsed .nav-item .nav-tip { display: block; }
+
+  /* Drop all text/labels from the flow so flexbox centering lines every icon
+     up on the exact same axis — no per-icon math, can't be misaligned. */
+  .sidebar-collapsed .logo-text,
+  .sidebar-collapsed .nav-label,
+  .sidebar-collapsed .nav-unread-badge,
+  .sidebar-collapsed .guest-link-text,
+  .sidebar-collapsed .user-details,
+  .sidebar-collapsed .theme-toggle {
+    display: none;
+  }
+  /* Keep the queue's flex space (just hide it) so the footer/avatar stay put */
+  .sidebar-collapsed .sidebar-queue { visibility: hidden; }
+  .sidebar-collapsed .team-switcher { display: none; }
+  .sidebar-collapsed .nav-customize-btn { display: none; }
+  .sidebar-collapsed .nav-edit-row .nav-label,
+  .sidebar-collapsed .nav-edit-locked,
+  .sidebar-collapsed .nav-edit-toggle { display: none; }
+
+  /* Center every icon in the 64px rail */
+  .sidebar-collapsed .sidebar-logo { justify-content: center; padding-left: 0; padding-right: 0; }
+  .sidebar-collapsed .nav-item     { justify-content: center; padding-left: 0; padding-right: 0; }
+  .sidebar-collapsed .sidebar-footer { align-items: center; }
+  .sidebar-collapsed .guest-link   { justify-content: center; }
+  .sidebar-collapsed .user-info    { justify-content: center; }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    left: -240px;
+    z-index: 300;
+    transition: left 0.25s ease;
+    height: 100dvh;
+  }
+
+  .sidebar-open { left: 0; }
+  .sidebar-overlay { display: block; }
+  .mobile-header { display: flex; }
+
+  .main-content { margin-left: 0; }
+  .page-content  { padding: 16px; }
+  .nav-toggle-tab { display: none; }
+}
+
+@media (max-width: 480px) {
+  .page-content { padding: 12px; }
+  .sidebar-footer { padding: 12px; gap: 10px; }
+  .sidebar-logo { padding: 18px 16px; }
+}

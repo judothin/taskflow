@@ -1,0 +1,183 @@
+.cc {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  animation: ccFade 0.3s ease;
+}
+
+@keyframes ccFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+.cc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+
+.cc-month {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+.cc-compact .cc-month { font-size: 12px; }
+
+.cc-nav {
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.cc-nav:hover { color: var(--text); background: var(--bg-4); }
+.cc-nav:active { transform: scale(0.9); }
+
+/* ── Grid ────────────────────────────────────────────────── */
+.cc-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cc-compact .cc-grid { gap: 2px; }
+
+.cc-dow-row { margin-bottom: 2px; }
+
+/* Month-switch slide animation (day cells only) */
+.cc-grid-next { animation: ccSlideNext 0.26s ease; }
+.cc-grid-prev { animation: ccSlidePrev 0.26s ease; }
+
+@keyframes ccSlideNext {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes ccSlidePrev {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.cc-dow {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-align: center;
+  font-family: var(--mono);
+  padding-bottom: 2px;
+}
+
+/* ── Day cell ────────────────────────────────────────────── */
+.cc-day {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  background: var(--bg-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, border-color 0.15s ease,
+              transform 0.12s ease, box-shadow 0.15s ease;
+}
+.cc-compact .cc-day { border-radius: 4px; }
+
+.cc-day:hover {
+  background: var(--bg-4);
+  border-color: var(--border-light);
+  transform: translateY(-1px);
+}
+.cc-day:active { transform: scale(0.94); }
+
+.cc-day-num {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+.cc-compact .cc-day-num { font-size: 11px; }
+
+.cc-day-out { opacity: 0.32; }
+
+.cc-day-has .cc-day-num { color: var(--text); }
+
+.cc-day-count {
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cc-day-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+}
+.cc-compact .cc-day-dot {
+  position: absolute;
+  bottom: 3px;
+}
+
+/* Today (when not selected) */
+.cc-day-today {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.cc-day-today .cc-day-num { color: var(--text); }
+
+/* Selected */
+.cc-day-selected {
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  animation: ccPop 0.18s ease;
+}
+.cc-day-selected .cc-day-num { color: #fff; }
+.cc-day-selected:hover { transform: translateY(-1px); filter: brightness(1.05); }
+
+@keyframes ccPop {
+  0%   { transform: scale(0.86); }
+  60%  { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+.cc-footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 2px;
+}
+
+.cc-today-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font);
+  padding: 4px 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cc-today-btn:hover {
+  color: var(--text);
+  border-color: var(--border-light);
+  background: var(--bg-4);
+}

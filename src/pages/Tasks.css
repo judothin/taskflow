@@ -1,0 +1,84 @@
+.status-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.status-tabs::-webkit-scrollbar { display: none; }
+
+.status-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  font-family: var(--font);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.status-tab:hover {
+  color: var(--text);
+}
+
+.status-tab-active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.tab-count {
+  background: var(--bg-3);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: var(--mono);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.status-tab-active .tab-count {
+  background: var(--accent);
+  color: white;
+}
+
+.filters-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ── Mobile filters ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .status-tab { padding: 8px 12px; font-size: 12px; }
+
+  /* Search takes full width, selects fill remaining row(s) */
+  .filters-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  /* First child (search wrapper) spans full width */
+  .filters-row > *:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 360px) {
+  .filters-row {
+    grid-template-columns: 1fr;
+  }
+  .filters-row > *:first-child {
+    grid-column: 1;
+  }
+}

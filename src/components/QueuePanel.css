@@ -1,0 +1,206 @@
+.queue-panel {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+
+/* Header */
+.queue-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 16px 10px;
+}
+
+.queue-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  flex-shrink: 0;
+}
+
+.queue-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  flex: 1;
+}
+
+.queue-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: var(--bg-4);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 7px;
+  font-family: var(--mono);
+}
+
+/* Empty */
+.queue-empty {
+  padding: 14px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  margin: 0 10px 12px;
+  text-align: center;
+  cursor: default;
+  line-height: 1.6;
+}
+
+.queue-empty-hint {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* List */
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 8px;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px 7px 12px;
+  cursor: grab;
+  border-left: 2px solid transparent;
+  transition: background 0.12s ease;
+  min-width: 0;
+}
+
+.queue-item:hover {
+  background: var(--bg-3);
+}
+
+.queue-item:active {
+  cursor: grabbing;
+}
+
+.queue-item-first {
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.queue-item-first:hover {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.queue-item-dragging {
+  opacity: 0.3;
+}
+
+/* Drop position indicators */
+.queue-item-insert-before {
+  border-top: 2px solid var(--accent);
+}
+
+.queue-item-insert-after {
+  border-bottom: 2px solid var(--accent);
+}
+
+/* Position badge */
+.queue-pos {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg-4);
+  border: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+
+.queue-pos-first {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+/* Text */
+.queue-item-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.queue-item-page {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-item-feedback {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+/* ROI chip */
+.queue-roi {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid;
+  flex-shrink: 0;
+}
+
+/* Remove-from-queue button (dashboard widget) */
+.queue-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius);
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.queue-item:hover .queue-remove { opacity: 1; }
+.queue-remove:hover { background: rgba(239,68,68,0.14); color: #f87171; }
+/* Always show on touch (no hover) */
+@media (hover: none) { .queue-remove { opacity: 1; } }
+
+/* Drop zone at bottom of list (append to end) */
+.queue-drop-end {
+  height: 28px;
+  border-radius: 0 0 var(--radius) var(--radius);
+  border: 2px dashed transparent;
+  margin: 2px 6px 4px;
+  transition: all 0.1s ease;
+}
+
+.queue-drop-end-active {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+

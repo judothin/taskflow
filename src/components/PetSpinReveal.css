@@ -1,0 +1,145 @@
+.pet-spin-modal {
+  max-width: 620px;
+  width: 100%;
+}
+
+.pet-spin-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 130px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.pet-spin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.pet-spin-stage {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  height: 130px;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--bg-3);
+  border: 1px solid var(--border-light);
+}
+
+.pet-spin-marker {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent);
+  z-index: 5;
+}
+
+.pet-spin-marker::before,
+.pet-spin-marker::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+}
+.pet-spin-marker::before { top: -1px; border-top: 9px solid var(--accent); }
+.pet-spin-marker::after  { bottom: -1px; border-bottom: 9px solid var(--accent); }
+
+.pet-spin-track {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  will-change: transform;
+  /* Animated imperatively via the Web Animations API in PetSpinReveal.js,
+     not a CSS transition — see the comment there for why. Starts at
+     translateX(0) via that same JS-driven animation. */
+  transform: translateX(0px);
+}
+
+.pet-spin-tile {
+  flex-shrink: 0;
+  width: 96px;
+  height: 96px;
+  margin: 0 8px;
+  border-radius: var(--radius);
+  background: var(--bg-4);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.pet-spin-tile img {
+  height: 82px;
+  width: auto;
+  pointer-events: none;
+}
+
+.pet-spin-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 60px;
+  pointer-events: none;
+  z-index: 4;
+}
+.pet-spin-fade-left  { left: 0;  background: linear-gradient(90deg, var(--bg-3), transparent); }
+.pet-spin-fade-right { right: 0; background: linear-gradient(270deg, var(--bg-3), transparent); }
+
+.pet-spin-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  position: relative;
+}
+
+.pet-spin-result-glow {
+  position: absolute;
+  top: -20px;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-glow), transparent 70%);
+  filter: blur(4px);
+  animation: petSpinGlowPulse 1.8s ease-in-out infinite;
+  z-index: 0;
+}
+
+@keyframes petSpinGlowPulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.15); }
+}
+
+.pet-spin-result-img {
+  height: 120px;
+  width: auto;
+  position: relative;
+  z-index: 1;
+  animation: petSpinResultPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes petSpinResultPop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+.pet-spin-result-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  position: relative;
+  z-index: 1;
+}

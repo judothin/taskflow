@@ -1,0 +1,104 @@
+.quicklog-modal {
+  width: 100%;
+  max-width: 520px;
+}
+
+/* ── Header ── */
+.quicklog-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.quicklog-header-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--st-completed) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--st-completed) 25%, transparent);
+  color: var(--st-completed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.quicklog-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.quicklog-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+/* ── Success banner ── */
+.quicklog-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  background: color-mix(in srgb, var(--st-completed) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--st-completed) 25%, transparent);
+  border-radius: var(--radius);
+  color: var(--st-completed);
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+/* ── Form ── */
+.quicklog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── People list ── */
+.quicklog-people {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.quicklog-person-row {
+  margin: 0 2px;
+}
+
+/* ── Selected count chip ── */
+.quicklog-selected-count {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-glow);
+  padding: 1px 7px;
+  border-radius: 3px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── Submit button ── */
+.quicklog-submit {
+  width: 100%;
+  justify-content: center;
+  padding: 12px;
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .quicklog-page { padding: 0 0 32px; }
+  .quicklog-title { font-size: 18px; }
+}

@@ -1,0 +1,461 @@
+/* ── Help page layout ──────────────────────────────────────── */
+
+/* Mobile horizontal nav — hidden on desktop */
+.help-mobile-nav {
+  display: none;
+}
+
+.help-layout {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.help-sticky-nav {
+  width: 172px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 32px;
+  align-self: flex-start;
+  margin-top: 106px;
+}
+
+.help-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+}
+
+.help-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scroll-margin-top: 40px;
+}
+
+.help-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Feature grid ──────────────────────────────────────────── */
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.help-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.help-card:hover {
+  border-color: var(--border-light);
+}
+
+.help-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.help-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--bg-4);
+  color: var(--text-muted);
+}
+
+.help-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.help-card-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.help-card-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.help-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.help-tip-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+/* ── Status / ROI reference table ──────────────────────────── */
+.help-ref-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.help-ref-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+
+.help-ref-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.help-ref-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  min-width: 60px;
+}
+
+.help-ref-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* ── Sidebar actions reference ─────────────────────────────── */
+.help-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.help-action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s ease;
+}
+
+.help-action-row:last-child {
+  border-bottom: none;
+}
+
+.help-action-row:hover {
+  background: var(--bg-3);
+}
+
+.help-action-btn-mock {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--bg-3);
+  color: var(--text-muted);
+}
+
+.help-action-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.help-action-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.help-action-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+
+/* ── Keyboard / interaction pills ──────────────────────────── */
+.help-kbd {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-4);
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Full-width info card ───────────────────────────────────── */
+.help-info-card {
+  background: var(--accent-glow);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.help-info-card-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.help-info-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.help-info-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.help-info-card-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ── What's New / changelog ────────────────────────────────── */
+.whatsnew {
+  background: linear-gradient(135deg, var(--bg-2) 0%, var(--accent-glow) 140%);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+.whatsnew-open { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+.whatsnew-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.whatsnew-spark {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.whatsnew-headings {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.whatsnew-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.whatsnew-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.whatsnew-version {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--accent);
+  background: var(--accent-glow);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  padding: 3px 10px;
+  flex-shrink: 0;
+}
+
+.whatsnew-chevron {
+  color: var(--text-muted);
+  display: flex;
+  flex-shrink: 0;
+  transition: transform 0.25s ease, color 0.15s ease;
+}
+.whatsnew-open .whatsnew-chevron { transform: rotate(180deg); color: var(--accent); }
+
+/* Collapsible body */
+.whatsnew-body {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.35s ease, opacity 0.25s ease;
+}
+.whatsnew-open .whatsnew-body {
+  max-height: 1200px;
+  opacity: 1;
+}
+
+.whatsnew-body-inner {
+  padding: 4px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border-top: 1px solid var(--border);
+  margin-top: 0;
+  padding-top: 18px;
+}
+
+.whatsnew-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.whatsnew-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0;
+  margin: 0;
+}
+
+.whatsnew-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  animation: fadeIn 0.3s ease both;
+}
+
+.whatsnew-check {
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+/* ── Tablet ─────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .help-grid     { grid-template-columns: 1fr; }
+  .help-ref-grid { grid-template-columns: 1fr; }
+
+  /* Hide the sticky desktop nav */
+  .help-sticky-nav { display: none; }
+
+  /* Remove the left-column gap */
+  .help-layout { gap: 0; }
+
+  /* Show the mobile pill nav */
+  .help-mobile-nav {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    /* Stick to top of page-content when scrolling */
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg);
+    padding-top: 8px;
+    margin-bottom: 8px;
+  }
+
+  .help-mobile-nav::-webkit-scrollbar { display: none; }
+
+  .help-mobile-nav-item {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    text-decoration: none;
+    white-space: nowrap;
+    background: var(--bg-2);
+    transition: all 0.15s ease;
+  }
+
+  .help-mobile-nav-active {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    background: var(--accent-glow);
+  }
+
+  .help-content { gap: 36px; }
+  .help-section { gap: 14px; scroll-margin-top: 60px; }
+  .help-action-row { padding: 10px 12px; }
+  .help-info-card  { padding: 14px 16px; gap: 12px; }
+}
+
+/* ── Phone ──────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .help-content  { gap: 28px; }
+  .help-ref-item { padding: 8px 12px; flex-wrap: wrap; }
+  .help-ref-desc { flex-basis: 100%; margin-top: 2px; }
+  .help-card     { padding: 14px; }
+  .help-info-card { padding: 12px 14px; }
+}

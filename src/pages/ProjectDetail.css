@@ -1,0 +1,534 @@
+/* ── Page shell ──────────────────────────────────────────── */
+.pd-page { display: flex; flex-direction: column; gap: 0; }
+
+.pd-skeleton {
+  height: 400px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* ── Sticky top header ───────────────────────────────────── */
+.pd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 20px;
+  margin-bottom: 4px;
+}
+
+/* ── Body: stacked layout ────────────────────────────────── */
+.pd-body {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ── Left: project info ──────────────────────────────────── */
+.pd-info {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pd-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.25;
+  margin: 0;
+}
+
+.pd-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+  background: var(--accent-glow);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  padding: 4px 10px;
+  border-radius: 20px;
+  width: fit-content;
+  transition: background 0.15s ease;
+}
+.pd-link:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+
+.pd-description {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.65;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* ── Gallery ─────────────────────────────────────────────── */
+.pd-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.pd-gallery-thumb {
+  width: 120px;
+  height: 90px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  background: var(--bg-4);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.pd-gallery-thumb:hover { border-color: var(--accent); transform: scale(1.02); }
+.pd-gallery-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ── Edit form ───────────────────────────────────────────── */
+.pd-edit-form {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+/* ── Linked tasks ────────────────────────────────────────── */
+/* ── Task tabs ───────────────────────────────────────────── */
+.pd-task-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 3px;
+}
+
+.pd-task-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: calc(var(--radius-lg) - 2px);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+.pd-task-tab:hover { color: var(--text); }
+
+.pd-task-tab-active {
+  background: var(--bg-2);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.pd-task-tab-count {
+  font-size: 11px;
+  font-family: var(--mono);
+  background: var(--bg-3);
+  color: var(--text-dim);
+  padding: 1px 5px;
+  border-radius: 6px;
+  min-width: 18px;
+  text-align: center;
+}
+.pd-task-tab-active .pd-task-tab-count {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.pd-tasks {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  /* overflow: visible so absolute-positioned popovers and tooltips aren't clipped */
+}
+
+.pd-tasks-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ── Drag-to-reorder ─────────────────────────────────────── */
+.pd-drag-item {
+  position: relative;
+  border-radius: var(--radius-lg);
+  user-select: none;
+  isolation: isolate;
+}
+
+/* Grip handle — top-right corner, only draggable zone */
+.pd-drag-handle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 20;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.12s ease, background 0.12s ease;
+  cursor: grab;
+}
+.pd-drag-item:hover .pd-drag-handle { opacity: 1; }
+.pd-drag-handle:hover {
+  color: var(--accent);
+  background: var(--accent-glow);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.pd-drag-handle:active { cursor: grabbing; }
+
+/* Source slot — ghosted card that shows where dragged card currently sits.
+   Other cards shift around this slot so you always see where it'll land. */
+.pd-drag-placeholder {
+  opacity: 0.25;
+  pointer-events: none;
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-radius: var(--radius-lg);
+  filter: grayscale(0.6);
+}
+.pd-drag-placeholder .pd-drag-handle { display: none; }
+
+/* Cursor on grid while dragging */
+.pd-task-grid-dragging { cursor: grabbing; }
+.pd-task-grid-dragging .pd-drag-item { cursor: grabbing; }
+
+/* ── Floating ghost card ─────────────────────────────────── */
+.pd-ghost {
+  /* position/size set inline */
+  transition: none; /* must follow cursor instantly */
+}
+
+.pd-ghost-card {
+  background: var(--bg-3);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent),
+    0 24px 64px rgba(0,0,0,0.55),
+    0 4px 16px color-mix(in srgb, var(--accent) 25%, transparent);
+  transform: rotate(2deg) scale(1.02);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pd-ghost-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+}
+
+.pd-ghost-page {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pd-ghost-feedback {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pd-task-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 16px 20px 20px;
+}
+
+@media (max-width: 860px) {
+  .pd-task-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 560px) {
+  .pd-task-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Comments column ─────────────────────────────────────── */
+.pd-comments {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pd-comments-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pd-comment-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  background: var(--bg-4);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* ── Comment list ────────────────────────────────────────── */
+.pd-comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+}
+
+.pd-no-comments {
+  font-size: 14px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 40px 20px;
+  margin: 0;
+}
+
+/* Each comment is a card with its own background */
+.pd-comment {
+  display: flex;
+  gap: 14px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+  animation: fadeIn 0.2s ease;
+  transition: background 0.12s ease;
+}
+.pd-comment:last-child { border-bottom: none; }
+.pd-comment:hover { background: var(--bg-3); }
+
+.pd-comment-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.pd-comment-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.pd-comment-author {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pd-comment-time {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+.pd-comment-text {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.65;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Comment images ──────────────────────────────────────── */
+.pd-comment-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pd-comment-img-thumb {
+  width: 96px;
+  height: 96px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  background: var(--bg-4);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.pd-comment-img-thumb:hover { border-color: var(--accent); transform: scale(1.02); }
+.pd-comment-img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ── Nested replies ──────────────────────────────────────── */
+.pd-replies {
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
+  padding-left: 4px;
+  border-left: 2px solid var(--border);
+  gap: 0;
+}
+
+.pd-reply {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  animation: fadeIn 0.2s ease;
+  transition: background 0.12s ease;
+}
+.pd-reply:last-child { border-bottom: none; }
+.pd-reply:hover { background: var(--bg-4); }
+
+/* ── Inline reply form ───────────────────────────────────── */
+.pd-reply-form {
+  margin-top: 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: fadeIn 0.15s ease;
+}
+
+.pd-reply-form-top {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.pd-reply-input {
+  flex: 1;
+  resize: vertical;
+  min-height: 56px;
+  font-size: 13px;
+}
+
+.pd-reply-form-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 40px;
+}
+
+/* ── Hidden comment ─────────────────────────────────────── */
+.pd-comment-hidden {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  background: var(--bg-4);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 4px 0;
+  font-style: italic;
+}
+
+/* ── Comment actions ─────────────────────────────────────── */
+.pd-comment-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.pd-comment:hover .pd-comment-actions,
+.pd-reply:hover .pd-comment-actions { opacity: 1; }
+
+.pd-comment-action-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px 0;
+  transition: color 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pd-comment-action-btn:hover { color: var(--text); }
+.pd-comment-action-reply:hover { color: var(--accent); }
+.pd-comment-action-danger:hover { color: #f87171; }
+
+.pd-comment-del-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.pd-comment-edit {
+  margin-top: 6px;
+}
+
+/* ── Add comment ─────────────────────────────────────────── */
+.pd-add-comment {
+  border-top: 2px solid var(--border);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-3);
+}
+
+.pd-add-comment-top {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.pd-comment-input {
+  flex: 1;
+  resize: vertical;
+  min-height: 80px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.pd-comment-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 50px;
+}
+

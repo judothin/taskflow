@@ -1,0 +1,326 @@
+.pets-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.pet-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pet-stat-label {
+  width: 34px;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.pet-stat-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 4px;
+  background: var(--bg-4);
+  overflow: hidden;
+}
+
+.pet-stat-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.pet-stat-val {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  flex-shrink: 0;
+  min-width: 42px;
+  text-align: right;
+}
+
+.pet-collection-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100px;
+  padding: 10px 8px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.pet-collection-card:hover { border-color: var(--border-light); background: var(--bg-3); }
+.pet-collection-card-active { border-color: var(--accent); background: var(--accent-glow); }
+.pet-collection-card-dead { opacity: 0.55; }
+
+.pet-collection-thumb {
+  width: 100%;
+  height: 52px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  contain: layout paint;
+}
+
+.pet-collection-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.pet-collection-level {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+.pet-collection-tag {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 20px;
+}
+
+.pet-collection-tag-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.pet-collection-tag-dead {
+  background: var(--bg-4);
+  color: var(--text-dim);
+}
+
+.pet-detail-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .pet-detail-grid { grid-template-columns: 1fr; }
+}
+
+.pets-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pets-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 14px;
+}
+
+.pets-card-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+}
+
+.pet-detail-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background-color: var(--bg-3);
+  background-size: cover;
+  background-position: center;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 14px;
+  /* Isolate the continuously-animating pet as its own paint boundary so it
+     can't force the surrounding card's backdrop-filter blur (glassmorphism
+     mode) to keep recomputing — see PetWidget.css for the full note.
+     GPU-layer promotion also lives here rather than on the ancestor .card
+     (which has backdrop-filter) — promoting an element that also has blur
+     on it is what caused tearing, and this element has an opaque
+     background, not blur. */
+  contain: layout paint;
+  isolation: isolate;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.pets-your-level-card {
+  margin: 20px 0 0;
+}
+
+.pet-idle-btn-active {
+  border: 1px solid var(--accent) !important;
+  color: var(--accent) !important;
+  background: var(--accent-glow) !important;
+}
+
+.pet-env-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.pet-env-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.pet-env-tile img {
+  width: 100%;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.pet-env-tile-active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); font-weight: 700; }
+
+.pet-env-tile-upload {
+  justify-content: center;
+  min-height: 78px;
+  border-style: dashed;
+  color: var(--text-dim);
+}
+
+.pet-env-upload-icon {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.pet-detail-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.pet-detail-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.pets-species-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.pet-rename-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.pet-rename-form .input { flex: 1; }
+
+.pet-action-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.pet-detail-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pet-detail-buttons .btn { flex: 1; justify-content: center; min-width: 90px; }
+
+.pet-stat-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.pet-xp-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.pet-xp-track {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--bg-4);
+  overflow: hidden;
+}
+
+.pet-xp-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.pet-style-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.pet-style-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px;
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.pet-style-tile img { width: 44px; height: 44px; object-fit: contain; }
+
+.pet-style-tile-active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); font-weight: 700; }
+
+.pet-style-tile-locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pet-style-tile-locked img { filter: grayscale(1); }
+
+.pet-sacrifice-card {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-color: color-mix(in srgb, var(--danger, #ef4444) 30%, var(--border));
+}

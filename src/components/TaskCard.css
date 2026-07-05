@@ -1,0 +1,464 @@
+/* ── Card shell ────────────────────────────────────────────── */
+.task-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: row;
+  overflow: visible;
+  position: relative;
+  z-index: 0;
+  animation: fadeIn 0.3s ease;
+  transition: border-color 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+              background 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.task-card:hover {
+  border-color: var(--border-light);
+  background: var(--bg-3);
+  box-shadow: var(--shadow);
+  z-index: 10;
+}
+
+/* Glassmorphic surfaces are two translucent layers blending over the
+   background image — swapping between them reads as a harsher pop than on
+   a solid surface, so it gets an even longer, smoother transition. */
+body.has-bg-image .task-card {
+  transition: border-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+              background 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.task-card-featured {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: linear-gradient(135deg, var(--bg-2) 0%, color-mix(in srgb, var(--accent) 5%, transparent) 100%);
+}
+
+.task-card-featured:hover {
+  background: linear-gradient(135deg, var(--bg-3) 0%, color-mix(in srgb, var(--accent) 8%, transparent) 100%);
+}
+
+/* ── Status color coding ───────────────────────────────────── */
+.task-card-critical    { border-color: color-mix(in srgb, var(--st-critical) 55%, transparent); }
+.task-card-open        { border-color: color-mix(in srgb, var(--st-open) 45%, transparent); }
+.task-card-inprogress  { border-color: color-mix(in srgb, var(--st-inprogress) 45%, transparent); }
+.task-card-onhold      { border-color: color-mix(in srgb, var(--st-onhold) 45%, transparent); }
+.task-card-completed   { border-color: color-mix(in srgb, var(--st-completed) 45%, transparent); }
+
+.task-card-critical:hover    { border-color: color-mix(in srgb, var(--st-critical) 80%, transparent); }
+.task-card-open:hover        { border-color: color-mix(in srgb, var(--st-open) 70%, transparent); }
+.task-card-inprogress:hover  { border-color: color-mix(in srgb, var(--st-inprogress) 70%, transparent); }
+.task-card-onhold:hover      { border-color: color-mix(in srgb, var(--st-onhold) 70%, transparent); }
+.task-card-completed:hover   { border-color: color-mix(in srgb, var(--st-completed) 70%, transparent); }
+
+/* ── Content area ──────────────────────────────────────────── */
+.task-card-content {
+  flex: 1;
+  min-width: 0;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.task-card-content-clickable {
+  cursor: pointer;
+}
+
+.task-card-featured .task-card-content {
+  padding: 20px 22px;
+}
+
+/* ── Badges row ────────────────────────────────────────────── */
+.task-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.badge-complexity {
+  background: var(--bg-4);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.badge-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-4);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.badge-attachment:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.badge-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-4);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+.badge-file:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+
+.badge-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-glow);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  max-width: 200px;
+  min-width: 0;
+  overflow: hidden;
+}
+.badge-project > svg { flex-shrink: 0; }
+/* Ellipsis must live on the text span — a bare text node inside inline-flex
+   won't truncate, so long project names were hard-clipping. */
+.badge-project-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Page label ────────────────────────────────────────────── */
+.task-page {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Feedback text ─────────────────────────────────────────── */
+.task-feedback {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+}
+
+.task-card-featured .task-feedback {
+  font-size: 15px;
+  -webkit-line-clamp: 4;
+}
+
+/* Show full checklists (don't clamp) and make boxes clearly clickable */
+.task-feedback:has(.editor-cb-row) {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+.task-feedback .editor-cb { cursor: pointer; }
+
+/* ── Footer ────────────────────────────────────────────────── */
+.task-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+/* ── Action bar ────────────────────────────────────────────── */
+.task-card-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 8px;
+  border-left: 1px solid var(--border);
+  background: var(--bg-1);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+}
+
+.task-card:hover .task-card-actions {
+  background: var(--bg-2);
+}
+
+.task-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.task-action-btn:hover {
+  background: var(--bg-3);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.task-action-btn-active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.task-action-btn-active:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.task-action-btn-danger:hover {
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.3);
+  color: #f87171;
+}
+
+.task-action-btn-confirm {
+  color: var(--st-completed);
+  border-color: color-mix(in srgb, var(--st-completed) 30%, transparent);
+  background: color-mix(in srgb, var(--st-completed) 8%, transparent);
+}
+
+.task-action-btn-confirm:hover {
+  background: color-mix(in srgb, var(--st-completed) 15%, transparent);
+  border-color: var(--st-completed);
+  color: var(--st-completed);
+}
+
+/* ── Quick complete popover ────────────────────────────────── */
+.complete-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: -1px;
+  top: auto;
+  transform: none;
+  background: var(--bg-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 190px;
+  z-index: 50;
+}
+
+.complete-popover-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.complete-popover-count {
+  margin-left: 6px;
+  background: var(--accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.complete-popover-people {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.complete-person-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.1s ease, border-color 0.1s ease;
+}
+
+.complete-person-row:hover {
+  background: var(--bg-4);
+}
+
+.complete-person-row-checked {
+  background: var(--accent-glow);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.complete-person-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border-light);
+  border-radius: 3px;
+  background: var(--bg-4);
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.complete-person-checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.complete-person-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  width: 5px;
+  height: 8px;
+  border: 2px solid white;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg);
+}
+
+.complete-person-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.complete-person-name {
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.complete-popover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.complete-popover-actions .task-action-btn {
+  font-size: 11px;
+  font-family: var(--font);
+  font-weight: 600;
+  gap: 4px;
+  height: 26px;
+  width: auto;
+  padding: 0 8px;
+}
+
+/* ── Sidebar button tooltips ───────────────────────────────── */
+.task-action-btn[data-tooltip] {
+  position: relative;
+}
+
+.task-action-btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-4);
+  color: var(--text);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 4px 8px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  box-shadow: var(--shadow);
+  z-index: 100;
+}
+
+.task-action-btn[data-tooltip]:hover::after {
+  opacity: 1;
+}
+
+/* Hide tooltips on touch-only devices */
+@media (hover: none) {
+  .task-action-btn[data-tooltip]::after { display: none; }
+}
+
+/* ── Image dropzone (used in TaskForm) ─────────────────────── */
+.image-drop-zone {
+  border: 2px dashed var(--border-light);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+}
+
+.image-drop-zone:hover {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+/* ── Mobile: touch-friendly action buttons ─────────────────── */
+@media (max-width: 640px) {
+  .task-action-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  /* Popover becomes wider and stays above, left-anchored on narrow cards */
+  .complete-popover {
+    width: min(220px, calc(100vw - 80px));
+    right: -1px;
+  }
+}
