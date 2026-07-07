@@ -30,7 +30,7 @@ export default function Pets() {
   const {
     userLevel, pets, activePet, customEnvironments, gamificationEnabled,
     feedPet, waterPet, renamePet, setActivePet, setPetStyle,
-    setPetEnvironment, setPetWalkArea, setPetIdleAnimation, uploadPetEnvironment,
+    setPetEnvironment, setPetWalkArea, setPetIdleAnimation, setPetSize, uploadPetEnvironment,
     sacrificeForNewPet,
   } = usePets();
   const [viewedId, setViewedId] = useState(null);
@@ -71,6 +71,11 @@ export default function Pets() {
   }, [viewed, activePet]);
 
   const selectPet = (id) => { setViewedId(id); setAction(null); setEditingName(false); setEditingWalkArea(false); };
+
+  // Slider is driven straight off the pet's saved size_scale — setPetSize
+  // updates context state immediately, so moving the slider resizes the pet
+  // live on both the Pets page and the dashboard widget.
+  const displayScale = viewed?.size_scale ?? 1;
 
   const handleRename = async (e) => {
     e.preventDefault();
@@ -191,6 +196,8 @@ export default function Pets() {
                 species={viewed.species}
                 style={viewed.style}
                 size={140}
+                relativeToStage
+                sizeScale={displayScale}
                 dead={viewed.is_dead}
                 action={action}
                 onActionDone={() => setAction(null)}
@@ -264,6 +271,30 @@ export default function Pets() {
                 xpToNext={petXpNeeded} color="#a78bfa"
                 popKey={petPopKey} popAmount={petPopAmt}
               />
+            </div>
+
+            <div className="card pets-card">
+              <h2 className="pets-card-title">Size</h2>
+              <p className="pets-card-desc">
+                Scales {viewed.name} relative to the scene — big here, proportionally smaller in the
+                dashboard widget. This one control sets the size everywhere.
+              </p>
+              <div className="pet-size-row">
+                <span className="pet-size-icon pet-size-icon-sm">🐾</span>
+                <input
+                  className="pet-size-slider"
+                  type="range"
+                  min="0.5"
+                  max="1.8"
+                  step="0.05"
+                  value={displayScale}
+                  onChange={(e) => setPetSize(viewed.id, parseFloat(e.target.value))}
+                  disabled={viewed.is_dead}
+                  aria-label="Pet size"
+                />
+                <span className="pet-size-icon pet-size-icon-lg">🐾</span>
+                <span className="pet-size-val">{Math.round(displayScale * 100)}%</span>
+              </div>
             </div>
 
             <div className="card pets-card">

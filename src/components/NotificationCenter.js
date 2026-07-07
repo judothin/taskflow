@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useNotifications, NOTIF_TYPES } from '../context/NotificationContext';
+import Avatar from './Avatar';
 import './NotificationCenter.css';
 
 const BellIcon = (props) => (
@@ -19,7 +20,7 @@ const GearIcon = () => (
 );
 
 export default function NotificationCenter() {
-  const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
+  const { notifications, unreadCount, markRead, markAllRead, senderMeta } = useNotifications();
   const [detail, setDetail]     = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [tab, setTab] = useState('unread'); // 'unread' (main) | 'all'
@@ -80,6 +81,7 @@ export default function NotificationCenter() {
         ) : (
           shown.map(n => {
             const meta = NOTIF_TYPES[n.type] || {};
+            const sender = n.from ? senderMeta(n.from) : null;
             return (
               <button
                 key={n.id}
@@ -97,6 +99,17 @@ export default function NotificationCenter() {
                     <span className="nc-tag" style={{ color: meta.color, borderColor: meta.color }}>{meta.label}</span>
                     {n.subtitle}
                   </span>
+                  {n.from && (
+                    <span className="nc-item-from" title={n.from}>
+                      <Avatar
+                        src={sender?.avatar_url}
+                        color={sender?.color || meta.color || '#6366f1'}
+                        initials={initialOf(n.from)}
+                        size={18}
+                      />
+                      <span className="nc-item-from-name">{n.from}</span>
+                    </span>
+                  )}
                 </span>
                 {!n.read && <span className="nc-unread-pip" />}
               </button>
@@ -139,6 +152,7 @@ function NotificationDetail({ notif, onClose }) {
   } else if (d.kind === 'comment') {
     rows = [
       ['Project', d.projectTitle || '—'],
+      ['From', notif.from || '—'],
       ['Comment', stripHtml(d.comment?.content) || '(image / attachment)'],
       ['Posted', fmt(notif.createdAt)],
     ];
@@ -236,6 +250,20 @@ function NotificationSettings({ onClose }) {
             ))}
           </div>
 
+          <p className="label" style={{ margin: '20px 0 10px' }}>Your own activity</p>
+          <div className="nc-set-list">
+            <label className="nc-set-row">
+              <span className="nc-set-label nc-set-label-stack">
+                <span>Things I do</span>
+                <span className="nc-set-hint">Tasks you create or complete, comments you post</span>
+              </span>
+              <Toggle
+                on={!!settings.includeSelf}
+                onClick={() => updateSettings(prev => ({ ...prev, includeSelf: !prev.includeSelf }))}
+              />
+            </label>
+          </div>
+
           {settings.types.task_completed && (
             <>
               <p className="label" style={{ margin: '20px 0 10px' }}>Completed tasks — whose?</p>
@@ -283,6 +311,11 @@ function Toggle({ on, onClick }) {
       <span className="nc-toggle-thumb" />
     </button>
   );
+}
+
+function initialOf(name) {
+  const s = (name || '').trim();
+  return s ? s[0].toUpperCase() : '?';
 }
 
 function stripHtml(s) {

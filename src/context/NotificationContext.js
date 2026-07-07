@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   types: { task_completed: true, task_created: true, comment: true, submission: true, file_added: true },
   completedScope: 'all',     // 'all' | 'selected'
   completedPeople: [],       // names matched against tasks.completed_by when scope === 'selected'
+  includeSelf: false,        // notify me about things *I* do — off by default (people rarely want to be pinged for their own actions)
 };
 
 const WINDOW_DAYS = 30;
@@ -54,9 +55,12 @@ function loadReads(uid) {
 }
 
 export function NotificationProvider({ children }) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { activeTeamId } = useTeam();
   const uid = user?.id;
+  // The signed-in user's display name, used to recognise notifications about
+  // their own activity (completions store a name string, not an id).
+  const myName = `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim().toLowerCase();
 
   const [items, setItems]       = useState([]);     // raw notifications (unfiltered)
   const [settings, setSettings] = useState(() => loadSettings(uid));
@@ -65,6 +69,7 @@ export function NotificationProvider({ children }) {
 
   // Lookup maps for enriching realtime events that arrive without joins.
   const profilesRef = useRef({});   // id -> "First Last"
+  const profileMetaRef = useRef({}); // lowercased "first last" -> { avatar_url, color }
   const projectsRef = useRef({});   // id -> title
   const seenRef     = useRef(new Set());
 
@@ -124,13 +129,15 @@ export function NotificationProvider({ children }) {
       out.push({
         id: `tk-${task.id}`, type: 'task_created', createdAt: task.created_at,
         title, subtitle: `New task · ${task.roi || 'medium'} ROI`,
+        from: profilesRef.current[task.created_by] || task.noticed_by || null,
         data: { kind: 'task', task },
       });
     }
     if (task.status === 'completed' && task.date_completed) {
       out.push({
         id: `tc-${task.id}`, type: 'task_completed', createdAt: task.date_completed,
-        title, subtitle: `Completed by ${task.completed_by || '—'}`,
+        title, subtitle: 'Task completed',
+        from: task.completed_by || null,
         data: { kind: 'task', task },
       });
     }
@@ -143,7 +150,7 @@ export function NotificationProvider({ children }) {
     const since = new Date(Date.now() - WINDOW_DAYS * 864e5).toISOString();
 
     const results = await Promise.allSettled([
-      supabase.from('profiles').select('id, first_name, last_name'),
+      supabase.from('profiles').select('id, first_name, last_name, avatar_url, color'),
       supabase.from('tasks').select('*').eq('team_id', activeTeamId).order('created_at', { ascending: false }).limit(80),
       supabase.from('projects').select('id, title').eq('team_id', activeTeamId),
       supabase.from('submissions').select('*').eq('team_id', activeTeamId).gte('created_at', since)
@@ -154,7 +161,11 @@ export function NotificationProvider({ children }) {
     const val = (i) => (results[i].status === 'fulfilled' ? results[i].value.data : null) || [];
 
     const profs = val(0);
-    profs.forEach(p => { profilesRef.current[p.id] = `${p.first_name || ''} ${p.last_name || ''}`.trim(); });
+    profs.forEach(p => {
+      const full = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+      profilesRef.current[p.id] = full;
+      if (full) profileMetaRef.current[full.toLowerCase()] = { avatar_url: p.avatar_url || null, color: p.color || '#6366f1' };
+    });
     setPeople(profs.map(p => `${p.first_name || ''} ${p.last_name || ''}`.trim()).filter(Boolean).sort());
 
     const projs = val(2);
@@ -174,13 +185,15 @@ export function NotificationProvider({ children }) {
     (comments || []).forEach(c => out.push({
       id: `cm-${c.id}`, type: 'comment', createdAt: c.created_at,
       title: projectsRef.current[c.project_id] || 'a project',
-      subtitle: `${profilesRef.current[c.user_id] || 'Someone'} commented`,
+      subtitle: 'New comment',
+      from: profilesRef.current[c.user_id] || 'Someone',
       data: { kind: 'comment', comment: c, projectId: c.project_id, projectTitle: projectsRef.current[c.project_id] },
     }));
     val(3).forEach(s => out.push({
       id: `sb-${s.id}`, type: 'submission', createdAt: s.created_at,
       title: s.page || 'Guest submission',
-      subtitle: `From ${s.noticed_by || 'a guest'}`,
+      subtitle: 'Guest submission',
+      from: s.noticed_by || 'a guest',
       data: { kind: 'submission', submission: s },
     }));
     val(4).forEach(f => out.push({
@@ -214,7 +227,8 @@ export function NotificationProvider({ children }) {
           addItems([{
             id: `cm-${c.id}`, type: 'comment', createdAt: c.created_at || new Date().toISOString(),
             title: projectsRef.current[c.project_id] || 'a project',
-            subtitle: `${profilesRef.current[c.user_id] || 'Someone'} commented`,
+            subtitle: 'New comment',
+            from: profilesRef.current[c.user_id] || 'Someone',
             data: { kind: 'comment', comment: c, projectId: c.project_id, projectTitle: projectsRef.current[c.project_id] },
           }]);
         })
@@ -223,7 +237,8 @@ export function NotificationProvider({ children }) {
           const s = p.new;
           addItems([{
             id: `sb-${s.id}`, type: 'submission', createdAt: s.created_at || new Date().toISOString(),
-            title: s.page || 'Guest submission', subtitle: `From ${s.noticed_by || 'a guest'}`,
+            title: s.page || 'Guest submission', subtitle: 'Guest submission',
+            from: s.noticed_by || 'a guest',
             data: { kind: 'submission', submission: s },
           }]);
         })
@@ -284,16 +299,44 @@ export function NotificationProvider({ children }) {
     });
   }, [persistReads]);
 
+  // Resolve a notification's `from` name to that teammate's profile picture +
+  // color, so the feed can show their pfp. Returns null for names with no
+  // matching profile (e.g. guest submitters) — the UI falls back to an initial.
+  const senderMeta = useCallback((name) => {
+    if (!name) return null;
+    const key = name.trim().toLowerCase();
+    return profileMetaRef.current[key]
+      || profileMetaRef.current[key.split(',')[0].trim()]  // completed_by can list several names
+      || null;
+  }, []);
+
+  // Is this notification about something the signed-in user did themselves?
+  // task_created / comment carry the actor's id; task_completed stores a
+  // (possibly comma-separated) list of names. Guest submissions and file
+  // adds aren't attributable to a signed-in teammate, so they're never "self".
+  const isSelf = useCallback((n) => {
+    const d = n.data || {};
+    if (n.type === 'comment') return !!uid && d.comment?.user_id === uid;
+    if (n.type === 'task_created') return !!uid && d.task?.created_by === uid;
+    if (n.type === 'task_completed') {
+      if (!myName) return false;
+      return (d.task?.completed_by || '')
+        .split(',').map(s => s.trim().toLowerCase()).includes(myName);
+    }
+    return false;
+  }, [uid, myName]);
+
   // ── Settings-aware filtering ─────────────────────────────
   const passesSettings = useCallback((n) => {
     if (!settings.types[n.type]) return false;
+    if (!settings.includeSelf && isSelf(n)) return false;
     if (n.type === 'task_completed' && settings.completedScope === 'selected') {
       const by = (n.data?.task?.completed_by || '').toLowerCase();
       if (!settings.completedPeople.length) return false;
       return settings.completedPeople.some(name => by.includes(name.toLowerCase()));
     }
     return true;
-  }, [settings]);
+  }, [settings, isSelf]);
 
   const visible = items.filter(passesSettings).map(n => ({ ...n, read: reads.has(n.id) }));
 
@@ -315,6 +358,7 @@ export function NotificationProvider({ children }) {
       settings,
       updateSettings,
       people,
+      senderMeta,
       markRead,
       markAllRead,
     }}>

@@ -14,6 +14,11 @@ import './PetSprite.css';
 // the original rate. Still overridable per-instance via the `fps` prop.
 const FPS = 10;
 const WALK_SPEED_PCT_S = 12; // % of stage size, per second
+// When `relativeToStage` is set, the pet is drawn at this fraction of the
+// stage's measured height (× the per-pet sizeScale). ~0.38 reproduces the
+// sizes the Pets page and dashboard widget used before this was relative, so
+// both scenes keep the pet proportionate to "the room" it's standing in.
+const BASE_STAGE_FRACTION = 0.38;
 const ARRIVE_THRESHOLD_PCT = 2;
 const IDLE_MIN_MS = 2000;
 const IDLE_MAX_MS = 5000;
@@ -37,6 +42,7 @@ const randRange = (a, b) => a + Math.random() * (b - a);
 export default function PetSprite({
   species, style, size = 96, dead = false, action = null, onActionDone,
   idleAnimation = 'idle', roam = true, walkArea, className = '', fps = FPS, petId,
+  sizeScale = 1, relativeToStage = false,
 }) {
   const tickMs = 1000 / fps;
   const containerRef = useRef(null);
@@ -50,6 +56,16 @@ export default function PetSprite({
   // footprint, so the visible character stays inside the drawn box instead
   // of just its anchor point (which sits at the sprite's own bottom-center).
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
+
+  // Effective on-screen height in px. In relative mode the pet is sized to a
+  // fraction of the stage it's standing in (so it grows/shrinks with the room
+  // — big on the Pets page, smaller in the dashboard widget) and the per-pet
+  // sizeScale slider nudges that baseline. The explicit `size` prop is the
+  // fallback for the first paint before the stage has been measured, and the
+  // sole size in non-relative mode (sidebar, collection thumbnails, etc.).
+  const effectiveSize = relativeToStage && stageSize.h > 0
+    ? Math.max(24, Math.round(stageSize.h * BASE_STAGE_FRACTION * sizeScale))
+    : Math.round(size * sizeScale);
 
   useEffect(() => {
     if (!containerRef.current || typeof ResizeObserver === 'undefined') return undefined;
@@ -106,8 +122,8 @@ export default function PetSprite({
     // to wander and making movement look like it's only ever side-to-side.
     // Better to let a very short box allow slight sprite overflow than to
     // kill vertical movement entirely.
-    const insetX = stageSize.w > 0 ? Math.min(nominalW / 2 - 1, ((size * 0.4) / stageSize.w) * 100) : 0;
-    const insetYTop = stageSize.h > 0 ? Math.min(nominalH * 0.55, (size / stageSize.h) * 100) : 0;
+    const insetX = stageSize.w > 0 ? Math.min(nominalW / 2 - 1, ((effectiveSize * 0.4) / stageSize.w) * 100) : 0;
+    const insetYTop = stageSize.h > 0 ? Math.min(nominalH * 0.55, (effectiveSize / stageSize.h) * 100) : 0;
 
     const areaX = nominalX + insetX;
     const areaW = Math.max(1, nominalW - insetX * 2);
@@ -255,7 +271,7 @@ export default function PetSprite({
       // value) — the walk's destination is a reasonable approximation.
       savePosition(petId, e.anim === 'walking' ? e.targetXPct : e.xPct, e.anim === 'walking' ? e.targetYPct : e.yPct);
     };
-  }, [species, dead, roam, walkArea, onActionDone, size, stageSize.w, stageSize.h, tickMs, petId]);
+  }, [species, dead, roam, walkArea, onActionDone, effectiveSize, stageSize.w, stageSize.h, tickMs, petId]);
 
   const e = engine.current;
   const anim = dead ? 'dying' : e.anim;
@@ -308,7 +324,7 @@ export default function PetSprite({
 
   return (
     <div ref={containerRef} className={`pet-sprite-stage ${className}`} style={{ height: '100%' }}>
-      <div className="pet-sprite-anchor" style={{ height: size, ...wrapStyle }}>
+      <div className="pet-sprite-anchor" style={{ height: effectiveSize, ...wrapStyle }}>
         <img
           src={src} alt="" className="pet-sprite-img" decoding="sync"
           style={{ height: '100%', transform: `scaleX(${flip ? -1 : 1})` }}

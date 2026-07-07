@@ -156,6 +156,8 @@ export default function PetWidget() {
             species={activePet.species}
             style={activePet.style}
             size={84}
+            relativeToStage
+            sizeScale={activePet.size_scale ?? 1}
             dead={activePet.is_dead}
             idleAnimation={activePet.idle_animation}
             walkArea={activePet.walk_area}

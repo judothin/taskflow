@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { useTeam } from './TeamContext';
@@ -129,6 +129,20 @@ export function PetProvider({ children }) {
     await refresh();
   }, [refresh]);
 
+  // Per-pet size multiplier (relative to whatever stage the pet is shown in),
+  // driven by the slider on the Pets page and read by both the Pets page and
+  // the dashboard widget. Applied to local state immediately so every view
+  // (Pets page + widget) resizes live as the slider moves, with the DB write
+  // debounced so a drag doesn't fire a request per pixel.
+  const sizeSaveTimers = useRef({});
+  const setPetSize = useCallback((petId, sizeScale) => {
+    setPets(prev => prev.map(p => (p.id === petId ? { ...p, size_scale: sizeScale } : p)));
+    clearTimeout(sizeSaveTimers.current[petId]);
+    sizeSaveTimers.current[petId] = setTimeout(() => {
+      supabase.from('pets').update({ size_scale: sizeScale }).eq('id', petId);
+    }, 250);
+  }, []);
+
   // Uploads to the user's personal environment library and returns the
   // public URL; callers then call setPetEnvironment with it if they want to
   // apply it immediately.
@@ -198,7 +212,7 @@ export function PetProvider({ children }) {
       userLevel, pets, activePet, pendingUnlocks, loading, customEnvironments,
       gamificationEnabled, userGamificationEnabled, setGamificationEnabled,
       refresh, feedPet, waterPet, renamePet, setActivePet, setPetStyle,
-      setPetEnvironment, setPetWalkArea, setPetIdleAnimation, uploadPetEnvironment,
+      setPetEnvironment, setPetWalkArea, setPetIdleAnimation, setPetSize, uploadPetEnvironment,
       claimNextPendingUnlock, sacrificeForNewPet,
       currentPopup, dismissPopup,
     }}>
