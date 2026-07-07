@@ -167,6 +167,14 @@
   border-radius: var(--radius-lg);
   user-select: none;
   isolation: isolate;
+  /* Grid cells already stretch to the tallest in their row; make the card
+     fill the cell so every card in a row is the same height (footer pins to
+     the bottom via its own margin-top:auto). */
+  display: flex;
+  flex-direction: column;
+}
+.pd-drag-item > .task-card {
+  flex: 1;
 }
 
 /* Grip handle — top-right corner, only draggable zone */
@@ -331,7 +339,6 @@
   gap: 14px;
   padding: 18px 20px;
   border-bottom: 1px solid var(--border);
-  animation: fadeIn 0.2s ease;
   transition: background 0.12s ease;
 }
 .pd-comment:last-child { border-bottom: none; }
@@ -407,7 +414,6 @@
   gap: 10px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
-  animation: fadeIn 0.2s ease;
   transition: background 0.12s ease;
 }
 .pd-reply:last-child { border-bottom: none; }

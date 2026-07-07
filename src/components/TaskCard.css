@@ -8,16 +8,20 @@
   overflow: visible;
   position: relative;
   z-index: 0;
-  animation: fadeIn 0.3s ease;
-  transition: border-color 0.32s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.32s cubic-bezier(0.4, 0, 0.2, 1),
-              background 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  /* No per-card entrance animation: these render in bulk inside a page-level
+     `.fade-in` wrapper, and a parent opacity-fade re-rasterizing while dozens
+     of children each animate transform+opacity is what made the load-in janky
+     (and re-fired on every filter/sort). The page wrapper fades as one unit —
+     matching the Teams/Settings/Pets pages, which do exactly this and are smooth. */
+  transition: border-color 0.25s ease,
+              box-shadow 0.25s ease,
+              background 0.25s ease;
 }
 
 .task-card:hover {
   border-color: var(--border-light);
   background: var(--bg-3);
-  box-shadow: var(--shadow);
+  box-shadow: 0 4px 16px -6px rgba(0,0,0,0.3);
   z-index: 10;
 }
 
@@ -25,9 +29,18 @@
    background image — swapping between them reads as a harsher pop than on
    a solid surface, so it gets an even longer, smoother transition. */
 body.has-bg-image .task-card {
-  transition: border-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-              background 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.35s ease,
+              box-shadow 0.35s ease,
+              background 0.35s ease;
+}
+
+/* On glass the opaque bg-2 → bg-3 swap flashes against the frosted surface —
+   keep the hover barely-there: a whisper more opacity and a soft, low shadow,
+   no border tint or glow. */
+body.has-bg-image .task-card:hover {
+  background: color-mix(in srgb, var(--bg-3) 35%, var(--bg-2));
+  border-color: var(--border-light);
+  box-shadow: 0 6px 18px -10px rgba(0,0,0,0.32);
 }
 
 .task-card-featured {
@@ -35,8 +48,21 @@ body.has-bg-image .task-card {
   background: linear-gradient(135deg, var(--bg-2) 0%, color-mix(in srgb, var(--accent) 5%, transparent) 100%);
 }
 
-.task-card-featured:hover {
-  background: linear-gradient(135deg, var(--bg-3) 0%, color-mix(in srgb, var(--accent) 8%, transparent) 100%);
+/* Featured (focus-bar) cards wear an accent border + accent gradient as their
+   resting identity. Hover has to stay smooth, which rules out changing the
+   background: it's a linear-gradient (background-image), and gradients are NOT
+   transitionable — they snap instantly while the border eases, and that desync
+   is what read as glitchy/harsh. So keep the background EXACTLY as the resting
+   gradient (nothing to snap; also overrides the generic hover that would flip
+   it to a flat color) and express hover only through animatable properties: a
+   deeper accent border and a soft INSET accent glow (inset stays inside the
+   card, so it can't be clipped by the .dash-card widget either). Placed after
+   the glass hover so it wins the specificity tie in both modes. */
+.task-card-featured:hover,
+body.has-bg-image .task-card-featured:hover {
+  background: linear-gradient(135deg, var(--bg-2) 0%, color-mix(in srgb, var(--accent) 5%, transparent) 100%);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  box-shadow: inset 0 0 16px -6px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 /* ── Status color coding ───────────────────────────────────── */

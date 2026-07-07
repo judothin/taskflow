@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePets } from '../context/PetContext';
 import Avatar from '../components/Avatar';
 import AvatarCrop from '../components/AvatarCrop';
+import ModalPortal from '../components/ModalPortal';
 import { InlineClock } from '../components/dashboardWidgets';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
 import { THEME_FIELDS, STATUS_FIELDS, FONT_SCALES } from '../lib/themeColors';
@@ -583,6 +584,7 @@ export default function Settings() {
       </div>{/* /settings-grid */}
 
       {confirmDeleteBg && (
+        <ModalPortal>
         <div className="modal-overlay" onClick={() => setConfirmDeleteBg(null)}>
           <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header"><h2 style={{ fontSize: 16, fontWeight: 700 }}>Delete this background?</h2></div>
@@ -601,6 +603,7 @@ export default function Settings() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* Crop modal — shown after file is selected */}

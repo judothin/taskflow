@@ -253,6 +253,19 @@ select.input option { background: var(--bg-3); }
   animation: fadeIn 0.3s ease;
 }
 
+/* On the frosted-glass theme (a background image is set), skip container-level
+   entrance animations. Fading/sliding a container full of TRANSLUCENT surfaces
+   flattens the whole subtree into one group while opacity < 1 and composites
+   that group over the blurred background differently than the surfaces blend at
+   rest — so the cards look doubled/"ghosted" mid-animation and then snap. That
+   ghost/glitch is the artifact; content just appearing cleanly is better here.
+   Solid-background themes have no translucency, so they keep the fade. */
+body.has-bg-image .fade-in,
+body.has-bg-image .focus-slot,
+body.has-bg-image .completed-results {
+  animation: none;
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }

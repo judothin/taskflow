@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { usePets } from '../context/PetContext';
+import ModalPortal from './ModalPortal';
 import PetSpinReveal from './PetSpinReveal';
 
 // Shown whenever a level milestone grants a new pet mid-session. Claims the
@@ -19,6 +20,7 @@ export default function PetSpinModal({ onClose }) {
   }, [claimNextPendingUnlock]);
 
   return (
+    <ModalPortal>
     <div className="modal-overlay" style={{ zIndex: 3000 }}>
       <div className="modal pet-spin-modal">
         <div className="modal-header">
@@ -35,5 +37,6 @@ export default function PetSpinModal({ onClose }) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

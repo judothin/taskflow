@@ -1,4 +1,5 @@
 import React from 'react';
+import ModalPortal from './ModalPortal';
 import PetSprite from './PetSprite';
 import './PetLevelUpModal.css';
 
@@ -9,6 +10,7 @@ export default function PetLevelUpModal({ petLevelUp, onClose }) {
   } = petLevelUp;
 
   return (
+    <ModalPortal>
     <div className="modal-overlay" style={{ zIndex: 3000 }} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal pet-levelup-modal">
         <div className="modal-header">
@@ -40,5 +42,6 @@ export default function PetLevelUpModal({ petLevelUp, onClose }) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

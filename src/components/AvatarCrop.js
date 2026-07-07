@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import ModalPortal from './ModalPortal';
 
 /**
  * AvatarCrop
@@ -149,6 +150,7 @@ export default function AvatarCrop({ src, onConfirm, onCancel }) {
   };
 
   return (
+    <ModalPortal>
     <div className="modal-overlay" style={{ zIndex: 1200 }}>
       <div className="modal" style={{ maxWidth: 380 }}>
         <div className="modal-header">
@@ -215,5 +217,6 @@ export default function AvatarCrop({ src, onConfirm, onCancel }) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

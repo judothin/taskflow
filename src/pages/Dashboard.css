@@ -536,7 +536,9 @@
   text-align: center;
 }
 
-.recent-item-anim { animation: fadeIn 0.3s ease both; }
+/* No per-item entrance animation — these render in bulk inside the dashboard;
+   letting each fade+slide on load was janky (see TaskCard.css). */
+.recent-item-anim { }
 
 .recent-item-by {
   font-size: 11px;

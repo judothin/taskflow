@@ -63,7 +63,8 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  animation: fadeIn 0.25s ease;
+  /* Entrance handled by the page-level `.fade-in` wrapper; per-card animation
+     nested inside it made the load-in janky (see TaskCard.css). */
 }
 
 .sub-card-pending  { border-top: 3px solid rgba(245,158,11,0.6); }

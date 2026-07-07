@@ -15,6 +15,7 @@ import QueueWidget from '../components/QueueWidget';
 import PetWidget from '../components/PetWidget';
 import UserXpBar from '../components/UserXpBar';
 import ActiveTasksList from '../components/ActiveTasksList';
+import ModalPortal from '../components/ModalPortal';
 import {
   ActivityChartWidget, CompletedTodayWidget, RoiBreakdownWidget,
   LeaderboardWidget, RecentActivityWidget, StreakWidget, DashboardClock,
@@ -472,6 +473,7 @@ export default function Dashboard() {
 
       {/* Add Widget modal */}
       {showAddWidget && (
+        <ModalPortal>
         <div className="modal-overlay" onClick={() => setShowAddWidget(false)}>
           <div className="modal dash-add-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
@@ -504,6 +506,7 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {showCreate && (

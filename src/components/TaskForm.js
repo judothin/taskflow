@@ -1,10 +1,11 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { awardTaskCreatedXp, awardTaskCompletedXp } from '../lib/xp';
 import Avatar from './Avatar';
 import FeedbackEditor from './FeedbackEditor';
+import ModalPortal from './ModalPortal';
 
 // Run once in Supabase:
 // alter table tasks add column if not exists attachments jsonb default '[]'::jsonb;
@@ -86,15 +87,25 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
   const [existing, setExisting]   = useState(() => initExisting(task));
   const [pending,  setPending]    = useState([]);
   const [addToQueue, setAddToQueue] = useState(false);
+  const [batchAdd,   setBatchAdd]   = useState(false);
+  const [batchCount, setBatchCount] = useState(0);
   const [error,        setError]        = useState('');
   const [saving,       setSaving]       = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [completedBy, setCompletedBy]   = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Closing after a batch: make the parent refetch once. List views already got
+  // the live `tasks-changed` event on each save, but callers that only refresh
+  // via onSaved need this single call so the tasks added this session show up.
+  const handleClose = () => {
+    if (batchCount > 0) onSaved?.();
+    onClose();
+  };
+
   const mouseDownOnOverlay = useRef(false);
-  const handleOverlayMouseDown = useCallback(e => { mouseDownOnOverlay.current = e.target === e.currentTarget; }, []);
-  const handleOverlayMouseUp   = useCallback(e => { if (mouseDownOnOverlay.current && e.target === e.currentTarget) onClose(); }, [onClose]);
+  const handleOverlayMouseDown = (e) => { mouseDownOnOverlay.current = e.target === e.currentTarget; };
+  const handleOverlayMouseUp   = (e) => { if (mouseDownOnOverlay.current && e.target === e.currentTarget) handleClose(); };
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -167,6 +178,16 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
     await save();
   };
 
+  // Batch add: prime the form for the next task, carrying Page + Project (and
+  // the rest of the meta) forward and clearing only the per-task content.
+  const resetForNextBatch = () => {
+    setForm(f => ({ ...f, feedback: '' }));
+    setExisting([]);
+    setPending(prev => { prev.forEach(p => p.preview && URL.revokeObjectURL(p.preview)); return []; });
+    setCompletedBy([]);
+    setError('');
+  };
+
   const save = async (overrides = {}) => {
     setSaving(true);
     try {
@@ -228,8 +249,17 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
       }
 
       window.dispatchEvent(new CustomEvent('tasks-changed'));
-      onSaved?.(result.data);
-      onClose();
+
+      if (!isEdit && batchAdd) {
+        // Keep the modal open and set up the next entry. The list refreshes via
+        // the `tasks-changed` event above; we deliberately skip onSaved here
+        // because some callers close the modal from it (it fires on close).
+        setBatchCount(c => c + 1);
+        resetForNextBatch();
+      } else {
+        onSaved?.(result.data);
+        onClose();
+      }
     } catch (err) {
       setError(err.message || 'Failed to save task');
     } finally {
@@ -261,13 +291,14 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
 
   return (
     <>
+      <ModalPortal>
       <div className="modal-overlay" onMouseDown={handleOverlayMouseDown} onMouseUp={handleOverlayMouseUp}>
         <div className="modal">
           <div className="modal-header">
             <h2 style={{ fontSize: 18, fontWeight: 700 }}>
               {isEdit ? 'Edit Task' : 'Create Task'}
             </h2>
-            <button onClick={onClose} className="btn btn-ghost btn-sm">✕</button>
+            <button onClick={handleClose} className="btn btn-ghost btn-sm">✕</button>
           </div>
 
           <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
@@ -296,6 +327,26 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
                       className="editor-cb"
                     />
                     Add to queue
+                  </label>
+                )}
+
+                {!isGuest && !isEdit && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, fontWeight: 500, color: 'var(--text)', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={batchAdd}
+                      onChange={(e) => setBatchAdd(e.target.checked)}
+                      className="editor-cb"
+                    />
+                    Batch add
+                    <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>
+                      — keep open &amp; reuse Page + Project for the next
+                    </span>
+                    {batchCount > 0 && (
+                      <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-glow)', padding: '1px 8px', borderRadius: 999 }}>
+                        {batchCount} added
+                      </span>
+                    )}
                   </label>
                 )}
 
@@ -433,18 +484,20 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
                   <button type="button" onClick={() => setConfirmDelete(false)} className="btn btn-ghost btn-sm">Cancel</button>
                 </div>
               )}
-              {!confirmDelete && <button type="button" onClick={onClose} className="btn btn-ghost">Cancel</button>}
+              {!confirmDelete && <button type="button" onClick={handleClose} className="btn btn-ghost">{batchCount > 0 ? 'Done' : 'Cancel'}</button>}
               {!confirmDelete && (
                 <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Task'}
+                  {saving ? 'Saving...' : isEdit ? 'Save Changes' : (batchAdd ? 'Create & add another' : 'Create Task')}
                 </button>
               )}
             </div>
           </form>
         </div>
       </div>
+      </ModalPortal>
 
       {showCompleteModal && (
+        <ModalPortal>
         <div className="modal-overlay" style={{ zIndex: 1100 }}>
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
@@ -491,6 +544,7 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );

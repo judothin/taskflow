@@ -7,6 +7,7 @@ import { useTeam } from '../context/TeamContext';
 import { awardTaskCompletedXp } from '../lib/xp';
 import Avatar from './Avatar';
 import FeedbackContent from './FeedbackContent';
+import ModalPortal from './ModalPortal';
 
 const STATUS_MAP = {
   critical:    { label: 'Critical',    cls: 'badge-critical',   cardCls: 'task-card-critical' },
@@ -453,12 +454,14 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
       </div>
 
       {imgOpen && (
+        <ModalPortal>
         <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => setImgOpen(false)}>
           <div onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
             <img src={task.png_url} alt="Task screenshot" style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 12, boxShadow: 'var(--shadow-lg)' }} />
             <button onClick={() => setImgOpen(false)} style={{ position: 'absolute', top: -12, right: -12, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '50%', width: 32, height: 32, color: 'var(--text)', cursor: 'pointer', fontSize: 16 }}>✕</button>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );

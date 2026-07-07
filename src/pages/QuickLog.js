@@ -6,6 +6,7 @@ import { fetchTeamMembers } from '../lib/teams';
 import { awardTaskCreatedXp, awardTaskCompletedXp } from '../lib/xp';
 import Avatar from '../components/Avatar';
 import FeedbackEditor from '../components/FeedbackEditor';
+import ModalPortal from '../components/ModalPortal';
 import './QuickLog.css';
 
 export default function QuickLogModal({ onClose }) {
@@ -80,6 +81,7 @@ export default function QuickLogModal({ onClose }) {
   };
 
   return (
+    <ModalPortal>
     <div className="modal-overlay" onMouseDown={handleOverlayMD} onMouseUp={handleOverlayMU}>
       <div className="modal quicklog-modal">
 
@@ -179,5 +181,6 @@ export default function QuickLogModal({ onClose }) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

@@ -11,6 +11,7 @@ import Avatar from '../components/Avatar';
 import CompletionCalendar from '../components/CompletionCalendar';
 import FeedbackContent from '../components/FeedbackContent';
 import QuickLogModal from './QuickLog';
+import ModalPortal from '../components/ModalPortal';
 import './Dashboard.css';
 import './Tasks.css';
 import './Completed.css';
@@ -35,7 +36,7 @@ function CompletedRow({ task, onEdit, onDeleted }) {
   return (
     <>
       <div
-        className="completed-row fade-in"
+        className="completed-row"
         onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
       >
         {/* Main content + meta */}
@@ -133,12 +134,14 @@ function CompletedRow({ task, onEdit, onDeleted }) {
       )}
 
       {imgOpen && (
+        <ModalPortal>
         <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => setImgOpen(false)}>
           <div onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
             <img src={task.png_url} alt="Task screenshot" style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 12, boxShadow: 'var(--shadow-lg)' }} />
             <button onClick={() => setImgOpen(false)} style={{ position: 'absolute', top: -12, right: -12, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '50%', width: 32, height: 32, color: 'var(--text)', cursor: 'pointer', fontSize: 16 }}>✕</button>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );

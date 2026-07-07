@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { InlineClock } from '../components/dashboardWidgets';
+import ModalPortal from '../components/ModalPortal';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import './Projects.css';
@@ -398,6 +399,7 @@ function ProjectModal({ project, onClose, onSaved, userId, teamId }) {
   };
 
   return (
+    <ModalPortal>
     <div
       className="modal-overlay"
       onMouseDown={e => { mdRef.current = e.target === e.currentTarget; }}
@@ -471,5 +473,6 @@ function ProjectModal({ project, onClose, onSaved, userId, teamId }) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

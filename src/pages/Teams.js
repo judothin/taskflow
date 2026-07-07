@@ -4,6 +4,7 @@ import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers, regenerateInviteCode, setMemberRole, removeMember, renameTeam, setTeamGamification } from '../lib/teams';
 import TeamJoinCreateForm from '../components/TeamJoinCreateForm';
 import Avatar from '../components/Avatar';
+import ModalPortal from '../components/ModalPortal';
 import './Teams.css';
 
 function CopyButton({ value, label = 'Copy' }) {
@@ -335,6 +336,7 @@ export default function Teams() {
       )}
 
       {showAddTeam && (
+        <ModalPortal>
         <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setShowAddTeam(false); }}>
           <div className="modal" style={{ maxWidth: 440 }}>
             <div className="modal-header">
@@ -346,6 +348,7 @@ export default function Teams() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {confirmRemove && (() => {
@@ -353,6 +356,7 @@ export default function Teams() {
         const matches = removeConfirmText.trim().toLowerCase() === targetName.toLowerCase();
         const isBusy = busyId === confirmRemove.id;
         return (
+          <ModalPortal>
           <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setConfirmRemove(null); }}>
             <div className="modal" style={{ maxWidth: 420 }}>
               <div className="modal-header">
@@ -383,6 +387,7 @@ export default function Teams() {
               </div>
             </div>
           </div>
+          </ModalPortal>
         );
       })()}
     </div>

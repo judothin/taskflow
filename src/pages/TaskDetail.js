@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { awardTaskCompletedXp } from '../lib/xp';
 import FeedbackEditor from '../components/FeedbackEditor';
 import TaskAttachments from '../components/TaskAttachments';
+import ModalPortal from '../components/ModalPortal';
 import '../components/TaskCard.css';
 import './TaskDetail.css';
 
@@ -317,6 +318,7 @@ export default function TaskDetail() {
 
       {/* Zoom lightbox */}
       {imgZoom && (
+        <ModalPortal>
         <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => setImgZoom(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ position: 'relative' }}>
             <img
@@ -330,6 +332,7 @@ export default function TaskDetail() {
             >✕</button>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

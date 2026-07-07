@@ -8,6 +8,7 @@ import { fetchTeamMembers } from '../lib/teams';
 import Avatar from '../components/Avatar';
 import TaskForm from '../components/TaskForm';
 import TaskCard from '../components/TaskCard';
+import ModalPortal from '../components/ModalPortal';
 import '../components/TaskCard.css';
 import './ProjectDetail.css';
 
@@ -974,12 +975,14 @@ export default function ProjectDetail() {
 
       {/* Lightbox */}
       {lightbox && (
-        <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => setLightbox(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
-            <img src={lightbox} alt="" style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 12, boxShadow: 'var(--shadow-lg)' }} />
-            <button onClick={() => setLightbox(null)} style={{ position: 'absolute', top: -12, right: -12, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '50%', width: 32, height: 32, color: 'var(--text)', cursor: 'pointer', fontSize: 16 }}>✕</button>
+        <ModalPortal>
+          <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => setLightbox(null)}>
+            <div onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
+              <img src={lightbox} alt="" style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 12, boxShadow: 'var(--shadow-lg)' }} />
+              <button onClick={() => setLightbox(null)} style={{ position: 'absolute', top: -12, right: -12, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '50%', width: 32, height: 32, color: 'var(--text)', cursor: 'pointer', fontSize: 16 }}>✕</button>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import { useTeam } from '../context/TeamContext';
 import { awardTaskCreatedXp } from '../lib/xp';
 import { InlineClock } from '../components/dashboardWidgets';
 import { format } from 'date-fns';
+import ModalPortal from '../components/ModalPortal';
 import './Submissions.css';
 
 const TABS = [
@@ -123,7 +124,7 @@ function SubmissionCard({ submission, onRefresh }) {
 
   return (
     <>
-      <div className={`sub-card fade-in sub-card-${submission.status}`}>
+      <div className={`sub-card sub-card-${submission.status}`}>
         {/* Header */}
         <div className="sub-card-header">
           <span className={`sub-status-badge sub-status-${submission.status}`}>
@@ -271,12 +272,14 @@ function SubmissionCard({ submission, onRefresh }) {
       </div>
 
       {lightboxIdx !== null && imgs[lightboxIdx] && (
+        <ModalPortal>
         <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => setLightboxIdx(null)}>
           <div onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
             <img src={imgs[lightboxIdx].isNew ? imgs[lightboxIdx].preview : imgs[lightboxIdx].url} alt="" style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 12, boxShadow: 'var(--shadow-lg)' }} />
             <button onClick={() => setLightboxIdx(null)} style={{ position: 'absolute', top: -12, right: -12, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '50%', width: 32, height: 32, color: 'var(--text)', cursor: 'pointer', fontSize: 16 }}>✕</button>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );

@@ -9,6 +9,7 @@ import PetSprite from '../components/PetSprite';
 import PetSpinReveal from '../components/PetSpinReveal';
 import LevelBar from '../components/LevelBar';
 import WalkAreaEditor from '../components/WalkAreaEditor';
+import ModalPortal from '../components/ModalPortal';
 import './Pets.css';
 
 function StatBar({ label, value, max, color }) {
@@ -350,6 +351,7 @@ export default function Pets() {
       )}
 
       {sacrificeResult && (
+        <ModalPortal>
         <div className="modal-overlay" style={{ zIndex: 3000 }}>
           <div className="modal pet-spin-modal">
             <div className="modal-header"><h2 style={{ fontSize: 18, fontWeight: 700 }}>New pet unlocked!</h2></div>
@@ -361,6 +363,7 @@ export default function Pets() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

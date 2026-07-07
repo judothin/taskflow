@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { InlineClock } from '../components/dashboardWidgets';
+import ModalPortal from '../components/ModalPortal';
 import './Help.css';
 import './Files.css';
 
@@ -364,6 +365,7 @@ export default function Files() {
 
       {/* ── Detail view modal ── */}
       {viewEntry && (
+        <ModalPortal>
         <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setViewEntry(null); }}>
           <div className="modal files-detail-modal">
             <div className="modal-header files-detail-header">
@@ -436,10 +438,12 @@ export default function Files() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ── Lightbox ── */}
       {lightboxImg && (
+        <ModalPortal>
         <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => setLightboxImg(null)}>
           <div onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
             <img
@@ -453,10 +457,12 @@ export default function Files() {
             >✕</button>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ── Add / Edit modal ── */}
       {showForm && (
+        <ModalPortal>
         <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
           <div className="modal" style={{ maxWidth: 500 }}>
             <div className="modal-header">
@@ -599,6 +605,7 @@ export default function Files() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );
