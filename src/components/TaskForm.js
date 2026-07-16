@@ -103,10 +103,6 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
     onClose();
   };
 
-  const mouseDownOnOverlay = useRef(false);
-  const handleOverlayMouseDown = (e) => { mouseDownOnOverlay.current = e.target === e.currentTarget; };
-  const handleOverlayMouseUp   = (e) => { if (mouseDownOnOverlay.current && e.target === e.currentTarget) handleClose(); };
-
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   // Total bytes across all pending files
@@ -292,7 +288,7 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
   return (
     <>
       <ModalPortal>
-      <div className="modal-overlay" onMouseDown={handleOverlayMouseDown} onMouseUp={handleOverlayMouseUp}>
+      <div className="modal-overlay">
         <div className="modal">
           <div className="modal-header">
             <h2 style={{ fontSize: 18, fontWeight: 700 }}>
