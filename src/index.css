@@ -312,10 +312,38 @@ body.has-bg-image .completed-results {
 
 @media (max-width: 768px) {
   .modal-overlay { padding: 0; align-items: flex-end; }
-  .modal { max-height: 96dvh; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-left: none; border-right: none; border-bottom: none; }
+  .modal {
+    max-height: 94dvh;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    /* Slide up like a native sheet instead of the desktop fade. */
+    animation: sheetUp 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
   .modal-body { padding: 16px; }
-  .modal-footer { padding: 12px 16px; }
+  /* Keep the action buttons clear of the phone's home indicator. */
+  .modal-footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
   .modal-header { padding: 14px 16px; }
+
+  /* Inputs must be ≥16px or iOS Safari auto-zooms the page on focus. */
+  .input,
+  input,
+  select,
+  textarea,
+  .rich-editor-body {
+    font-size: 16px;
+  }
+
+  /* Comfortable touch targets for the primary controls. */
+  .btn { padding: 11px 18px; }
+  .btn-sm { padding: 8px 14px; }
+}
+
+@keyframes sheetUp {
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .modal-header {

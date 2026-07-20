@@ -19,6 +19,9 @@ const NavIcon = ({ d }) => (
   </svg>
 );
 
+// Short, single-word labels read better under a dock icon ("Active Tasks" → "Active").
+const dockLabel = (label) => label.split(' ')[0];
+
 function ProjectsNavBadge({ userId, teamId }) {
   const [count, setCount] = useState(0);
 
@@ -379,6 +382,41 @@ export default function Layout() {
           <Outlet />
         </div>
       </main>
+
+      {/* ── Mobile dock (bottom tab bar) — app-style primary nav on phones ── */}
+      <nav className="mobile-dock" aria-label="Primary">
+        {visibleNavLayout.slice(0, 4).map(({ id }) => {
+          const item = NAV_ITEMS[id];
+          return (
+            <NavLink
+              key={id}
+              to={item.to}
+              className={({ isActive }) => `dock-item ${isActive ? 'dock-item-active' : ''}`}
+              onClick={() => setSidebarOpen(false)}
+            >
+              <span className="dock-icon">
+                <NavIcon d={item.icon} />
+                {item.badge && <ProjectsNavBadge userId={user?.id} teamId={activeTeam?.id} />}
+              </span>
+              <span className="dock-label">{dockLabel(item.label)}</span>
+            </NavLink>
+          );
+        })}
+        <button
+          type="button"
+          className={`dock-item dock-more ${sidebarOpen ? 'dock-item-active' : ''}`}
+          onClick={() => setSidebarOpen(v => !v)}
+          aria-label="More"
+          aria-expanded={sidebarOpen}
+        >
+          <span className="dock-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
+            </svg>
+          </span>
+          <span className="dock-label">More</span>
+        </button>
+      </nav>
     </div>
   );
 }

@@ -8,6 +8,11 @@
   overflow: visible;
   position: relative;
   z-index: 0;
+  /* As a grid/flex item this defaults to min-width:auto, which refuses to
+     shrink below the card's intrinsic content width and blows the card past
+     the viewport on narrow screens. Force it to honour its track/column. */
+  min-width: 0;
+  max-width: 100%;
   /* No per-card entrance animation: these render in bulk inside a page-level
      `.fade-in` wrapper, and a parent opacity-fade re-rasterizing while dozens
      of children each animate transform+opacity is what made the load-in janky
@@ -192,6 +197,10 @@ body.has-bg-image .task-card-featured:hover {
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin: 0;
+  min-width: 0;
+  /* Long words / URLs must wrap, not force the card wider than its column. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .task-card-featured .task-feedback {

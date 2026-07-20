@@ -58,7 +58,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
     const handler = (e) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target)) {
         setConfirmComplete(false);
-        setCompletedBy('');
+        setCompletedBy([]);
       }
     };
     document.addEventListener('mousedown', handler);

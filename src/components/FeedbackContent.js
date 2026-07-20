@@ -36,27 +36,21 @@ export default function FeedbackContent({ taskId, html, className = 'task-feedba
     // Don't let the click bubble to a parent (e.g. the card's navigate handler).
     e.stopPropagation();
 
-    const boxes = Array.from(ref.current.querySelectorAll('input.editor-cb'));
-    const idx = boxes.indexOf(el);
-    if (idx === -1) return;
+    // The native click already flipped the checkbox's `checked` *property*.
+    // Mirror it onto the *attribute* on the very element that was clicked, then
+    // serialize the live container. This avoids matching checkboxes by index
+    // between the DOM and the stored string, which drifts (and toggles the
+    // wrong box) whenever the browser normalizes the rendered HTML.
+    if (el.checked) el.setAttribute('checked', '');
+    else el.removeAttribute('checked');
 
-    // Edit the canonical HTML string so the saved state is reliable
-    // (the live DOM `checked` *property* isn't reflected by innerHTML).
-    const doc = new DOMParser().parseFromString(`<body>${localHtml || ''}</body>`, 'text/html');
-    const parsed = doc.body.querySelectorAll('input.editor-cb');
-    const target = parsed[idx];
-    if (!target) return;
-
-    if (target.hasAttribute('checked')) target.removeAttribute('checked');
-    else target.setAttribute('checked', '');
-
-    const nextHtml = doc.body.innerHTML;
+    const nextHtml = ref.current.innerHTML;
     setLocalHtml(nextHtml);   // instant local feedback
     persist(nextHtml);        // share + save
   };
 
   return (
-    <p
+    <div
       ref={ref}
       className={className}
       onClick={handleClick}
