@@ -300,7 +300,7 @@ export default function Teams() {
               <div className="team-guest-link-box">
                 <span className="team-guest-link-value">{guestLink}</span>
               </div>
-              <CopyButton value={guestLink} label="Copy guest link" />
+              <CopyButton value={`Submit a task to ${activeTeam.name}: ${guestLink}`} label="Copy guest link" />
             </div>
 
             {isAdmin && (

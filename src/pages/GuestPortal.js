@@ -161,8 +161,8 @@ export default function GuestPortal() {
       <div className="auth-card guest-portal-card fade-in">
         <div className="auth-logo" style={{ marginBottom: 16 }}>
           <img src="/logo.png" alt="TaskFlow" style={{ margin: '0 auto 10px', width: 36, height: 36, borderRadius: 8, objectFit: 'contain', display: 'block' }} />
-          <h1 style={{ fontSize: 20 }}>Submit a Task</h1>
-          <p style={{ fontSize: 13 }}>to <strong>{team.name}</strong> — report an issue or suggest an improvement</p>
+          <h1 style={{ fontSize: 22 }}>Submit a Task to {team.name}</h1>
+          <p style={{ fontSize: 13 }}>Report an issue or suggest an improvement</p>
         </div>
 
         <form onSubmit={handleSubmit} className="form-grid" style={{ gap: 12 }}>
