@@ -217,14 +217,6 @@ export default function Completed() {
   return (
     <div className="dashboard fade-in">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">Completed Tasks</h1>
-          <p className="page-subtitle">
-            {tasks.length} task{tasks.length !== 1 ? 's' : ''} completed in total
-            {personFilter !== 'all' && <> · <strong style={{ color: calColor }}>{personFilter}</strong></>}
-            {dateLabel && <> · {dateLabel}</>}
-          </p>
-        </div>
         <div className="page-header-actions">
           <InlineClock />
           <button className="btn btn-secondary" onClick={() => setShowQuickLog(true)}>

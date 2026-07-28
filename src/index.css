@@ -63,6 +63,13 @@
   transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
 }
 
+/* During boot (class set pre-paint in index.html, removed after the first frame
+   in index.js) kill ALL transitions so the theme paints instantly with no
+   white→black fade. Re-enabled afterwards so theme toggling stays smooth. */
+html.tf-boot, html.tf-boot *, html.tf-boot *::before, html.tf-boot *::after {
+  transition: none !important;
+}
+
 html {
   font-size: 16px;
   overflow-x: clip;
@@ -81,6 +88,28 @@ body {
 
 /* Accessibility: bolder body text (explicit heavier weights are unaffected) */
 .a11y-bold body { font-weight: 600; }
+
+/* Boot / route loader — transparent so the theme background shows through; the
+   spinner fades in only after a short delay so fast loads show nothing at all. */
+.route-loader {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.route-loader-spinner {
+  width: 26px;
+  height: 26px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  opacity: 0;
+  animation: route-spin 0.7s linear infinite, route-loader-fade 0.3s ease 0.28s forwards;
+}
+@keyframes route-spin { to { transform: rotate(360deg); } }
+@keyframes route-loader-fade { to { opacity: 1; } }
 
 /* Custom background image lives on its own fixed, negative-z-index layer
    (a real element, #tf-bg-layer, created lazily in themeColors.js) instead
@@ -250,25 +279,31 @@ select.input option { background: var(--bg-3); }
 .badge-low { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
 
 .fade-in {
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* On the frosted-glass theme (a background image is set), skip container-level
-   entrance animations. Fading/sliding a container full of TRANSLUCENT surfaces
-   flattens the whole subtree into one group while opacity < 1 and composites
-   that group over the blurred background differently than the surfaces blend at
-   rest — so the cards look doubled/"ghosted" mid-animation and then snap. That
-   ghost/glitch is the artifact; content just appearing cleanly is better here.
-   Solid-background themes have no translucency, so they keep the fade. */
+/* On the frosted-glass theme (a background image is set), an opacity-fade
+   flattens a container of TRANSLUCENT surfaces into one group and composites it
+   over the blurred backdrop differently than the surfaces blend at rest — so
+   the cards look doubled/"ghosted" mid-fade. Rather than kill the entrance
+   entirely (which makes everything snap in), use a TRANSFORM-ONLY rise: it
+   eases content into place just as smoothly but never groups opacity, so
+   there's no ghosting. Solid themes have no translucency, so they keep the
+   opacity fade. */
 body.has-bg-image .fade-in,
 body.has-bg-image .focus-slot,
 body.has-bg-image .completed-results {
-  animation: none;
+  animation: riseIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes riseIn {
+  from { transform: translateY(12px); }
+  to   { transform: translateY(0); }
 }
 
 @keyframes slideIn {

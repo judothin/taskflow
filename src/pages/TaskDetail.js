@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { awardTaskCompletedXp } from '../lib/xp';
 import FeedbackEditor from '../components/FeedbackEditor';
+import SubtaskEditor from '../components/SubtaskEditor';
+import { asSubtasks } from '../lib/subtasks';
 import TaskAttachments from '../components/TaskAttachments';
 import ModalPortal from '../components/ModalPortal';
 import '../components/TaskCard.css';
@@ -54,6 +56,7 @@ export default function TaskDetail() {
       roi:        data.roi        || 'medium',
       complexity: data.complexity || 'medium',
       png_url:    data.png_url    || null,
+      subtasks:   asSubtasks(data.subtasks),
     });
     setImagePreview(data.png_url || null);
     setLoading(false);
@@ -98,7 +101,7 @@ export default function TaskDetail() {
       }
       const { error: saveError } = await supabase.from('tasks').update(payload).eq('id', id);
       if (saveError) throw saveError;
-      if (isBeingCompleted) awardTaskCompletedXp(user?.id, payload.complexity);
+      if (isBeingCompleted) awardTaskCompletedXp(user?.id, payload.complexity, { roi: payload.roi, status: task.status });
       setTask(t => ({ ...t, ...payload }));
       setImageFile(null);
       setSaved(true);
@@ -191,6 +194,14 @@ export default function TaskDetail() {
             <FeedbackEditor
               value={form.feedback}
               onChange={(v) => setForm(f => ({ ...f, feedback: v }))}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="label">Subtasks</label>
+            <SubtaskEditor
+              value={form.subtasks}
+              onChange={(v) => setForm(f => ({ ...f, subtasks: v }))}
             />
           </div>
 

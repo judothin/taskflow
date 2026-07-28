@@ -4,6 +4,8 @@ import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import TaskCard from './TaskCard';
 import TaskForm from './TaskForm';
+import BulkActionBar from './BulkActionBar';
+import useBulkSelect from '../lib/useBulkSelect';
 import './TaskCard.css';
 import '../pages/Dashboard.css';
 
@@ -33,6 +35,7 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
   const [roiFilter, setRoiFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [sortBy, setSortBy] = useState('date_desc');
+  const { selectMode, selectedIds, toggle, clear, toggleAll, toggleSelectMode, exitSelectMode } = useBulkSelect();
 
   useEffect(() => { setStatusFilter(initialStatus); }, [initialStatus]);
 
@@ -107,6 +110,17 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
               New Task
             </button>
           )}
+          <button className={`btn btn-sm ${selectMode ? 'btn-primary' : 'btn-secondary'}`} onClick={toggleSelectMode}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+            </svg>
+            {selectMode ? 'Done' : 'Select'}
+          </button>
+          {selectMode && filtered.length > 0 && (
+            <button className="btn btn-secondary btn-sm" onClick={() => toggleAll(filtered.map(t => t.id))}>
+              {filtered.every(t => selectedIds.has(t.id)) ? 'Clear all' : 'Select all'}
+            </button>
+          )}
           <div style={{ position: 'relative' }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
               style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)', pointerEvents: 'none' }}>
@@ -158,9 +172,20 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
       ) : (
         <div className="tasks-grid">
           {filtered.map(task => (
-            <TaskCard key={task.id} task={task} onEdit={setEditTask} onDeleted={fetchData} users={users} projects={projects} />
+            <TaskCard key={task.id} task={task} onEdit={setEditTask} onDeleted={fetchData} users={users} projects={projects}
+              selectMode={selectMode} selected={selectedIds.has(task.id)} onToggleSelect={toggle} />
           ))}
         </div>
+      )}
+
+      {selectMode && (
+        <BulkActionBar
+          selectedTasks={[...tasks, ...completedTasks].filter(t => selectedIds.has(t.id))}
+          users={users}
+          onChanged={fetchData}
+          onClear={clear}
+          onExit={exitSelectMode}
+        />
       )}
 
       {showCreate && <TaskForm onClose={() => setShowCreate(false)} onSaved={fetchData} users={users} projects={projects} />}

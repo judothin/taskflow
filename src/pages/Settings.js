@@ -4,6 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import { usePets } from '../context/PetContext';
 import Avatar from '../components/Avatar';
 import AvatarCrop from '../components/AvatarCrop';
+import RankBadges from '../components/PetBadges';
+import { getRankBadges } from '../lib/petBadges';
+import { loadShownBadges, saveShownBadges } from '../lib/badgePrefs';
 import ModalPortal from '../components/ModalPortal';
 import { InlineClock } from '../components/dashboardWidgets';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
@@ -44,8 +47,9 @@ function ColorRow({ field, value, custom, onChange, onReset }) {
 }
 
 export default function Settings() {
-  const { profile, refreshProfile } = useAuth();
-  const { userGamificationEnabled, setGamificationEnabled } = usePets();
+  const { profile, refreshProfile, user } = useAuth();
+  const { userGamificationEnabled, setGamificationEnabled, userLevel } = usePets();
+  const [shownBadges, setShownBadges] = useState(() => loadShownBadges(user?.id));
   const {
     getColor, setColor, resetColor, resetAll, isCustom, colors,
     backgrounds, maxBackgrounds, setBackground, uploadBackground, deleteBackground,
@@ -208,13 +212,25 @@ export default function Settings() {
 
   const initials = `${form.first_name[0] || ''}${form.last_name[0] || ''}`.toUpperCase();
 
+  // Which badges show in the top bar. Default (uncustomized) = the highest
+  // earned per track; toggling a badge makes the selection explicit.
+  const rb = getRankBadges(userLevel?.level, user?.created_at, userLevel?.tasks_completed);
+  const autoKeys = [
+    [...rb.levelBadges].reverse().find(b => b.earned)?.key,
+    [...rb.taskBadges].reverse().find(b => b.earned)?.key,
+    [...rb.ageBadges].reverse().find(b => b.earned)?.key,
+  ].filter(Boolean);
+  const effectiveShown = shownBadges ?? autoKeys;
+  const toggleBadge = (key) => {
+    const base = shownBadges ?? autoKeys;
+    const next = base.includes(key) ? base.filter(k => k !== key) : [...base, key];
+    setShownBadges(next);
+    saveShownBadges(user?.id, next);
+  };
+
   return (
     <div className="dashboard fade-in settings-page">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">Settings</h1>
-          <p className="page-subtitle">Manage your profile and preferences</p>
-        </div>
         <InlineClock />
       </div>
 
@@ -581,7 +597,26 @@ export default function Settings() {
           </div>
           </div>{/* /backgrounds + themes column */}
         </div>{/* /right appearance area */}
+
       </div>{/* /settings-grid */}
+
+      {/* Ranks & Badges — full width so more fit per row */}
+      {userGamificationEnabled && (
+        <div className="card settings-ranks-card">
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Ranks &amp; Badges</h2>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+            Unlocked by leveling up, by tasks you've completed, and by how long you've been a member. Click an unlocked badge to show or hide it in the top bar.
+          </p>
+          <RankBadges
+            level={userLevel?.level}
+            createdAt={user?.created_at}
+            tasksDone={userLevel?.tasks_completed}
+            selectable
+            selected={effectiveShown}
+            onToggle={toggleBadge}
+          />
+        </div>
+      )}
 
       {confirmDeleteBg && (
         <ModalPortal>

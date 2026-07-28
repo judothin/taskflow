@@ -1,0 +1,228 @@
+/* ── Subtasks / checklist ──────────────────────────────────── */
+
+/* Shared checkbox visual (matches the app's complete-person-checkbox) */
+.st-check {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border-light);
+  border-radius: 4px;
+  background: var(--bg-4);
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.st-check:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.st-check:checked::after {
+  content: '';
+  position: absolute;
+  left: 4.5px;
+  top: 1.5px;
+  width: 4px;
+  height: 8px;
+  border: 2px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg);
+}
+
+/* ── Editor (in TaskForm / TaskDetail) ── */
+.st-editor { display: flex; flex-direction: column; gap: 6px; }
+
+.st-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s ease;
+}
+.st-editor-row:focus-within { border-color: var(--border-light); }
+
+.st-editor-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font);
+}
+.st-editor-input::placeholder { color: var(--text-dim); }
+.st-editor-row-done .st-editor-input { color: var(--text-dim); text-decoration: line-through; }
+
+.st-editor-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.st-editor-remove:hover { color: #f87171; background: rgba(239,68,68,0.1); }
+
+.st-editor-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 6px 10px;
+  background: none;
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.st-editor-add:hover { border-color: var(--accent); color: var(--accent); }
+
+.st-editor-progress {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  margin-top: 2px;
+}
+
+/* ── Progress bar (shared) ── */
+.st-bar {
+  flex: 1;
+  height: 5px;
+  min-width: 40px;
+  background: var(--bg-4);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.st-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.25s ease;
+}
+.st-bar-fill-done { background: var(--st-completed); }
+
+/* ── Card display (TaskSubtasks) ── */
+.st-card { margin-top: 2px; }
+
+.st-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-family: var(--font);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.st-card-header:hover { border-color: var(--border-light); background: var(--bg-3); }
+
+.st-card-chevron {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  transition: transform 0.15s ease;
+}
+.st-card-chevron-open { transform: rotate(90deg); }
+
+.st-card-count {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+.st-card-count-done { color: var(--st-completed); }
+
+.st-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 4px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.st-card-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.1s ease;
+}
+.st-card-item:hover { background: var(--bg-3); }
+
+.st-card-item-label {
+  font-size: 13px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.st-card-item-done .st-card-item-label {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+
+/* Add-subtask affordance on the card */
+.st-card-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 1px;
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.st-card-add:hover { color: var(--accent); background: var(--bg-3); }
+.st-card-add-empty { opacity: 0.75; }
+.st-card-add-empty:hover { opacity: 1; }
+
+.st-card-add-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+}
+.st-card-add-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-1);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font);
+  outline: none;
+}
+.st-check-ghost { opacity: 0.4; pointer-events: none; }

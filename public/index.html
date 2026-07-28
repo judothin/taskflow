@@ -5,6 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>TaskFlow — Ticketing</title>
 
+    <!-- Paint the correct theme background BEFORE first paint so a reload never
+         flashes white. Uses a REMOVABLE inline style on <html> (not a static
+         stylesheet rule — that would give <html> a permanent opaque background
+         and cancel the body→canvas propagation a custom background image needs,
+         hiding it). Mirrors ThemeProvider (data-theme) + themeColors. -->
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem('theme') || 'dark';
+          var bg = theme === 'light' ? '#f4f4f8' : '#0a0a0f';
+          // Best-effort: honor a saved custom background colour so custom
+          // themes don't flash the default palette either.
+          try {
+            for (var i = 0; i < localStorage.length; i++) {
+              var k = localStorage.key(i);
+              if (k && k.lastIndexOf('tf-theme-colors-', 0) === 0) {
+                var c = JSON.parse(localStorage.getItem(k) || '{}');
+                if (c && c.bg) {
+                  var h = String(c.bg).replace('#', '');
+                  if (/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(h)) { bg = '#' + h; break; }
+                }
+              }
+            }
+          } catch (e) {}
+          var r = document.documentElement;
+          r.setAttribute('data-theme', theme);
+          r.style.backgroundColor = bg;
+          // Suppress CSS transitions during boot so the theme is simply THERE
+          // on first paint instead of fading in (white→black). Removed after the
+          // first frame in index.js so theme-toggle transitions still work.
+          r.classList.add('tf-boot');
+        } catch (e) {}
+      })();
+    </script>
+
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" href="/logo.png" />

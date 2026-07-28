@@ -5,6 +5,8 @@ import { useTeam } from '../context/TeamContext';
 import { awardTaskCreatedXp, awardTaskCompletedXp } from '../lib/xp';
 import Avatar from './Avatar';
 import FeedbackEditor from './FeedbackEditor';
+import SubtaskEditor from './SubtaskEditor';
+import { asSubtasks } from '../lib/subtasks';
 import ModalPortal from './ModalPortal';
 
 // Run once in Supabase:
@@ -80,6 +82,7 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
     roi:        task?.roi        || 'medium',
     complexity: task?.complexity || 'medium',
     project_id: task?.project_id || defaultProjectId || '',
+    subtasks:   asSubtasks(task?.subtasks),
   });
 
   // existing = already-uploaded attachments from DB
@@ -177,7 +180,7 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
   // Batch add: prime the form for the next task, carrying Page + Project (and
   // the rest of the meta) forward and clearing only the per-task content.
   const resetForNextBatch = () => {
-    setForm(f => ({ ...f, feedback: '' }));
+    setForm(f => ({ ...f, feedback: '', subtasks: [] }));
     setExisting([]);
     setPending(prev => { prev.forEach(p => p.preview && URL.revokeObjectURL(p.preview)); return []; });
     setCompletedBy([]);
@@ -220,7 +223,7 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
       const isLeavingInProgress = task?.status === 'in_progress' && (payload.status === 'on_hold' || payload.status === 'open');
 
       if (!isEdit && !isGuest) awardTaskCreatedXp(user?.id);
-      if (isBeingCompleted && !isGuest) awardTaskCompletedXp(user?.id, payload.complexity);
+      if (isBeingCompleted && !isGuest) awardTaskCompletedXp(user?.id, payload.complexity, { roi: payload.roi, status: task?.status });
 
       if (!isEdit && !isGuest && addToQueue && payload.status !== 'completed') {
         const { data: positions } = await supabase
@@ -356,6 +359,14 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
                   <FeedbackEditor
                     value={form.feedback}
                     onChange={(v) => setForm(f => ({ ...f, feedback: v }))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Subtasks <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>— checklist, progress shows on the card</span></label>
+                  <SubtaskEditor
+                    value={form.subtasks}
+                    onChange={(v) => setForm(f => ({ ...f, subtasks: v }))}
                   />
                 </div>
 

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
+import { fetchTeamMembers } from '../lib/teams';
 import ContextMenu from './ContextMenu';
+import TaskForm from './TaskForm';
 import './QueuePanel.css';
 
 const ROI_COLORS = {
@@ -17,6 +19,9 @@ export default function QueuePanel() {
   const [reorderingId, setReorderingId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { task, x, y }
+  const [editTask, setEditTask] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [projects, setProjects] = useState([]);
 
   const fetchQueue = useCallback(async () => {
     if (!activeTeamId) { setQueue([]); return; }
@@ -46,6 +51,20 @@ export default function QueuePanel() {
       window.removeEventListener('queue-changed', fetchQueue);
     };
   }, [fetchQueue]);
+
+  // ── Edit ──────────────────────────────────────────────────────────────────
+  // Load team members + projects lazily so the edit form's assignee/project
+  // pickers are populated (they're not needed until the user edits a task).
+  const openEdit = useCallback(async (task) => {
+    setEditTask(task);
+    if (!activeTeamId) return;
+    const [members, { data: projs }] = await Promise.all([
+      fetchTeamMembers(activeTeamId),
+      supabase.from('projects').select('id, title').eq('team_id', activeTeamId).order('title'),
+    ]);
+    setUsers((members || []).sort((a, b) => (a.first_name || '').localeCompare(b.first_name || '')));
+    setProjects(projs || []);
+  }, [activeTeamId]);
 
   // ── Remove ────────────────────────────────────────────────────────────────
 
@@ -201,8 +220,18 @@ export default function QueuePanel() {
           x={ctxMenu.x}
           y={ctxMenu.y}
           onClose={() => setCtxMenu(null)}
-          onEdit={() => {}}
+          onEdit={openEdit}
           onDeleted={fetchQueue}
+        />
+      )}
+
+      {editTask && (
+        <TaskForm
+          task={editTask}
+          onClose={() => setEditTask(null)}
+          onSaved={fetchQueue}
+          users={users}
+          projects={projects}
         />
       )}
     </div>

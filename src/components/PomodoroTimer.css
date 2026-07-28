@@ -1,0 +1,157 @@
+/* ── Pomodoro timer (shared: page + widget) ─────────────────── */
+.pomo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.pomo-modes {
+  display: inline-flex;
+  padding: 3px;
+  gap: 3px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.pomo-mode {
+  padding: 6px 18px;
+  border-radius: 6px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pomo-mode-active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.pomo-ring-wrap { position: relative; }
+.pomo-ring { display: block; }
+.pomo-ring-track { fill: none; stroke: var(--bg-4); stroke-width: 10; }
+.pomo-ring-progress {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s linear, stroke 0.3s ease;
+}
+.pomo-break .pomo-ring-progress { stroke: var(--st-completed); }
+.pomo-done .pomo-ring-progress { stroke: var(--st-completed); }
+
+.pomo-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.pomo-time {
+  font-family: var(--mono);
+  font-size: 50px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.pomo-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+}
+
+.pomo-controls { display: flex; gap: 10px; }
+.pomo-btn { padding: 10px 22px; font-size: 14px; }
+
+.pomo-presets { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; }
+.pomo-preset {
+  padding: 5px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pomo-preset:hover:not(:disabled) { border-color: var(--border-light); color: var(--text); }
+.pomo-preset-active { background: var(--accent-glow); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
+.pomo-preset:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pomo-custom { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+
+.pomo-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.pomo-stepper-label { font-weight: 500; }
+.pomo-stepper-unit { color: var(--text-dim); font-size: 12px; }
+
+.pomo-stepper-control {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.pomo-stepper-control button {
+  width: 28px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.pomo-stepper-control button:hover:not(:disabled) { background: var(--bg-3); color: var(--text); }
+.pomo-stepper-control button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.pomo-stepper-control input {
+  width: 42px;
+  height: 32px;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  text-align: center;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.pomo-stepper-control input:disabled { opacity: 0.55; }
+/* Kill the native spinner buttons — the custom −/+ replace them. */
+.pomo-stepper-control input::-webkit-outer-spin-button,
+.pomo-stepper-control input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.pomo-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.pomo-count-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+

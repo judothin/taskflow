@@ -156,13 +156,6 @@ export default function Projects() {
   return (
     <div className="projects-page fade-in">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">Projects</h1>
-          <p className="page-subtitle">
-            {filteredProjects.length} project{filteredProjects.length !== 1 ? 's' : ''}
-            {totalUnread > 0 && <span className="projects-unread-pill">{totalUnread} new</span>}
-          </p>
-        </div>
         <div className="page-header-actions">
           <InlineClock />
           <button className="btn btn-primary" onClick={openCreate}>

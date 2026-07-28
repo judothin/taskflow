@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import './ContextMenu.css';
 
 export default function ContextMenu({ task, x, y, onClose, onEdit, onDeleted }) {
   const { activeTeamId } = useTeam();
+  const navigate = useNavigate();
   const [isQueued, setIsQueued] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const menuRef = useRef();
@@ -33,7 +35,7 @@ export default function ContextMenu({ task, x, y, onClose, onEdit, onDeleted }) 
 
   // Keep menu inside viewport
   const left = Math.min(x, window.innerWidth - 210);
-  const top  = Math.min(y, window.innerHeight - 230);
+  const top  = Math.min(y, window.innerHeight - 270);
 
   const canQueue = task.status !== 'in_progress' && task.status !== 'completed';
 
@@ -97,6 +99,14 @@ export default function ContextMenu({ task, x, y, onClose, onEdit, onDeleted }) 
           <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
         </svg>
         Edit task
+      </button>
+
+      <button className="ctx-item" onClick={() => { navigate(`/tasks/${task.id}`); onClose(); }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+          <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+        </svg>
+        Open task
       </button>
 
       {canQueue && !isQueued && (

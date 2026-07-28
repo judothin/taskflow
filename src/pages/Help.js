@@ -63,6 +63,12 @@ const SIDEBAR_ACTIONS = [
   },
 ];
 
+const SHORTCUTS = [
+  { keys: ['/'], name: 'Search', desc: 'Open the global search palette to jump to any task, project, file, or submission.' },
+  { keys: ['n'], name: 'New Task', desc: 'Open the New Task form from anywhere in the app.' },
+  { keys: ['q'], name: 'Quick Log', desc: 'Open the Quick Log modal to record a completed task fast.' },
+];
+
 const CHANGELOG_1_8_0 = [
   {
     group: 'Dashboard',
@@ -207,6 +213,7 @@ const RELEASES = [
 const SECTIONS = [
   { id: 'whatsnew',    label: "What's New" },
   { id: 'overview',    label: 'Overview' },
+  { id: 'shortcuts',   label: 'Keyboard Shortcuts' },
   { id: 'statuses',    label: 'Statuses, ROI & Complexity' },
   { id: 'cards',       label: 'Task Cards' },
   { id: 'creating',    label: 'Creating & Editing' },
@@ -391,6 +398,29 @@ export default function Help() {
                     <div className="help-card-title">{item.title}</div>
                   </div>
                   <div className="help-card-desc">{item.desc}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ── Keyboard Shortcuts ── */}
+          <section id="shortcuts" className="help-section">
+            <h2 className="help-section-title">Keyboard Shortcuts</h2>
+
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+              Press a single key from anywhere in the app to work faster. Shortcuts are ignored while you're typing in a text field, so they never get in the way.
+            </p>
+
+            <div className="help-grid">
+              {SHORTCUTS.map(sc => (
+                <div key={sc.name} className="help-card">
+                  <div className="help-card-header">
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {sc.keys.map(k => <span key={k} className="help-kbd">{k}</span>)}
+                    </div>
+                    <div className="help-card-title">{sc.name}</div>
+                  </div>
+                  <div className="help-card-desc">{sc.desc}</div>
                 </div>
               ))}
             </div>

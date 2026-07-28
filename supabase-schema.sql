@@ -49,6 +49,9 @@ create table if not exists public.tasks (
 -- Migration: multi-file task attachments ([{ url, name, kind }])
 alter table public.tasks add column if not exists attachments jsonb default '[]'::jsonb;
 
+-- Migration: subtasks / checklist ([{ id, text, done }])
+alter table public.tasks add column if not exists subtasks jsonb default '[]'::jsonb;
+
 
 -- 2b. USER PREFERENCES
 -- Per-user dashboard layout + notification settings so the dashboard is

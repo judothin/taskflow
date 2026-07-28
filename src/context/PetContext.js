@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { useTeam } from './TeamContext';
-import { tickAndSavePet, HUNGER_MAX, WATER_MAX } from '../lib/petLogic';
+import { tickAndSavePet, HUNGER_MAX, WATER_MAX, FEED_AMOUNT, WATER_AMOUNT } from '../lib/petLogic';
 // Deliberately no import of the popup components here (PetLevelUpToast /
 // PetLevelUpModal / PetSpinModal) — they consume usePets() themselves, and
 // importing them from this module would create a circular import. They're
@@ -85,15 +85,32 @@ export function PetProvider({ children }) {
 
   const dismissPopup = useCallback(() => setPopupQueue(q => q.slice(1)), []);
 
+  // Feeding/watering SPENDS one inventory resource (earned from tasks &
+  // leveling) and restores a SET amount (not a full refill), capped at the max.
+  // No-op if the cupboard's bare — the UI disables it too.
   const feedPet = useCallback(async (petId) => {
-    await supabase.from('pets').update({ hunger: HUNGER_MAX }).eq('id', petId);
+    if (!uid || (userLevel?.food || 0) <= 0) return;
+    const pet = pets.find(p => p.id === petId);
+    if (!pet) return;
+    const newHunger = Math.min(HUNGER_MAX, (Number(pet.hunger) || 0) + FEED_AMOUNT);
+    await Promise.all([
+      supabase.from('pets').update({ hunger: newHunger }).eq('id', petId),
+      supabase.from('user_levels').update({ food: (userLevel.food || 0) - 1 }).eq('user_id', uid),
+    ]);
     await refresh();
-  }, [refresh]);
+  }, [uid, userLevel, pets, refresh]);
 
   const waterPet = useCallback(async (petId) => {
-    await supabase.from('pets').update({ water: WATER_MAX }).eq('id', petId);
+    if (!uid || (userLevel?.water || 0) <= 0) return;
+    const pet = pets.find(p => p.id === petId);
+    if (!pet) return;
+    const newWater = Math.min(WATER_MAX, (Number(pet.water) || 0) + WATER_AMOUNT);
+    await Promise.all([
+      supabase.from('pets').update({ water: newWater }).eq('id', petId),
+      supabase.from('user_levels').update({ water: (userLevel.water || 0) - 1 }).eq('user_id', uid),
+    ]);
     await refresh();
-  }, [refresh]);
+  }, [uid, userLevel, pets, refresh]);
 
   const renamePet = useCallback(async (petId, name) => {
     await supabase.from('pets').update({ name }).eq('id', petId);
@@ -205,11 +222,14 @@ export function PetProvider({ children }) {
 
   const activePet = pets.find(p => p.is_active) || null;
   const pendingUnlocks = userLevel?.pending_pet_unlocks || 0;
+  const food = userLevel?.food ?? 0;
+  const water = userLevel?.water ?? 0;
   const currentPopup = popupQueue[0] || null;
 
   return (
     <PetContext.Provider value={{
       userLevel, pets, activePet, pendingUnlocks, loading, customEnvironments,
+      food, water,
       gamificationEnabled, userGamificationEnabled, setGamificationEnabled,
       refresh, feedPet, waterPet, renamePet, setActivePet, setPetStyle,
       setPetEnvironment, setPetWalkArea, setPetIdleAnimation, setPetSize, uploadPetEnvironment,

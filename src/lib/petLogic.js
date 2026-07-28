@@ -8,6 +8,9 @@ import { supabase } from './supabase';
 
 export const HUNGER_MAX = 100;
 export const WATER_MAX = 100;
+// How much one food / water item restores (capped at the max, not a full refill).
+export const FEED_AMOUNT = 25;
+export const WATER_AMOUNT = 25;
 // Full to empty over 24 hours.
 export const DRAIN_PER_HOUR = HUNGER_MAX / 24;
 
@@ -38,11 +41,32 @@ export function unlockedStylesForLevel(level) {
   return Math.min(3, 1 + Math.floor(level / 10));
 }
 
+// Counts only Monday–Friday time (local) in [start, end) — pets don't decay on
+// weekends, so hours that fall on Saturday/Sunday contribute nothing to drain.
+// Walks day-by-day across local midnights so any-length interval is handled.
+export function weekdayHoursBetween(start, end) {
+  const endMs = end.getTime();
+  if (endMs <= start.getTime()) return 0;
+  let total = 0;
+  let cursor = new Date(start.getTime());
+  while (cursor.getTime() < endMs) {
+    const nextMidnight = new Date(cursor.getTime());
+    nextMidnight.setHours(24, 0, 0, 0); // start of the next local day
+    const segEnd = Math.min(nextMidnight.getTime(), endMs);
+    const day = cursor.getDay(); // 0 = Sun … 6 = Sat
+    if (day !== 0 && day !== 6) total += (segEnd - cursor.getTime()) / 36e5;
+    cursor = new Date(segEnd);
+  }
+  return total;
+}
+
 // Pure function — given a pet row and "now", compute the decayed state.
 // Returns null if no time has meaningfully elapsed. Caller persists it.
+// Only weekday hours count toward decay (weekends are a freebie), so a pet
+// left on Friday evening is exactly as full on Monday morning.
 export function tickPetState(pet, now = new Date()) {
   if (pet.is_dead) return null;
-  const elapsedHours = (now.getTime() - new Date(pet.last_tick_at).getTime()) / 36e5;
+  const elapsedHours = weekdayHoursBetween(new Date(pet.last_tick_at), now);
   if (elapsedHours <= 0.001) return null;
 
   const hoursUntilHungerEmpty = pet.hunger / DRAIN_PER_HOUR;

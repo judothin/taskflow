@@ -1,0 +1,87 @@
+/* ── Global top status bar (every page) ────────────────────── */
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 40px;
+  min-height: 76px;
+  background: color-mix(in srgb, var(--bg) 68%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Breadcrumb / page title (left side) */
+.app-topbar-crumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.app-topbar-crumb-root {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.app-topbar-crumb-sep { color: var(--text-dim); opacity: 0.7; flex-shrink: 0; }
+.app-topbar-crumb-current {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Everything right of the breadcrumb: page actions + status cluster */
+.app-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* Page-specific action buttons, injected per route */
+.app-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* A subtle divider between page actions and the status cluster */
+.app-topbar-actions::after {
+  content: '';
+  width: 1px;
+  height: 24px;
+  margin-left: 10px;
+  background: var(--border);
+}
+
+.app-topbar-cluster {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Keep the rank strip compact and inline here. */
+.app-topbar .pet-badges-strip { gap: 10px; }
+
+@media (max-width: 900px) {
+  .app-topbar {
+    position: static;
+    padding: 10px 16px;
+    min-height: 0;
+    gap: 10px;
+  }
+  .app-topbar-crumb { display: none; }
+}

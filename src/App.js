@@ -7,6 +7,7 @@ import { NotificationProvider } from './context/NotificationContext';
 import { TopBarProvider } from './context/TopBarContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ThemeCustomizationProvider } from './context/ThemeCustomizationContext';
+import { PomodoroProvider } from './context/PomodoroContext';
 import './index.css';
 
 // Pages
@@ -29,12 +30,21 @@ import GuestPortal from './pages/GuestPortal';
 import Submissions from './pages/Submissions';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
+import Pomodoro from './pages/Pomodoro';
 import Layout from './components/Layout';
 import PetPopupHost from './components/PetPopupHost';
 
+// A single, consistent boot loader for every gate. It's transparent (so the
+// already-painted theme background shows through) and its spinner only fades in
+// after a beat — fast loads show nothing, slow loads a subtle spinner, and the
+// gates never flash different "Loading..." screens at each other.
+const RouteLoader = () => (
+  <div className="route-loader" aria-hidden="true"><span className="route-loader-spinner" /></div>
+);
+
 const PrivateRoute = ({ children }) => {
   const { user, loading } = useAuth();
-  if (loading) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--text-muted)' }}>Loading...</div>;
+  if (loading) return <RouteLoader />;
   return user ? children : <Navigate to="/login" />;
 };
 
@@ -49,7 +59,7 @@ const PublicRoute = ({ children }) => {
 // SQL migration, so this only ever triggers for brand-new signups.
 const RequireTeam = ({ children }) => {
   const { teams, loading } = useTeam();
-  if (loading) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--text-muted)' }}>Loading...</div>;
+  if (loading) return <RouteLoader />;
   return teams.length > 0 ? children : <Navigate to="/onboarding" replace />;
 };
 
@@ -66,7 +76,7 @@ const OnboardingRoute = () => {
 // nothing to reveal and they should never be forced through this at all.
 const RequirePet = ({ children }) => {
   const { pets, pendingUnlocks, loading, userGamificationEnabled } = usePets();
-  if (loading) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--text-muted)' }}>Loading...</div>;
+  if (loading) return <RouteLoader />;
   if (!userGamificationEnabled) return children;
   const needsReveal = pets.length === 0 || pendingUnlocks > 0;
   return needsReveal ? <Navigate to="/pet-reveal" replace /> : children;
@@ -78,7 +88,7 @@ const RequirePet = ({ children }) => {
 // `gamification_choice_made` is true this is a pure passthrough forever.
 const RequireGamificationChoice = ({ children }) => {
   const { userLevel, loading } = usePets();
-  if (loading) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--text-muted)' }}>Loading...</div>;
+  if (loading) return <RouteLoader />;
   if (userLevel && userLevel.gamification_choice_made === false) {
     return <Navigate to="/choose-gamification" replace />;
   }
@@ -134,6 +144,7 @@ function AppRoutes() {
         <Route path="settings" element={<Settings />} />
         <Route path="help" element={<Help />} />
         <Route path="files" element={<Files />} />
+        <Route path="pomodoro" element={<Pomodoro />} />
         <Route path="projects" element={<Projects />} />
         <Route path="projects/:id" element={<ProjectDetail />} />
         <Route path="submissions" element={<Submissions />} />
@@ -153,9 +164,11 @@ export default function App() {
               <ThemeCustomizationProvider>
                 <TopBarProvider>
                   <NotificationProvider>
-                    <TabFirstLoadRedirect />
-                    <AppRoutes />
-                    <PetPopupHost />
+                    <PomodoroProvider>
+                      <TabFirstLoadRedirect />
+                      <AppRoutes />
+                      <PetPopupHost />
+                    </PomodoroProvider>
                   </NotificationProvider>
                 </TopBarProvider>
               </ThemeCustomizationProvider>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -12,13 +12,16 @@ import QuickLogModal from './QuickLog';
 import ProjectsWidget from '../components/ProjectsWidget';
 import NotificationCenter from '../components/NotificationCenter';
 import QueueWidget from '../components/QueueWidget';
+import PomodoroWidget from '../components/PomodoroWidget';
 import PetWidget from '../components/PetWidget';
-import UserXpBar from '../components/UserXpBar';
 import ActiveTasksList from '../components/ActiveTasksList';
+import BulkActionBar from '../components/BulkActionBar';
+import useBulkSelect from '../lib/useBulkSelect';
 import ModalPortal from '../components/ModalPortal';
+import { TopBarPortal } from '../context/HeaderActionsContext';
 import {
   ActivityChartWidget, CompletedTodayWidget, RoiBreakdownWidget,
-  LeaderboardWidget, RecentActivityWidget, StreakWidget, DashboardClock,
+  LeaderboardWidget, RecentActivityWidget, StreakWidget,
 } from '../components/dashboardWidgets';
 import {
   WIDGETS, SIZES, DEFAULT_LAYOUT, loadPrefsCache, savePrefsCache, normalizePrefs, sanitizeLayout, spanFor,
@@ -46,6 +49,18 @@ const loadStatCache = () => {
   try { return JSON.parse(localStorage.getItem(STAT_CACHE_KEY)) || {}; } catch { return {}; }
 };
 
+// Cache the last-known Current Focus list (per team) so it renders with real
+// content the instant the dashboard mounts — no empty flash or skeleton on
+// reload. Reconciled by the live fetch immediately afterwards.
+const FOCUS_CACHE_KEY = 'tf-focus-cache';
+const loadFocusCache = (teamId) => {
+  try {
+    const c = JSON.parse(localStorage.getItem(FOCUS_CACHE_KEY));
+    if (c && c.teamId === teamId && Array.isArray(c.tasks)) return c.tasks;
+  } catch { /* ignore */ }
+  return [];
+};
+
 export default function Dashboard() {
   const { profile, user } = useAuth();
   const { activeTeamId } = useTeam();
@@ -55,6 +70,8 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
   const [queue, setQueue] = useState([]);
+  const [queueLoaded, setQueueLoaded] = useState(false);
+  const [focusCache, setFocusCache] = useState(() => loadFocusCache(activeTeamId));
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +79,7 @@ export default function Dashboard() {
   const [editTask, setEditTask] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showQuickLog, setShowQuickLog] = useState(false);
+  const focusSelect = useBulkSelect();
 
   // ── Dashboard layout / edit mode ──────────────────────────
   const [layout, setLayout]   = useState(() => loadPrefsCache(uid).blocks);
@@ -200,13 +218,14 @@ export default function Dashboard() {
   }, [activeTeamId]);
 
   const fetchQueue = useCallback(async () => {
-    if (!activeTeamId) { setQueue([]); return; }
+    if (!activeTeamId) { setQueue([]); setQueueLoaded(true); return; }
     const { data } = await supabase
       .from('queue')
       .select('id, task_id, position, tasks(*)')
       .eq('team_id', activeTeamId)
       .order('position');
     setQueue((data || []).filter(q => q.tasks));
+    setQueueLoaded(true);
   }, [activeTeamId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -228,7 +247,7 @@ export default function Dashboard() {
     };
   }, [fetchQueue, fetchData]);
 
-  const inProgress = tasks.filter(t => t.status === 'in_progress');
+  const inProgress = useMemo(() => tasks.filter(t => t.status === 'in_progress'), [tasks]);
 
   // How many focus slots to show scales with the widget's own width — a
   // widget spanning all 12 grid columns (full) shows 3, half that width
@@ -236,13 +255,29 @@ export default function Dashboard() {
   const focusSpan = spanFor(layout.find(b => b.type === 'focus')?.size);
   const focusVisibleCount = Math.max(1, Math.round(focusSpan / 4));
 
-  const focusTasks = (() => {
+  const focusTasks = useMemo(() => {
     const seen = new Set();
     const list = [];
     inProgress.forEach(t => { if (!seen.has(t.id)) { seen.add(t.id); list.push(t); } });
     queue.forEach(q => { if (q.tasks && !seen.has(q.tasks.id)) { seen.add(q.tasks.id); list.push(q.tasks); } });
     return list.slice(0, focusVisibleCount);
-  })();
+  }, [inProgress, queue, focusVisibleCount]);
+
+  // Reload the cached focus when the team changes.
+  useEffect(() => { setFocusCache(loadFocusCache(activeTeamId)); }, [activeTeamId]);
+
+  // Once the live data has actually loaded, it's authoritative — persist it so
+  // the next mount can paint it instantly.
+  const focusReady = !loading && queueLoaded;
+  useEffect(() => {
+    if (!focusReady || !activeTeamId) return;
+    setFocusCache(focusTasks);
+    try { localStorage.setItem(FOCUS_CACHE_KEY, JSON.stringify({ teamId: activeTeamId, tasks: focusTasks })); } catch { /* ignore */ }
+  }, [focusReady, focusTasks, activeTeamId]);
+
+  // What to render: live tasks once ready, otherwise the cached list so there's
+  // no empty flash while the first fetch is in flight.
+  const displayFocus = focusReady ? focusTasks : (focusCache.length ? focusCache : focusTasks);
 
   const statCount = (key) => {
     // While the first fetch is in flight, show cached counts (no 0-flash).
@@ -265,25 +300,45 @@ export default function Dashboard() {
               <span className="status-dot status-dot-inprogress" />
               Current Focus
               <span className="focus-hint">in progress &amp; up next</span>
+              {displayFocus.length > 0 && (
+                <button
+                  className={`btn btn-sm ${focusSelect.selectMode ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ marginLeft: 'auto' }}
+                  onClick={focusSelect.toggleSelectMode}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+                  </svg>
+                  {focusSelect.selectMode ? 'Done' : 'Select'}
+                </button>
+              )}
             </h2>
-            {focusTasks.length === 0 ? (
-              <div className="card" style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: 13, padding: 28 }}>
-                Nothing in focus. Start a task or add one to your queue.
-              </div>
-            ) : (
+            {displayFocus.length > 0 ? (
               <div className="tasks-featured-grid" style={{ gridTemplateColumns: `repeat(${focusVisibleCount}, 1fr)` }}>
-                {focusTasks.map((task, i) => {
+                {displayFocus.map((task, i) => {
                   const isCurrent = task.status === 'in_progress';
-                  const upNextNum = focusTasks.slice(0, i + 1).filter(t => t.status !== 'in_progress').length;
+                  const upNextNum = displayFocus.slice(0, i + 1).filter(t => t.status !== 'in_progress').length;
                   return (
                     <div key={task.id} className="focus-slot" style={{ animationDelay: `${i * 60}ms` }}>
                       <span className={`focus-order-tag ${isCurrent ? 'focus-order-tag-current' : ''}`}>
                         {isCurrent ? (<><span className="focus-tag-dot" /> In Progress</>) : (`Up Next · ${upNextNum}`)}
                       </span>
-                      <TaskCard task={task} onEdit={setEditTask} onDeleted={fetchData} featured users={users} projects={projects} />
+                      <TaskCard task={task} onEdit={setEditTask} onDeleted={fetchData} featured users={users} projects={projects}
+                        selectMode={focusSelect.selectMode} selected={focusSelect.selectedIds.has(task.id)} onToggleSelect={focusSelect.toggle} />
                     </div>
                   );
                 })}
+              </div>
+            ) : focusReady ? (
+              <div className="card" style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: 13, padding: 28 }}>
+                Nothing in focus. Start a task or add one to your queue.
+              </div>
+            ) : (
+              // First-ever load with no cache yet — brief placeholder.
+              <div className="tasks-featured-grid" style={{ gridTemplateColumns: `repeat(${focusVisibleCount}, 1fr)` }}>
+                {Array.from({ length: focusVisibleCount }).map((_, i) => (
+                  <div key={i} className="task-skeleton loading-pulse" />
+                ))}
               </div>
             )}
           </section>
@@ -300,6 +355,7 @@ export default function Dashboard() {
       case 'recentActivity': return <RecentActivityWidget {...widgetCtx} />;
       case 'streak':         return <StreakWidget {...widgetCtx} />;
       case 'queue':          return <QueueWidget />;
+      case 'pomodoro':       return <PomodoroWidget />;
       case 'pet':            return <PetWidget />;
       case 'projects':       return <ProjectsWidget />;
       default:               return null;
@@ -386,21 +442,8 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard fade-in">
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">
-            {editing ? (
-              'Drag to rearrange, resize, add or remove widgets. Changes save automatically.'
-            ) : (
-              <>Good {getGreeting()}, {profile?.first_name}. You have{' '}
-              <strong style={{ color: 'var(--text)' }}>{inProgress.length}</strong> task{inProgress.length !== 1 ? 's' : ''} in progress.</>
-            )}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {gamificationEnabled && <UserXpBar />}
+      {/* Header actions → global top bar */}
+      <TopBarPortal>
           {editing ? (
             <>
               <div className="dash-dt-toggles">
@@ -434,7 +477,6 @@ export default function Dashboard() {
             </>
           ) : (
             <>
-              <DashboardClock showDate={display.date} showTime={display.time} />
               <button className="btn btn-ghost" onClick={() => setEditing(true)}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9 M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
                 Edit Dashboard
@@ -449,8 +491,7 @@ export default function Dashboard() {
               </button>
             </>
           )}
-        </div>
-      </div>
+      </TopBarPortal>
 
       {/* Task counts — locked top bar (always present) */}
       <div className={`stats-grid ${editing ? 'stats-grid-locked' : ''}`}>
@@ -516,6 +557,16 @@ export default function Dashboard() {
         <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={fetchData} users={users} projects={projects} />
       )}
       {showQuickLog && <QuickLogModal onClose={() => setShowQuickLog(false)} />}
+
+      {focusSelect.selectMode && (
+        <BulkActionBar
+          selectedTasks={[...tasks, ...completedTasks].filter(t => focusSelect.selectedIds.has(t.id))}
+          users={users}
+          onChanged={fetchData}
+          onClear={focusSelect.clear}
+          onExit={focusSelect.exitSelectMode}
+        />
+      )}
     </div>
   );
 }

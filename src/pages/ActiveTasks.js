@@ -11,10 +11,6 @@ export default function ActiveTasks() {
   return (
     <div className="dashboard fade-in">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">Active Tasks</h1>
-          <p className="page-subtitle">Every task that isn't completed yet</p>
-        </div>
         <InlineClock />
       </div>
 

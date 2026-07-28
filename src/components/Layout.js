@@ -11,7 +11,13 @@ import { NAV_ITEMS, sanitizeNavLayout, loadNavLayoutCache, saveNavLayoutCache } 
 import QueuePanel from './QueuePanel';
 import Avatar from './Avatar';
 import PetSprite from './PetSprite';
+import GlobalSearch, { OPEN_EVENT } from './GlobalSearch';
+import GlobalShortcuts from './GlobalShortcuts';
+import TopBar from './TopBar';
+import { HeaderActionsProvider } from '../context/HeaderActionsContext';
 import './Layout.css';
+
+const openSearch = () => window.dispatchEvent(new CustomEvent(OPEN_EVENT));
 
 const NavIcon = ({ d }) => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -238,6 +244,14 @@ export default function Layout() {
 
         <TeamSwitcher />
 
+        <button className="nav-search-btn" onClick={openSearch} title="Search (press /)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <span className="nav-search-label">Search</span>
+          <kbd className="nav-search-kbd">/</kbd>
+        </button>
+
         <nav className="sidebar-nav">
           {!navEditing ? (
             visibleNavLayout.map(({ id }) => {
@@ -376,11 +390,21 @@ export default function Layout() {
             <span /><span /><span />
           </button>
           <img src="/logo.png" alt="TaskFlow" className="mobile-logo-img" />
-          <Avatar src={profile?.avatar_url} color={userColor} initials={initials} size={32} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button className="mobile-search-btn" onClick={openSearch} aria-label="Search">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </button>
+            <Avatar src={profile?.avatar_url} color={userColor} initials={initials} size={32} />
+          </div>
         </header>
-        <div className="page-content">
-          <Outlet />
-        </div>
+        <HeaderActionsProvider>
+          <TopBar />
+          <div className="page-content">
+            <Outlet />
+          </div>
+        </HeaderActionsProvider>
       </main>
 
       {/* ── Mobile dock (bottom tab bar) — app-style primary nav on phones ── */}
@@ -417,6 +441,9 @@ export default function Layout() {
           <span className="dock-label">More</span>
         </button>
       </nav>
+
+      <GlobalSearch />
+      <GlobalShortcuts />
     </div>
   );
 }

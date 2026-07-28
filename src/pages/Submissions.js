@@ -310,10 +310,6 @@ export default function Submissions() {
   return (
     <div className="submissions-page fade-in">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">Submissions</h1>
-          <p className="page-subtitle">Review and approve guest portal feedback</p>
-        </div>
         <InlineClock />
       </div>
 

@@ -89,9 +89,15 @@ export const WIDGETS = {
     icon: 'M3 6h18 M3 12h18 M3 18h12',
     defaultSize: 'third',
   },
+  pomodoro: {
+    name: 'Pomodoro',
+    desc: 'A focus timer with custom durations — shared with the Pomodoro page.',
+    icon: 'M12 8v4l3 2 M12 2a10 10 0 100 20 10 10 0 000-20z M9 2h6',
+    defaultSize: 'third',
+  },
   pet: {
     name: 'Your Pet',
-    desc: 'Your active pet, its stats, and quick feed/water actions.',
+    desc: 'Your active pet, its stats, and your food/water inventory.',
     icon: 'M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84 1.68-2.87.5-4a1 1 0 00-1.5 1 M12 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84 1.68-2.87.5-4a1 1 0 00-1.5 1 M20.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84 1.68-2.87.5-4a1 1 0 00-1.5 1',
     defaultSize: 'third',
   },

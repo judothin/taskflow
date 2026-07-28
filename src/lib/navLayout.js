@@ -29,6 +29,10 @@ export const NAV_ITEMS = {
     to: '/files', label: 'Files',
     icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
   },
+  pomodoro: {
+    to: '/pomodoro', label: 'Pomodoro',
+    icon: 'M12 8v4l3 2 M12 2a10 10 0 100 20 10 10 0 000-20z M9 2h6',
+  },
   submissions: {
     to: '/submissions', label: 'Submissions',
     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 M12 12v4 M10 14h4',

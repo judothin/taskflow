@@ -124,6 +124,10 @@ export function clearThemeColors(clearBackground = true) {
   const r = document.documentElement;
   MANAGED_VARS.forEach(v => r.style.removeProperty(v));
   r.style.removeProperty('zoom');
+  // Drop the temporary anti-flash background painted pre-React (see the inline
+  // script in index.html). Leaving it on <html> would cancel the body→canvas
+  // background propagation that a custom background image relies on, hiding it.
+  r.style.removeProperty('background-color');
   r.classList.remove('a11y-bold');
   document.body.classList.remove('has-bg-image');
   if (clearBackground) {
@@ -139,6 +143,28 @@ export const FONT_SCALES = [
   { key: 1.1,  label: 'Large' },
   { key: 1.25, label: 'Extra Large' },
 ];
+
+// Apply the last-used cached theme (colours + background image) synchronously
+// BEFORE React renders, so the correct background is present from the very
+// first paint and never "pops in" after auth resolves. Best-effort: picks a
+// signed-in user's cached theme over the anon placeholder. No-op for users
+// with no customization (the base theme background already covers them).
+export function applyCachedThemeEarly() {
+  try {
+    let best = null;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf('tf-theme-colors-') === 0) {
+        const c = JSON.parse(localStorage.getItem(k) || '{}');
+        if (c && Object.keys(c).length) {
+          best = c;
+          if (!k.endsWith('-anon')) break; // prefer a real user's theme
+        }
+      }
+    }
+    if (best) applyThemeColors(best);
+  } catch { /* ignore — fall back to the base theme */ }
+}
 
 export function applyThemeColors(colors) {
   const root = document.documentElement;

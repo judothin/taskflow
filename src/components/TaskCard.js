@@ -7,6 +7,8 @@ import { useTeam } from '../context/TeamContext';
 import { awardTaskCompletedXp } from '../lib/xp';
 import Avatar from './Avatar';
 import FeedbackContent from './FeedbackContent';
+import TaskSubtasks from './TaskSubtasks';
+import AnimatedPopover from './AnimatedPopover';
 import ModalPortal from './ModalPortal';
 
 const STATUS_MAP = {
@@ -27,7 +29,11 @@ const ROI_MAP = {
   low:      'badge-low',
 };
 
-export default function TaskCard({ task, onEdit, onDeleted, featured = false, users = [], projects = [] }) {
+// Inline quick-edit option lists (statuses match TaskForm's allowed set).
+const ROI_OPTIONS    = ['critical', 'high', 'medium', 'low'];
+const STATUS_OPTIONS = ['open', 'in_progress', 'on_hold', 'completed'];
+
+export default function TaskCard({ task, onEdit, onDeleted, featured = false, users = [], projects = [], selectMode = false, selected = false, onToggleSelect }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { activeTeamId } = useTeam();
@@ -38,8 +44,15 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
   const [completing, setCompleting]       = useState(false);
   const [isQueued, setIsQueued]           = useState(false);
   const [projectPopover, setProjectPopover] = useState(false);
+  const [roiEdit, setRoiEdit]             = useState(false);
+  const [statusEdit, setStatusEdit]       = useState(false);
+  const [editingPage, setEditingPage]     = useState(false);
+  const [pageDraft, setPageDraft]         = useState('');
   const popoverRef                        = useRef(null);
   const projectPopoverRef                 = useRef(null);
+  const roiRef                            = useRef(null);
+  const statusRef                         = useRef(null);
+  const cancelPageRef                     = useRef(false);
 
   const status          = STATUS_MAP[task.status] || STATUS_MAP.open;
   const canQueue        = task.status !== 'in_progress' && task.status !== 'completed';
@@ -75,11 +88,51 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
     return () => document.removeEventListener('mousedown', handler);
   }, [projectPopover]);
 
+  // Close the ROI / status quick-edit popovers on an outside click.
+  useEffect(() => {
+    if (!roiEdit && !statusEdit) return;
+    const handler = (e) => {
+      if (roiRef.current?.contains(e.target)) return;
+      if (statusRef.current?.contains(e.target)) return;
+      setRoiEdit(false);
+      setStatusEdit(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [roiEdit, statusEdit]);
+
+  // Shared inline-edit writer: patch the task, notify listeners, refresh the list.
+  const patchTask = async (patch) => {
+    await supabase.from('tasks').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', task.id);
+    window.dispatchEvent(new CustomEvent('tasks-changed'));
+    onDeleted?.();
+  };
+
   const handleAssignProject = async (projectId) => {
     const newId = task.project_id === projectId ? null : projectId;
     await supabase.from('tasks').update({ project_id: newId, updated_at: new Date().toISOString() }).eq('id', task.id);
     setProjectPopover(false);
     onDeleted?.();
+  };
+
+  const chooseRoi = (roi) => { setRoiEdit(false); if (roi !== task.roi) patchTask({ roi }); };
+
+  const chooseStatus = (s) => {
+    setStatusEdit(false);
+    if (s === task.status) return;
+    // Completing needs the "completed by" + XP flow — reuse the complete popover.
+    if (s === 'completed') { setConfirmComplete(true); return; }
+    const patch = { status: s };
+    // Leaving a completed state clears its completion metadata.
+    if (task.status === 'completed') { patch.date_completed = null; patch.completed_by = null; }
+    patchTask(patch);
+  };
+
+  const savePage = () => {
+    if (cancelPageRef.current) { cancelPageRef.current = false; setEditingPage(false); return; }
+    setEditingPage(false);
+    const v = pageDraft.trim();
+    if (v && v !== task.page) patchTask({ page: v });
   };
 
   const handleQueue = async () => {
@@ -130,7 +183,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
       updated_at: new Date().toISOString(),
     }).eq('id', task.id);
 
-    awardTaskCompletedXp(user?.id, task.complexity);
+    awardTaskCompletedXp(user?.id, task.complexity, { roi: task.roi, status: task.status, wasQueued: isQueued || task.status === 'in_progress' });
 
     await supabase.from('queue').delete().eq('task_id', task.id);
 
@@ -157,16 +210,70 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
 
   return (
     <>
-      <div className={`task-card ${status.cardCls} ${featured ? 'task-card-featured' : ''}`}>
+      <div className={`task-card ${status.cardCls} ${featured ? 'task-card-featured' : ''} ${selectMode ? 'task-card-select-mode' : ''} ${selected ? 'task-card-selected' : ''}`}>
+
+        {/* Select overlay — covers the whole card while in select mode so a
+            click anywhere toggles selection instead of opening the task. */}
+        {selectMode && (
+          <button
+            type="button"
+            className="task-select-overlay"
+            onClick={() => onToggleSelect?.(task.id)}
+            aria-pressed={selected}
+            aria-label={selected ? 'Deselect task' : 'Select task'}
+          >
+            <span className={`task-select-box ${selected ? 'task-select-box-checked' : ''}`}>
+              {selected && (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </span>
+          </button>
+        )}
 
         {/* ── Main content ── */}
-        <div className="task-card-content task-card-content-clickable" onClick={() => navigate(`/tasks/${task.id}`)}>
+        <div className={`task-card-content ${selectMode ? '' : 'task-card-content-clickable'}`} onClick={selectMode ? undefined : () => navigate(`/tasks/${task.id}`)}>
 
           {/* Badges */}
           <div className="task-card-badges">
-            <span className={`badge ${ROI_MAP[task.roi] || ''}`}>{task.roi}</span>
+            {/* ROI — click to change inline */}
+            <span className="badge-edit-wrap" ref={roiRef}>
+              <button
+                className={`badge ${ROI_MAP[task.roi] || ''} badge-editable`}
+                onClick={(e) => { e.stopPropagation(); setRoiEdit(v => !v); setStatusEdit(false); }}
+                title="Change ROI"
+              >
+                {task.roi}
+              </button>
+              <AnimatedPopover open={roiEdit} className="card-edit-popover" onClick={(e) => e.stopPropagation()}>
+                {ROI_OPTIONS.map(r => (
+                  <button key={r} className={`card-edit-option ${r === task.roi ? 'card-edit-option-active' : ''}`} onClick={() => chooseRoi(r)}>
+                    <span className={`badge ${ROI_MAP[r]}`}>{r}</span>
+                  </button>
+                ))}
+              </AnimatedPopover>
+            </span>
+
             <span className="badge badge-complexity">{task.complexity}</span>
-            <span className={`badge ${status.cls}`}>{status.label}</span>
+
+            {/* Status — click to change inline */}
+            <span className="badge-edit-wrap" ref={statusRef}>
+              <button
+                className={`badge ${status.cls} badge-editable`}
+                onClick={(e) => { e.stopPropagation(); setStatusEdit(v => !v); setRoiEdit(false); }}
+                title="Change status"
+              >
+                {status.label}
+              </button>
+              <AnimatedPopover open={statusEdit} className="card-edit-popover" onClick={(e) => e.stopPropagation()}>
+                {STATUS_OPTIONS.map(s => (
+                  <button key={s} className={`card-edit-option ${s === task.status ? 'card-edit-option-active' : ''}`} onClick={() => chooseStatus(s)}>
+                    <span className={`badge ${STATUS_MAP[s].cls}`}>{STATUS_MAP[s].label}</span>
+                  </button>
+                ))}
+              </AnimatedPopover>
+            </span>
             {task.png_url && (
               <button
                 className="badge badge-attachment"
@@ -194,47 +301,124 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
                 {({ pdf: 'PDF', word: 'DOC', pptx: 'PPT', ppt: 'PPT', excel: 'XLS' }[a.kind]) || 'FILE'}
               </a>
             ))}
-            {linkedProject && (
-              <span className="badge badge-project" title={linkedProject.title}>
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z"/>
-                </svg>
-                <span className="badge-project-text">{linkedProject.title}</span>
+            {/* Project — click to change inline (dropdown anchored here) */}
+            {projects.length > 0 && (
+              <span className="badge-edit-wrap" ref={projectPopoverRef}>
+                {linkedProject ? (
+                  <button
+                    className="badge badge-project badge-editable"
+                    title={`Project: ${linkedProject.title} — click to change`}
+                    onClick={(e) => { e.stopPropagation(); setProjectPopover(v => !v); setRoiEdit(false); setStatusEdit(false); }}
+                  >
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z"/>
+                    </svg>
+                    <span className="badge-project-text">{linkedProject.title}</span>
+                  </button>
+                ) : (
+                  <button
+                    className="badge badge-add-project"
+                    title="Assign to project"
+                    onClick={(e) => { e.stopPropagation(); setProjectPopover(v => !v); setRoiEdit(false); setStatusEdit(false); }}
+                  >
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z"/>
+                    </svg>
+                    Project
+                  </button>
+                )}
+
+                <AnimatedPopover open={projectPopover} className="card-edit-popover card-edit-popover-wide" onClick={(e) => e.stopPropagation()}>
+                  <p className="card-edit-popover-label">Assign to project</p>
+                  <div className="card-edit-popover-scroll">
+                    {projects.map(p => {
+                      const active = task.project_id === p.id;
+                      return (
+                        <button key={p.id} className={`card-edit-project-option ${active ? 'card-edit-project-option-active' : ''}`} onClick={() => handleAssignProject(p.id)}>
+                          {active && (
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                          )}
+                          <span style={{ flex: 1 }}>{p.title}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {linkedProject && (
+                    <div className="card-edit-project-remove-wrap">
+                      <button className="card-edit-project-remove" onClick={() => handleAssignProject(task.project_id)}>
+                        Remove from project
+                      </button>
+                    </div>
+                  )}
+                </AnimatedPopover>
               </span>
             )}
           </div>
 
-          {/* Page */}
+          {/* Page — click the pencil to edit inline */}
           <div className="task-page">
-            {isUrl(task.page) ? (
-              <>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/>
-                </svg>
-                <a href={task.page} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none' }}
-                  onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
-                  onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
-                  onClick={e => e.stopPropagation()}
-                >
-                  {shortenUrl(task.page)}
-                </a>
-              </>
+            {editingPage ? (
+              <input
+                className="task-page-input"
+                autoFocus
+                value={pageDraft}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setPageDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+                  else if (e.key === 'Escape') { cancelPageRef.current = true; e.currentTarget.blur(); }
+                }}
+                onBlur={savePage}
+                placeholder="Page name or URL"
+              />
             ) : (
               <>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                  <polyline points="10 9 9 9 8 9" />
-                </svg>
-                {task.page}
+                {isUrl(task.page) ? (
+                  <>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/>
+                    </svg>
+                    <a href={task.page} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none' }}
+                      onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                      onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {shortenUrl(task.page)}
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                      <polyline points="10 9 9 9 8 9" />
+                    </svg>
+                    {task.page}
+                  </>
+                )}
+                <button
+                  className="task-page-edit-btn"
+                  title="Edit page"
+                  onClick={(e) => { e.stopPropagation(); setPageDraft(task.page || ''); setEditingPage(true); }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
               </>
             )}
           </div>
 
           {/* Feedback */}
           <FeedbackContent taskId={task.id} html={task.feedback} className="task-feedback" />
+
+          {/* Subtasks progress */}
+          <TaskSubtasks taskId={task.id} subtasks={task.subtasks} onChanged={onDeleted} defaultExpanded />
 
           {/* Footer */}
           <div className="task-card-footer">
@@ -249,12 +433,12 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
           </div>
         </div>
 
-        {/* ── Action bar ── */}
+        {/* ── Action bar ── (hidden in select mode) */}
+        {!selectMode && (
         <div className="task-card-actions" style={{ position: 'relative' }}>
 
           {/* Complete popover */}
-          {confirmComplete && (
-            <div className="complete-popover" ref={popoverRef}>
+          <AnimatedPopover open={confirmComplete} className="complete-popover" ref={popoverRef}>
               <p className="complete-popover-label">
                 Completed by
                 {completedBy.length > 0 && <span className="complete-popover-count">{completedBy.length}</span>}
@@ -306,65 +490,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
                   Cancel
                 </button>
               </div>
-            </div>
-          )}
-
-          {/* Assign to Project */}
-          {projects.length > 0 && (
-            <button
-              className={`task-action-btn ${linkedProject ? 'task-action-btn-active' : ''}`}
-              data-tooltip={linkedProject ? `Project: ${linkedProject.title}` : 'Assign to Project'}
-              onClick={() => { setProjectPopover(v => !v); setConfirmComplete(false); setConfirmDelete(false); }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z"/>
-              </svg>
-            </button>
-          )}
-
-          {/* Project popover */}
-          {projectPopover && (
-            <div className="complete-popover" ref={projectPopoverRef} style={{ minWidth: 200 }}>
-              <p className="complete-popover-label">Assign to project</p>
-              <div className="complete-popover-people" style={{ maxHeight: 180 }}>
-                {projects.map(p => {
-                  const active = task.project_id === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => handleAssignProject(p.id)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        width: '100%', padding: '7px 10px', background: active ? 'var(--accent-glow)' : 'none',
-                        border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer',
-                        color: active ? 'var(--accent)' : 'var(--text-muted)', fontSize: 13, textAlign: 'left',
-                        transition: 'background 0.12s ease',
-                      }}
-                      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-4)'; }}
-                      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'none'; }}
-                    >
-                      {active && (
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                      )}
-                      <span style={{ flex: 1 }}>{p.title}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {linkedProject && (
-                <div style={{ borderTop: '1px solid var(--border)', padding: '6px 8px' }}>
-                  <button
-                    onClick={() => handleAssignProject(task.project_id)}
-                    style={{ width: '100%', padding: '6px 10px', background: 'none', border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer', color: '#f87171', fontSize: 12, textAlign: 'left' }}
-                  >
-                    Remove from project
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+          </AnimatedPopover>
 
           {/* Edit */}
           <button
@@ -451,6 +577,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
           )}
 
         </div>
+        )}
       </div>
 
       {imgOpen && (

@@ -8,6 +8,7 @@ import { BUILTIN_ENVIRONMENTS, environmentUrl } from '../lib/petEnvironments';
 import PetSprite from '../components/PetSprite';
 import PetSpinReveal from '../components/PetSpinReveal';
 import LevelBar from '../components/LevelBar';
+import PetInventory from '../components/PetInventory';
 import WalkAreaEditor from '../components/WalkAreaEditor';
 import ModalPortal from '../components/ModalPortal';
 import './Pets.css';
@@ -29,7 +30,7 @@ export default function Pets() {
   const navigate = useNavigate();
   const {
     userLevel, pets, activePet, customEnvironments, gamificationEnabled,
-    feedPet, waterPet, renamePet, setActivePet, setPetStyle,
+    renamePet, setActivePet, setPetStyle,
     setPetEnvironment, setPetWalkArea, setPetIdleAnimation, setPetSize, uploadPetEnvironment,
     sacrificeForNewPet,
   } = usePets();
@@ -247,8 +248,6 @@ export default function Pets() {
             )}
 
             <div className="pet-detail-buttons">
-              <button className="btn btn-secondary" onClick={() => feedPet(viewed.id)} disabled={viewed.is_dead}>🍗 Feed</button>
-              <button className="btn btn-secondary" onClick={() => waterPet(viewed.id)} disabled={viewed.is_dead}>💧 Water</button>
               <button className="btn btn-secondary" onClick={() => setEditingWalkArea(true)} disabled={viewed.is_dead || editingWalkArea}>
                 Set Walking Area
               </button>
@@ -271,6 +270,14 @@ export default function Pets() {
                 xpToNext={petXpNeeded} color="#a78bfa"
                 popKey={petPopKey} popAmount={petPopAmt}
               />
+            </div>
+
+            <div className="card pets-card">
+              <h2 className="pets-card-title">Inventory</h2>
+              <p className="pets-card-desc">
+                Earn food &amp; water by creating tasks, completing them, and leveling up. Click to feed or water {viewed.name}.
+              </p>
+              <PetInventory pet={viewed} />
             </div>
 
             <div className="card pets-card">

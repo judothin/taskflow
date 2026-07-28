@@ -1,0 +1,104 @@
+/* ── Pet rank badges (image assets, alpha-trimmed to align) ── */
+.pet-badges-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.pet-badges-section { margin-bottom: 4px; }
+.pet-badges-sub {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin: 8px 0 2px;
+}
+.pet-badges-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 12px;
+  margin: 8px 0 4px;
+}
+
+.pet-badge {
+  width: 84px;
+  text-align: center;
+}
+.pet-badge-art {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  margin: 0 auto;
+}
+.pet-badge-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pet-badge.locked .pet-badge-name { color: var(--text-dim); }
+.pet-badge-req {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  margin-top: 1px;
+}
+
+/* The normalized artwork */
+.rank-img {
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.45));
+}
+.pet-badge.earned .rank-img { animation: rl-pop 0.35s ease; }
+.pet-badge.locked .rank-img {
+  filter: grayscale(1) brightness(0.5) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+  opacity: 0.85;
+}
+
+.pet-badge-lock {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 14px;
+  filter: grayscale(1);
+}
+
+/* Selectable (Settings): earned badges toggle whether they show in the top bar */
+.pet-badge.selectable { cursor: pointer; }
+.pet-badge.selectable:not(.shown) .rank-img { opacity: 0.5; }
+.pet-badge.selectable:hover .rank-img { opacity: 0.85; }
+.pet-badge.selectable.shown .rank-img { opacity: 1; }
+.pet-badge-check {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 2px solid var(--border-light);
+  background: var(--bg-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.pet-badge-check.on { background: var(--accent); border-color: var(--accent); }
+
+@keyframes rl-pop {
+  from { transform: scale(0.82); opacity: 0.4; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+/* Widget strip: highest earned per track, centred. */
+.pet-badges-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.pet-badges-strip .pet-badge { width: auto; }

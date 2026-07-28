@@ -5,6 +5,8 @@ import { fetchTeamMembers } from '../lib/teams';
 import { InlineClock } from '../components/dashboardWidgets';
 import TaskCard from '../components/TaskCard';
 import TaskForm from '../components/TaskForm';
+import BulkActionBar from '../components/BulkActionBar';
+import useBulkSelect from '../lib/useBulkSelect';
 import QuickLogModal from './QuickLog';
 import '../components/TaskCard.css';
 import './Dashboard.css';
@@ -34,6 +36,7 @@ export default function Tasks() {
   const [editTask, setEditTask] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showQuickLog, setShowQuickLog] = useState(false);
+  const { selectMode, selectedIds, toggle, clear, toggleAll, toggleSelectMode, exitSelectMode } = useBulkSelect();
 
   const fetchData = useCallback(async () => {
     if (!activeTeamId) { setTasks([]); setUsers([]); setProjects([]); setLoading(false); return; }
@@ -86,13 +89,18 @@ export default function Tasks() {
 
   return (
     <div className="dashboard fade-in">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">All Tasks</h1>
-          <p className="page-subtitle">{filtered.length} task{filtered.length !== 1 ? 's' : ''} shown</p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <InlineClock />
+      <TopBarPortal>
+          <button className={`btn ${selectMode ? 'btn-primary' : 'btn-secondary'}`} onClick={toggleSelectMode}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+            </svg>
+            {selectMode ? 'Done' : 'Select'}
+          </button>
+          {selectMode && filtered.length > 0 && (
+            <button className="btn btn-secondary" onClick={() => toggleAll(filtered.map(t => t.id))}>
+              {filtered.every(t => selectedIds.has(t.id)) ? 'Clear all' : 'Select all'}
+            </button>
+          )}
           <button className="btn btn-secondary" onClick={() => setShowQuickLog(true)}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
@@ -165,9 +173,20 @@ export default function Tasks() {
       ) : (
         <div className="tasks-grid">
           {filtered.map(task => (
-            <TaskCard key={task.id} task={task} onEdit={setEditTask} onDeleted={fetchData} users={users} projects={projects} />
+            <TaskCard key={task.id} task={task} onEdit={setEditTask} onDeleted={fetchData} users={users} projects={projects}
+              selectMode={selectMode} selected={selectedIds.has(task.id)} onToggleSelect={toggle} />
           ))}
         </div>
+      )}
+
+      {selectMode && (
+        <BulkActionBar
+          selectedTasks={tasks.filter(t => selectedIds.has(t.id))}
+          users={users}
+          onChanged={fetchData}
+          onClear={clear}
+          onExit={exitSelectMode}
+        />
       )}
 
       {showCreate && (

@@ -8,6 +8,8 @@ import { fetchTeamMembers } from '../lib/teams';
 import Avatar from '../components/Avatar';
 import TaskForm from '../components/TaskForm';
 import TaskCard from '../components/TaskCard';
+import BulkActionBar from '../components/BulkActionBar';
+import useBulkSelect from '../lib/useBulkSelect';
 import ModalPortal from '../components/ModalPortal';
 import '../components/TaskCard.css';
 import './ProjectDetail.css';
@@ -50,6 +52,7 @@ export default function ProjectDetail() {
   const [taskTab,        setTaskTab]        = useState('active');
   const [statusPopover,  setStatusPopover]  = useState(false);
   const statusPopoverRef = useRef();
+  const { selectMode, selectedIds, toggle, clear, toggleAll, toggleSelectMode, exitSelectMode } = useBulkSelect();
 
   // Drag-to-reorder
   const [localTasks,  setLocalTasks]  = useState([]);
@@ -802,12 +805,25 @@ export default function ProjectDetail() {
                   </button>
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', alignItems: 'center' }}>
-                  {!orderDirty && visibleTasks.length > 1 && (
+                  {!orderDirty && !selectMode && visibleTasks.length > 1 && (
                     <span style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'var(--mono)' }}>drag to reorder</span>
                   )}
                   {orderDirty && (
                     <button className="btn btn-secondary btn-sm" onClick={saveOrder} disabled={savingOrder}>
                       {savingOrder ? 'Saving…' : 'Save Order'}
+                    </button>
+                  )}
+                  {visibleTasks.length > 0 && (
+                    <button className={`btn btn-sm ${selectMode ? 'btn-primary' : 'btn-secondary'}`} onClick={toggleSelectMode}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+                      </svg>
+                      {selectMode ? 'Done' : 'Select'}
+                    </button>
+                  )}
+                  {selectMode && visibleTasks.length > 0 && (
+                    <button className="btn btn-secondary btn-sm" onClick={() => toggleAll(visibleTasks.map(t => t.id))}>
+                      {visibleTasks.every(t => selectedIds.has(t.id)) ? 'Clear all' : 'Select all'}
                     </button>
                   )}
                   <button className="btn btn-primary btn-sm" onClick={() => setShowTaskForm(true)}>
@@ -832,19 +848,24 @@ export default function ProjectDetail() {
                         onMouseEnter={() => onDragEnterCard(t.id)}
                         className={`pd-drag-item ${isSource ? 'pd-drag-placeholder' : ''}`}
                       >
-                        <div className="pd-drag-handle" onMouseDown={e => startDrag(e, t)} title="Drag to reorder">
-                          <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
-                            <circle cx="7" cy="4"  r="1.5"/><circle cx="13" cy="4"  r="1.5"/>
-                            <circle cx="7" cy="10" r="1.5"/><circle cx="13" cy="10" r="1.5"/>
-                            <circle cx="7" cy="16" r="1.5"/><circle cx="13" cy="16" r="1.5"/>
-                          </svg>
-                        </div>
+                        {!selectMode && (
+                          <div className="pd-drag-handle" onMouseDown={e => startDrag(e, t)} title="Drag to reorder">
+                            <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+                              <circle cx="7" cy="4"  r="1.5"/><circle cx="13" cy="4"  r="1.5"/>
+                              <circle cx="7" cy="10" r="1.5"/><circle cx="13" cy="10" r="1.5"/>
+                              <circle cx="7" cy="16" r="1.5"/><circle cx="13" cy="16" r="1.5"/>
+                            </svg>
+                          </div>
+                        )}
                         <TaskCard
                           task={t}
                           onEdit={setEditTask}
                           onDeleted={fetchAll}
                           users={usersList}
                           projects={project ? [{ id: project.id, title: project.title }] : []}
+                          selectMode={selectMode}
+                          selected={selectedIds.has(t.id)}
+                          onToggleSelect={toggle}
                         />
                       </div>
                     );
@@ -923,6 +944,16 @@ export default function ProjectDetail() {
           </div>
         </div>
       </div>
+
+      {selectMode && (
+        <BulkActionBar
+          selectedTasks={localTasks.filter(t => selectedIds.has(t.id))}
+          users={usersList}
+          onChanged={fetchAll}
+          onClear={clear}
+          onExit={exitSelectMode}
+        />
+      )}
 
       {showTaskForm && (
         <TaskForm

@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePets } from '../context/PetContext';
 import { WidgetHead } from './dashboardWidgets';
-import { maxHealthForLevel } from '../lib/petLogic';
+import { maxHealthForLevel, FEED_AMOUNT, WATER_AMOUNT } from '../lib/petLogic';
 import { petXpToNext } from '../lib/xp';
 import { environmentUrl } from '../lib/petEnvironments';
 import PetSprite from './PetSprite';
 import LevelBar from './LevelBar';
+import PetInventory from './PetInventory';
 import PetWidgetSettings from './PetWidgetSettings';
 import './PetWidget.css';
 
@@ -15,11 +16,10 @@ const PET_ICON = 'M5 7 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 M15 7 a2 2 0 1 0 4 0 a2 2 
 const RING_R = 15;
 const RING_C = 2 * Math.PI * RING_R;
 
-// Feed/water trail — how many icons fly per click, how long each flight
-// takes, and the stagger between them launching.
-const PARTICLE_COUNT = 6;
-const FLIGHT_MS = 650;
-const STAGGER_MS = 90;
+// Feed/water trail: icons fly from the inventory item up into the matching ring.
+const PARTICLE_COUNT = 5;
+const FLIGHT_MS = 600;
+const STAGGER_MS = 80;
 
 const StatRing = React.forwardRef(function StatRing({ label, icon, value, max }, ref) {
   const pct = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
@@ -42,32 +42,17 @@ const StatRing = React.forwardRef(function StatRing({ label, icon, value, max },
 
 export default function PetWidget() {
   const navigate = useNavigate();
-  const { activePet, feedPet, waterPet } = usePets();
+  const { activePet } = usePets();
 
   const [petPopKey, setPetPopKey] = useState(null);
   const [petPopAmt, setPetPopAmt] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => {
-    const handler = (e) => {
-      const d = e.detail || {};
-      if (d.petXpGained) { setPetPopAmt(d.petXpGained); setPetPopKey(k => (k || 0) + 1); }
-    };
-    window.addEventListener('xp-awarded', handler);
-    return () => window.removeEventListener('xp-awarded', handler);
-  }, []);
-
-  // ── Feed/water "trail" animation ────────────────────────────
-  // Clicking feed/water updates the real value instantly (feedPet/waterPet
-  // below), but the RING fills in visually over a few icons flying from the
-  // button to it instead of jumping straight to full — displayHunger/Water
-  // is a locally-animated stand-in for activePet.hunger/water, kept in sync
-  // with the real value except while a trail we launched is actively
-  // ramping it up itself (animatingRef), so the incoming refreshed prop
-  // doesn't just snap it to 100 immediately.
-  const stageRef = useRef(null);
-  const feedBtnRef = useRef(null);
-  const waterBtnRef = useRef(null);
+  // Locally-animated stand-ins for the pet's real hunger/water, so the ring
+  // fills incrementally as particles land rather than snapping when the DB
+  // write refreshes. Synced to the real value except while our own trail is
+  // ramping it (animatingRef).
+  const bodyRef = useRef(null);
   const foodRingRef = useRef(null);
   const waterRingRef = useRef(null);
   const animatingRef = useRef({ hunger: false, water: false });
@@ -78,27 +63,36 @@ export default function PetWidget() {
   const [particles, setParticles] = useState([]);
 
   useEffect(() => {
+    const handler = (e) => {
+      const d = e.detail || {};
+      if (d.petXpGained) { setPetPopAmt(d.petXpGained); setPetPopKey(k => (k || 0) + 1); }
+    };
+    window.addEventListener('xp-awarded', handler);
+    return () => window.removeEventListener('xp-awarded', handler);
+  }, []);
+
+  useEffect(() => {
     if (activePet && !animatingRef.current.hunger) setDisplayHunger(activePet.hunger);
   }, [activePet?.id, activePet?.hunger]);
   useEffect(() => {
     if (activePet && !animatingRef.current.water) setDisplayWater(activePet.water);
   }, [activePet?.id, activePet?.water]);
 
-  const launchTrail = useCallback((kind, btnRef, ringRef, setDisplay, startValue) => {
-    const stageEl = stageRef.current;
-    const btnEl = btnRef.current;
+  const launchTrail = useCallback((kind, sourceEl, ringRef, setDisplay, startValue, amount) => {
+    const containerEl = bodyRef.current;
     const ringEl = ringRef.current;
-    if (!stageEl || !btnEl || !ringEl) return;
-    const stageRect = stageEl.getBoundingClientRect();
-    const btnRect = btnEl.getBoundingClientRect();
-    const ringRect = ringEl.getBoundingClientRect();
-    const startX = btnRect.left + btnRect.width / 2 - stageRect.left;
-    const startY = btnRect.top + btnRect.height / 2 - stageRect.top;
-    const endX = ringRect.left + ringRect.width / 2 - stageRect.left;
-    const endY = ringRect.top + ringRect.height / 2 - stageRect.top;
+    if (!containerEl || !sourceEl || !ringEl) return;
+    const cRect = containerEl.getBoundingClientRect();
+    const sRect = sourceEl.getBoundingClientRect();
+    const rRect = ringEl.getBoundingClientRect();
+    const startX = sRect.left + sRect.width / 2 - cRect.left;
+    const startY = sRect.top + sRect.height / 2 - cRect.top;
+    const endX = rRect.left + rRect.width / 2 - cRect.left;
+    const endY = rRect.top + rRect.height / 2 - cRect.top;
 
+    const target = Math.min(100, startValue + amount);
     animatingRef.current[kind] = true;
-    const step = Math.max(0, 100 - startValue) / PARTICLE_COUNT;
+    const step = Math.max(0, target - startValue) / PARTICLE_COUNT;
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const id = nextParticleId.current++;
@@ -115,12 +109,17 @@ export default function PetWidget() {
         setTimeout(() => {
           setParticles(p => p.filter(pt => pt.id !== id));
           const isLast = i === PARTICLE_COUNT - 1;
-          setDisplay(v => (isLast ? 100 : Math.min(100, v + step)));
+          setDisplay(v => (isLast ? target : Math.min(target, v + step)));
           if (isLast) animatingRef.current[kind] = false;
         }, FLIGHT_MS);
       }, i * STAGGER_MS);
     }
   }, []);
+
+  const handleUse = useCallback((itemKey, sourceEl) => {
+    if (itemKey === 'food') launchTrail('hunger', sourceEl, foodRingRef, setDisplayHunger, displayHunger, FEED_AMOUNT);
+    else launchTrail('water', sourceEl, waterRingRef, setDisplayWater, displayWater, WATER_AMOUNT);
+  }, [launchTrail, displayHunger, displayWater]);
 
   if (!activePet) {
     return (
@@ -133,15 +132,6 @@ export default function PetWidget() {
 
   const maxHealth = maxHealthForLevel(activePet.level);
 
-  const handleFeed = () => {
-    launchTrail('hunger', feedBtnRef, foodRingRef, setDisplayHunger, displayHunger);
-    feedPet(activePet.id);
-  };
-  const handleWater = () => {
-    launchTrail('water', waterBtnRef, waterRingRef, setDisplayWater, displayWater);
-    waterPet(activePet.id);
-  };
-
   return (
     <>
       <WidgetHead
@@ -149,8 +139,8 @@ export default function PetWidget() {
         title="Your Pet"
         action={<span className="widget-count">Lv {activePet.level}</span>}
       />
-      <div className="pet-widget-body">
-        <div ref={stageRef} className="pet-widget-stage" style={{ backgroundImage: `url("${environmentUrl(activePet.environment)}")` }}>
+      <div className="pet-widget-body" ref={bodyRef}>
+        <div className="pet-widget-stage" style={{ backgroundImage: `url("${environmentUrl(activePet.environment)}")` }}>
           <PetSprite
             petId={activePet.id}
             species={activePet.species}
@@ -180,41 +170,6 @@ export default function PetWidget() {
               <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
             </svg>
           </button>
-
-          {particles.map(p => (
-            <span
-              key={p.id}
-              className="pet-feed-particle"
-              style={{
-                left: p.x, top: p.y,
-                opacity: p.flying ? 0 : 1,
-                transition: p.flying
-                  ? `left ${FLIGHT_MS}ms ease-in, top ${FLIGHT_MS}ms ease-in, opacity ${FLIGHT_MS}ms ease-in`
-                  : 'none',
-              }}
-            >
-              {p.kind === 'hunger' ? '🍗' : '💧'}
-            </span>
-          ))}
-
-          <div className="pet-widget-overlay-actions">
-            <button
-              ref={feedBtnRef}
-              className="pet-widget-icon-btn"
-              onClick={handleFeed}
-              disabled={activePet.is_dead}
-              aria-label="Feed"
-              title="Feed"
-            >🍗</button>
-            <button
-              ref={waterBtnRef}
-              className="pet-widget-icon-btn"
-              onClick={handleWater}
-              disabled={activePet.is_dead}
-              aria-label="Water"
-              title="Water"
-            >💧</button>
-          </div>
         </div>
 
         <div className="pet-widget-name">
@@ -228,10 +183,28 @@ export default function PetWidget() {
           popKey={petPopKey} popAmount={petPopAmt}
         />
 
+        <PetInventory pet={activePet} onUse={handleUse} />
+
         <button className="pet-widget-manage" onClick={() => navigate('/pets')}>
           Manage pets
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
+
+        {particles.map(p => (
+          <span
+            key={p.id}
+            className="pet-feed-particle"
+            style={{
+              left: p.x, top: p.y,
+              opacity: p.flying ? 0 : 1,
+              transition: p.flying
+                ? `left ${FLIGHT_MS}ms ease-in, top ${FLIGHT_MS}ms ease-in, opacity ${FLIGHT_MS}ms ease-in`
+                : 'none',
+            }}
+          >
+            {p.kind === 'hunger' ? '🍗' : '💧'}
+          </span>
+        ))}
       </div>
 
       {showSettings && <PetWidgetSettings onClose={() => setShowSettings(false)} />}
