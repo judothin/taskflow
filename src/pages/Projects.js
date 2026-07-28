@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
-import { InlineClock } from '../components/dashboardWidgets';
+import { TopBarPortal } from '../context/HeaderActionsContext';
 import ModalPortal from '../components/ModalPortal';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
@@ -155,17 +155,14 @@ export default function Projects() {
 
   return (
     <div className="projects-page fade-in">
-      <div className="page-header">
-        <div className="page-header-actions">
-          <InlineClock />
-          <button className="btn btn-primary" onClick={openCreate}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            New Project
-          </button>
-        </div>
-      </div>
+      <TopBarPortal>
+        <button className="btn btn-primary" onClick={openCreate}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          New Project
+        </button>
+      </TopBarPortal>
 
       {/* Status tabs */}
       <div className="proj-tabs">
