@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
-import { InlineClock } from '../components/dashboardWidgets';
+import { TopBarPortal } from '../context/HeaderActionsContext';
 import { format, isSameDay, parseISO } from 'date-fns';
 import ContextMenu from '../components/ContextMenu';
 import TaskForm from '../components/TaskForm';
