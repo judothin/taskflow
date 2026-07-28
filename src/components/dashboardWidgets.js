@@ -3,6 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { format, isToday, isSameDay, startOfWeek, subDays, formatDistanceToNow } from 'date-fns';
 import ActivityChart from './ActivityChart';
 import { useTopBar } from '../context/TopBarContext';
+import { useAuth } from '../context/AuthContext';
+import { usePets } from '../context/PetContext';
+import { supabase } from '../lib/supabase';
+import { StatTile, STAT_ICONS } from './AccountStatsCard';
+import './AccountStatsCard.css';
 
 // Live date/time readout for the dashboard top bar. Keeps its own tick so the
 // rest of the dashboard doesn't re-render every second.
@@ -259,6 +264,48 @@ export function StreakWidget({ completedTasks, profile }) {
         <div className="streak-num">{streak}</div>
         <div className="streak-label">day{streak !== 1 ? 's' : ''} in a row</div>
         <div className="streak-best">Best: {best} day{best !== 1 ? 's' : ''}</div>
+      </div>
+    </>
+  );
+}
+
+// Your lifetime task tallies: completed (from the user_levels counter) and
+// created (live count of tasks you authored). Mirrors the Settings stats card.
+export function StatsWidget() {
+  const { user } = useAuth();
+  const { userLevel } = usePets();
+  const [created, setCreated] = useState(null);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let live = true;
+    (async () => {
+      const { count } = await supabase
+        .from('tasks')
+        .select('id', { count: 'exact', head: true })
+        .eq('created_by', user.id);
+      if (live) setCreated(count ?? 0);
+    })();
+    return () => { live = false; };
+  }, [user?.id]);
+
+  const completed = userLevel?.tasks_completed ?? 0;
+  const ratio = created ? completed / created : null;
+
+  return (
+    <>
+      <WidgetHead icon="M12 20V10 M18 20V4 M6 20v-4" title="Your Stats" />
+      <div className="stats-widget-body">
+        <div className="account-stats-grid">
+          <StatTile value={completed} label="Tasks Completed" color="var(--success)" iconPath={STAT_ICONS.completed} />
+          <StatTile value={created} label="Tasks Created" color="var(--accent)" iconPath={STAT_ICONS.created} />
+        </div>
+        <div className="stats-insight">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
+          {ratio
+            ? <span>~<strong>{ratio.toFixed(1)}×</strong> tasks completed for every one you create</span>
+            : <span>Your all-time task activity</span>}
+        </div>
       </div>
     </>
   );

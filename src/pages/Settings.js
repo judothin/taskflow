@@ -5,6 +5,7 @@ import { usePets } from '../context/PetContext';
 import Avatar from '../components/Avatar';
 import AvatarCrop from '../components/AvatarCrop';
 import RankBadges from '../components/PetBadges';
+import AccountStatsCard from '../components/AccountStatsCard';
 import { getRankBadges } from '../lib/petBadges';
 import { loadShownBadges, saveShownBadges } from '../lib/badgePrefs';
 import ModalPortal from '../components/ModalPortal';
@@ -232,6 +233,9 @@ export default function Settings() {
 
       <div className="settings-grid">
         <div className="settings-col">
+
+      {/* Account stats — always shown */}
+      <AccountStatsCard userId={user?.id} tasksCompleted={userLevel?.tasks_completed} />
 
       {/* Profile preview */}
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 8 }}>

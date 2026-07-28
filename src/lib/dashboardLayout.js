@@ -47,6 +47,12 @@ export const WIDGETS = {
     icon: 'M22 11.08V12a10 10 0 11-5.93-9.14 M22 4L12 14.01l-3-3',
     defaultSize: 'third',
   },
+  stats: {
+    name: 'Your Stats',
+    desc: 'Your lifetime tasks completed & created.',
+    icon: 'M12 20V10 M18 20V4 M6 20v-4',
+    defaultSize: 'third',
+  },
   notifications: {
     name: 'Notification Center',
     desc: 'Live activity feed with per-type alerts and a settings panel.',
