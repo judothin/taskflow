@@ -216,18 +216,15 @@ export default function Completed() {
 
   return (
     <div className="dashboard fade-in">
-      <div className="page-header">
-        <div className="page-header-actions">
-          <InlineClock />
-          <button className="btn btn-secondary" onClick={() => setShowQuickLog(true)}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
-              <polyline points="22 4 12 14.01 9 11.01"/>
-            </svg>
-            Quick Log
-          </button>
-        </div>
-      </div>
+      <TopBarPortal>
+        <button className="btn btn-secondary" onClick={() => setShowQuickLog(true)}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          Quick Log
+        </button>
+      </TopBarPortal>
 
       <div className="completed-layout">
         {/* ── Left: calendar + people ── */}
