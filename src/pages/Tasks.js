@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
-import { InlineClock } from '../components/dashboardWidgets';
+import { TopBarPortal } from '../context/HeaderActionsContext';
 import TaskCard from '../components/TaskCard';
 import TaskForm from '../components/TaskForm';
 import BulkActionBar from '../components/BulkActionBar';
@@ -114,8 +114,7 @@ export default function Tasks() {
             </svg>
             New Task
           </button>
-        </div>
-      </div>
+      </TopBarPortal>
 
       {/* Status tabs */}
       <div className="status-tabs">
