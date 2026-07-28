@@ -8,7 +8,6 @@ import RankBadges from '../components/PetBadges';
 import { getRankBadges } from '../lib/petBadges';
 import { loadShownBadges, saveShownBadges } from '../lib/badgePrefs';
 import ModalPortal from '../components/ModalPortal';
-import { InlineClock } from '../components/dashboardWidgets';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
 import { THEME_FIELDS, STATUS_FIELDS, FONT_SCALES } from '../lib/themeColors';
 import './Dashboard.css';
@@ -230,9 +229,6 @@ export default function Settings() {
 
   return (
     <div className="dashboard fade-in settings-page">
-      <div className="page-header">
-        <InlineClock />
-      </div>
 
       <div className="settings-grid">
         <div className="settings-col">

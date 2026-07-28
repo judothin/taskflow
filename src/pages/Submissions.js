@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { awardTaskCreatedXp } from '../lib/xp';
-import { InlineClock } from '../components/dashboardWidgets';
 import { format } from 'date-fns';
 import ModalPortal from '../components/ModalPortal';
 import './Submissions.css';
@@ -309,10 +308,6 @@ export default function Submissions() {
 
   return (
     <div className="submissions-page fade-in">
-      <div className="page-header">
-        <InlineClock />
-      </div>
-
       <div className="sub-tabs">
         {TABS.map(t => (
           <button

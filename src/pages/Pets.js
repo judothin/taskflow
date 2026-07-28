@@ -125,12 +125,6 @@ export default function Pets() {
   if (pets.length === 0) {
     return (
       <div className="pets-page fade-in">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Pets</h1>
-            <p className="page-subtitle">You don't have any pets yet.</p>
-          </div>
-        </div>
         <div className="empty-state">
           <h3>No pets yet</h3>
           <p>Level up to unlock your first companion.</p>
@@ -146,12 +140,6 @@ export default function Pets() {
 
   return (
     <div className="pets-page fade-in">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Pets</h1>
-          <p className="page-subtitle">{pets.length} pet{pets.length !== 1 ? 's' : ''} collected</p>
-        </div>
-      </div>
 
       <div className="card pets-card pets-your-level-card">
         <h2 className="pets-card-title">Your Level</h2>

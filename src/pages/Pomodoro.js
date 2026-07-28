@@ -54,14 +54,6 @@ export default function Pomodoro() {
 
   return (
     <div className="dashboard fade-in">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Pomodoro</h1>
-          <p className="page-subtitle">
-            Focus in intervals. {totalTasks} task{totalTasks !== 1 ? 's' : ''} in progress &amp; queued.
-          </p>
-        </div>
-      </div>
 
       {/* Timer */}
       <div className="card pomo-card">

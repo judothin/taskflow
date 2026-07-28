@@ -151,12 +151,6 @@ export default function Teams() {
 
   return (
     <div className="teams-page fade-in">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Teams</h1>
-          <p className="page-subtitle">Switch teams, manage members, and share invite &amp; guest-portal links</p>
-        </div>
-      </div>
 
       {/* ── Team switcher ── */}
       <div className="team-switcher-row">

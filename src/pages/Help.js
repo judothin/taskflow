@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { InlineClock } from '../components/dashboardWidgets';
 import './Dashboard.css';
 import './Help.css';
 
@@ -284,14 +283,6 @@ export default function Help() {
 
         {/* Content */}
         <div className="help-content">
-
-          <div className="page-header">
-            <div>
-              <h1 className="page-title">Help & Features</h1>
-              <p className="page-subtitle">A complete guide to everything in TaskFlow</p>
-            </div>
-            <InlineClock />
-          </div>
 
           {/* ── What's New ── */}
           <section id="whatsnew" className="help-section">
