@@ -1,0 +1,228 @@
+.date-picker {
+  position: relative;
+  width: 100%;
+}
+
+.date-picker-badge-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* ── Urgency-scale badge glow (green → red as the due date approaches) ────
+   A pseudo-element "ping" layer animates only `opacity`/`transform` — both
+   compositor-only — instead of animating `box-shadow`'s blur/spread every
+   frame, which forces a repaint of the badge's surroundings each tick and
+   read as janky/glitchy rather than a smooth glow. */
+.date-badge-pulse {
+  position: relative;
+  isolation: isolate;
+}
+.date-badge-pulse::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 4px;
+  background: var(--pulse-color);
+  opacity: 0;
+  z-index: -1;
+  pointer-events: none;
+  animation: dateGlow var(--pulse-speed, 2.4s) ease-in-out infinite;
+}
+
+@keyframes dateGlow {
+  0%, 100% { opacity: 0;   transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(1.18); }
+}
+
+.date-badge-far {
+  --pulse-color: #4ade80;
+  --pulse-speed: 3.6s;
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+.date-badge-upcoming {
+  --pulse-color: #a3e635;
+  --pulse-speed: 3s;
+  background: rgba(163, 230, 53, 0.12);
+  color: #a3e635;
+  border: 1px solid rgba(163, 230, 53, 0.3);
+}
+.date-badge-soon {
+  --pulse-color: #fbbf24;
+  --pulse-speed: 2.2s;
+  background: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+}
+.date-badge-today {
+  --pulse-color: #fb923c;
+  --pulse-speed: 1.5s;
+  background: rgba(249, 115, 22, 0.16);
+  color: #fb923c;
+  border: 1px solid rgba(249, 115, 22, 0.36);
+}
+.date-badge-overdue {
+  --pulse-color: #f87171;
+  --pulse-speed: 1s;
+  background: rgba(239, 68, 68, 0.16);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+/* Completed task's due date — a flat record, no urgency signaling. */
+.date-badge-done {
+  background: var(--bg-4);
+  color: var(--text-muted);
+  border: 1px solid var(--border-light);
+}
+
+/* ── Trigger (form-field variant) ─────────────────────────── */
+.date-picker-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.date-picker-trigger:hover { border-color: var(--border-light); background: var(--bg-4); }
+.date-picker-trigger:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); outline: none; }
+
+.date-picker-trigger-disabled { cursor: default; opacity: 0.65; }
+.date-picker-trigger-disabled:hover { border-color: var(--border); background: var(--bg-3); }
+
+.date-picker-icon { display: flex; flex-shrink: 0; color: var(--text-dim); }
+.date-picker-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.date-picker-placeholder { color: var(--text-dim); }
+
+.date-picker-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--text-dim);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.date-picker-clear:hover { background: var(--bg-4); color: var(--text); }
+
+/* ── Popover / calendar ───────────────────────────────────── */
+.date-picker-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  width: 240px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: color-mix(in srgb, var(--bg-3) 92%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  transform-origin: top left;
+}
+
+.dp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+
+.dp-month { font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
+
+.dp-nav {
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.dp-nav:hover { color: var(--text); background: var(--bg-4); }
+.dp-nav:active { transform: scale(0.9); }
+
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dp-dow-row { margin-bottom: 1px; }
+.dp-dow { font-size: 9px; font-weight: 700; color: var(--text-dim); text-align: center; font-family: var(--mono); padding-bottom: 2px; }
+
+.dp-grid-next { animation: dpSlideNext 0.2s ease; }
+.dp-grid-prev { animation: dpSlidePrev 0.2s ease; }
+@keyframes dpSlideNext { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes dpSlidePrev { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+
+.dp-day {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--mono);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.1s ease;
+}
+.dp-day:hover { background: var(--bg-4); border-color: var(--border-light); }
+.dp-day:active { transform: scale(0.92); }
+.dp-day-out { opacity: 0.3; }
+
+.dp-day-today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: var(--text); }
+
+.dp-day-selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+.dp-day-selected:hover { filter: brightness(1.08); }
+
+.dp-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+.dp-footer-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.dp-footer-btn:hover { color: var(--text); border-color: var(--border-light); background: var(--bg-4); }
+.dp-footer-btn-clear { color: #f87171; margin-left: auto; }
+.dp-footer-btn-clear:hover { border-color: #f87171; background: rgba(239,68,68,0.1); }

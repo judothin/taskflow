@@ -1,9 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
+import { format, parseISO, isBefore, startOfToday } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTeam } from '../context/TeamContext';
+import { fetchTeamMembers } from '../lib/teams';
 import { awardTaskCompletedXp } from '../lib/xp';
+import Avatar from '../components/Avatar';
+import AssigneeSelect from '../components/AssigneeSelect';
+import DatePicker from '../components/DatePicker';
 import FeedbackEditor from '../components/FeedbackEditor';
 import SubtaskEditor from '../components/SubtaskEditor';
 import { asSubtasks } from '../lib/subtasks';
@@ -31,10 +36,12 @@ export default function TaskDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { activeTeamId } = useTeam();
   const fileRef = useRef();
 
   const [task, setTask]             = useState(null);
   const [form, setForm]             = useState(null);
+  const [users, setUsers]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState('');
@@ -56,6 +63,8 @@ export default function TaskDetail() {
       roi:        data.roi        || 'medium',
       complexity: data.complexity || 'medium',
       png_url:    data.png_url    || null,
+      assignee_id: data.assignee_id || '',
+      due_date:   data.due_date    || '',
       subtasks:   asSubtasks(data.subtasks),
     });
     setImagePreview(data.png_url || null);
@@ -63,6 +72,11 @@ export default function TaskDetail() {
   }, [id, navigate]);
 
   useEffect(() => { fetchTask(); }, [fetchTask]);
+
+  useEffect(() => {
+    if (!activeTeamId) return;
+    fetchTeamMembers(activeTeamId).then(setUsers);
+  }, [activeTeamId]);
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -94,7 +108,7 @@ export default function TaskDetail() {
     setError('');
     try {
       const png_url = await uploadImage();
-      const payload = { ...form, png_url, updated_at: new Date().toISOString() };
+      const payload = { ...form, png_url, assignee_id: form.assignee_id || null, due_date: form.due_date || null, updated_at: new Date().toISOString() };
       const isBeingCompleted = payload.status === 'completed' && task.status !== 'completed';
       if (isBeingCompleted) {
         payload.date_completed = new Date().toISOString();
@@ -211,6 +225,27 @@ export default function TaskDetail() {
           </div>
 
           <div className="form-grid form-grid-2">
+            {users.length > 0 && (
+              <div className="form-group">
+                <label className="label">Assignee <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>optional</span></label>
+                <AssigneeSelect
+                  users={users}
+                  value={form.assignee_id}
+                  onChange={(id) => setForm(f => ({ ...f, assignee_id: id }))}
+                />
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="label">Due Date <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>optional</span></label>
+              <DatePicker
+                value={form.due_date}
+                onChange={(d) => setForm(f => ({ ...f, due_date: d }))}
+              />
+            </div>
+          </div>
+
+          <div className="form-grid form-grid-2">
             <div className="form-group">
               <label className="label">ROI</label>
               <select className="input" value={form.roi} onChange={set('roi')}>
@@ -240,6 +275,34 @@ export default function TaskDetail() {
               <span className="task-detail-meta-label">Complexity</span>
               <span className="badge badge-complexity">{form.complexity}</span>
             </div>
+            {(() => {
+              const assignee = users.find(u => u.id === form.assignee_id);
+              return assignee ? (
+                <div className="task-detail-meta-row">
+                  <span className="task-detail-meta-label">Assignee</span>
+                  <span className="task-detail-meta-val" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Avatar
+                      src={assignee.avatar_url}
+                      color={assignee.color || '#6366f1'}
+                      initials={`${assignee.first_name[0]}${assignee.last_name[0]}`}
+                      size={20}
+                    />
+                    {assignee.first_name} {assignee.last_name}
+                  </span>
+                </div>
+              ) : null;
+            })()}
+            {form.due_date && (() => {
+              const overdue = form.status !== 'completed' && isBefore(parseISO(form.due_date), startOfToday());
+              return (
+                <div className="task-detail-meta-row">
+                  <span className="task-detail-meta-label">Due Date</span>
+                  <span className={`task-detail-meta-val ${overdue ? 'task-detail-overdue' : ''}`}>
+                    {format(parseISO(form.due_date), 'MMM d, yyyy')}{overdue ? ' — overdue' : ''}
+                  </span>
+                </div>
+              );
+            })()}
             {task.date_received && (
               <div className="task-detail-meta-row">
                 <span className="task-detail-meta-label">Received</span>

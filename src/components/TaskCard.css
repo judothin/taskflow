@@ -221,6 +221,13 @@ body.has-bg-image .task-card-featured:hover {
   white-space: nowrap;
 }
 
+.badge-assignee {
+  background: var(--bg-4);
+  color: var(--text-muted);
+  border: 1px solid var(--border-light);
+}
+.badge-assignee > span:first-child { flex-shrink: 0; }
+
 /* ── Page label ────────────────────────────────────────────── */
 .task-page {
   display: flex;

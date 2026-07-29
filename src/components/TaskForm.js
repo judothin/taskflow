@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { awardTaskCreatedXp, awardTaskCompletedXp } from '../lib/xp';
 import Avatar from './Avatar';
+import AssigneeSelect from './AssigneeSelect';
+import DatePicker from './DatePicker';
 import FeedbackEditor from './FeedbackEditor';
 import SubtaskEditor from './SubtaskEditor';
 import { asSubtasks } from '../lib/subtasks';
@@ -82,6 +84,8 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
     roi:        task?.roi        || 'medium',
     complexity: task?.complexity || 'medium',
     project_id: task?.project_id || defaultProjectId || '',
+    assignee_id: task?.assignee_id || '',
+    due_date:   task?.due_date    || '',
     subtasks:   asSubtasks(task?.subtasks),
   });
 
@@ -199,6 +203,8 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
         attachments,
         png_url: firstImage?.url || null,
         project_id: form.project_id || null,
+        assignee_id: form.assignee_id || null,
+        due_date: form.due_date || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -395,15 +401,38 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
                   </div>
                 </div>
 
-                {!isGuest && projects.length > 0 && (
-                  <div className="form-group">
-                    <label className="label">Project <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>optional</span></label>
-                    <select className="input" value={form.project_id} onChange={set('project_id')}>
-                      <option value="">No project</option>
-                      {projects.map(p => (
-                        <option key={p.id} value={p.id}>{p.title}</option>
-                      ))}
-                    </select>
+                {!isGuest && (
+                  <div className="form-grid form-grid-2">
+                    {projects.length > 0 && (
+                      <div className="form-group">
+                        <label className="label">Project <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>optional</span></label>
+                        <select className="input" value={form.project_id} onChange={set('project_id')}>
+                          <option value="">No project</option>
+                          {projects.map(p => (
+                            <option key={p.id} value={p.id}>{p.title}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {users.length > 0 && (
+                      <div className="form-group">
+                        <label className="label">Assignee <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>optional</span></label>
+                        <AssigneeSelect
+                          users={users}
+                          value={form.assignee_id}
+                          onChange={(id) => setForm(f => ({ ...f, assignee_id: id }))}
+                        />
+                      </div>
+                    )}
+
+                    <div className="form-group">
+                      <label className="label">Due Date <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>optional</span></label>
+                      <DatePicker
+                        value={form.due_date}
+                        onChange={(d) => setForm(f => ({ ...f, due_date: d }))}
+                      />
+                    </div>
                   </div>
                 )}
 

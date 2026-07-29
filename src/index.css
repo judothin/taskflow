@@ -337,7 +337,7 @@ body.has-bg-image .completed-results {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   width: 100%;
-  max-width: 640px;
+  max-width: 720px;
   max-height: 90dvh;
   display: flex;
   flex-direction: column;

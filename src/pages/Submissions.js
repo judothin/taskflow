@@ -2,9 +2,12 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
+import { fetchTeamMembers } from '../lib/teams';
 import { awardTaskCreatedXp } from '../lib/xp';
 import { format } from 'date-fns';
 import ModalPortal from '../components/ModalPortal';
+import AssigneeSelect from '../components/AssigneeSelect';
+import DatePicker from '../components/DatePicker';
 import './Submissions.css';
 
 const TABS = [
@@ -13,7 +16,7 @@ const TABS = [
   { value: 'declined', label: 'Declined' },
 ];
 
-function SubmissionCard({ submission, onRefresh }) {
+function SubmissionCard({ submission, users = [], onRefresh }) {
   const { user } = useAuth();
   const fileRef  = useRef();
 
@@ -22,6 +25,8 @@ function SubmissionCard({ submission, onRefresh }) {
   const [noticedBy,  setNoticedBy]  = useState(submission.noticed_by || '');
   const [roi,        setRoi]        = useState('medium');
   const [complexity, setComplexity] = useState('medium');
+  const [assigneeId, setAssigneeId] = useState('');
+  const [dueDate,    setDueDate]    = useState('');
   const [notes,      setNotes]      = useState(submission.notes      || '');
   const [lightboxIdx, setLightboxIdx] = useState(null);
   const [saving,  setSaving]  = useState(false);
@@ -85,6 +90,8 @@ function SubmissionCard({ submission, onRefresh }) {
         png_url: finalImgs[0] || null, roi, complexity,
         status: 'open', date_received: submission.created_at, updated_at: now,
         created_by: user?.id || null, is_guest: true,
+        assignee_id: assigneeId || null,
+        due_date: dueDate || null,
       });
       if (taskErr) throw taskErr;
       awardTaskCreatedXp(user?.id);
@@ -193,6 +200,21 @@ function SubmissionCard({ submission, onRefresh }) {
               </div>
             )}
 
+            {isPending && (
+              <div className="sub-field-row">
+                {users.length > 0 && (
+                  <div className="sub-field">
+                    <label className="sub-label">Assignee <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: 11 }}>optional</span></label>
+                    <AssigneeSelect users={users} value={assigneeId} onChange={setAssigneeId} />
+                  </div>
+                )}
+                <div className="sub-field">
+                  <label className="sub-label">Due Date <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: 11 }}>optional</span></label>
+                  <DatePicker value={dueDate} onChange={setDueDate} />
+                </div>
+              </div>
+            )}
+
             <div className="sub-field">
               <label className="sub-label">Notes <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: 11 }}>internal only</span></label>
               <textarea
@@ -287,15 +309,20 @@ function SubmissionCard({ submission, onRefresh }) {
 export default function Submissions() {
   const { activeTeamId } = useTeam();
   const [allSubmissions, setAllSubmissions] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState('pending');
 
   const fetchData = useCallback(async () => {
-    if (!activeTeamId) { setAllSubmissions([]); setLoading(false); return; }
+    if (!activeTeamId) { setAllSubmissions([]); setUsers([]); setLoading(false); return; }
     setLoading(true);
-    const { data } = await supabase.from('submissions').select('*')
-      .eq('team_id', activeTeamId).order('created_at', { ascending: false });
+    const [{ data }, members] = await Promise.all([
+      supabase.from('submissions').select('*')
+        .eq('team_id', activeTeamId).order('created_at', { ascending: false }),
+      fetchTeamMembers(activeTeamId),
+    ]);
     setAllSubmissions(data || []);
+    setUsers(members || []);
     setLoading(false);
   }, [activeTeamId]);
 
@@ -336,7 +363,7 @@ export default function Submissions() {
         </div>
       ) : (
         <div className="sub-grid">
-          {visible.map(s => <SubmissionCard key={s.id} submission={s} onRefresh={fetchData} />)}
+          {visible.map(s => <SubmissionCard key={s.id} submission={s} users={users} onRefresh={fetchData} />)}
         </div>
       )}
     </div>

@@ -14,9 +14,21 @@
   position: fixed;
   top: 0;
   left: 0;
-  height: 100vh;
+  /* `bottom: 0` instead of `height: 100vh` — the text-size control (Settings >
+     Accessibility) scales the page via CSS `zoom`, and a zoomed root's `vh`
+     unit no longer lines up with the real physical viewport (it's computed in
+     the zoomed coordinate space), so a `100vh` box drifted short of or past
+     the actual window edge as the zoom level changed. Anchoring both edges of
+     this `position: fixed` box directly to the viewport (its containing
+     block) is exact at any zoom level — no vh involved. */
+  bottom: 0;
   z-index: 100;
-  overflow: hidden;
+  /* `overflow-x: hidden` keeps the collapse-to-64px transition clean; `y: auto`
+     lets the sidebar scroll internally on the rare chance zoomed content
+     (icons, padding, labels all grow with `zoom`) is still taller than the
+     viewport, instead of clipping nav items / the footer off unreachably. */
+  overflow-x: hidden;
+  overflow-y: auto;
   /* !important beats the global `* { transition: … }` rule in index.css,
      which otherwise drops `width` from the transition and makes it snap. */
   transition: width 0.26s cubic-bezier(0.4, 0, 0.2, 1),
@@ -655,7 +667,10 @@
     width: 280px;
     z-index: 300;
     transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-    height: 100dvh;
+    /* No explicit height here — the base rule's `top: 0; bottom: 0;` already
+       spans the viewport exactly and (unlike `height: 100dvh`) stays correct
+       under the text-size zoom. An explicit `height` here would override
+       `bottom` and reintroduce the mismatch on mobile specifically. */
     padding-top: env(safe-area-inset-top);
   }
 

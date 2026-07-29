@@ -9,6 +9,7 @@ import Avatar from './Avatar';
 import FeedbackContent from './FeedbackContent';
 import TaskSubtasks from './TaskSubtasks';
 import AnimatedPopover from './AnimatedPopover';
+import DatePicker from './DatePicker';
 import ModalPortal from './ModalPortal';
 
 const STATUS_MAP = {
@@ -44,12 +45,14 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
   const [completing, setCompleting]       = useState(false);
   const [isQueued, setIsQueued]           = useState(false);
   const [projectPopover, setProjectPopover] = useState(false);
+  const [assigneePopover, setAssigneePopover] = useState(false);
   const [roiEdit, setRoiEdit]             = useState(false);
   const [statusEdit, setStatusEdit]       = useState(false);
   const [editingPage, setEditingPage]     = useState(false);
   const [pageDraft, setPageDraft]         = useState('');
   const popoverRef                        = useRef(null);
   const projectPopoverRef                 = useRef(null);
+  const assigneePopoverRef                = useRef(null);
   const roiRef                            = useRef(null);
   const statusRef                         = useRef(null);
   const cancelPageRef                     = useRef(false);
@@ -58,6 +61,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
   const canQueue        = task.status !== 'in_progress' && task.status !== 'completed';
   const canComplete     = task.status !== 'completed';
   const linkedProject   = projects.find(p => p.id === task.project_id) || null;
+  const assignee        = users.find(u => u.id === task.assignee_id) || null;
 
   useEffect(() => {
     if (!canQueue) { setIsQueued(false); return; }
@@ -88,6 +92,16 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
     return () => document.removeEventListener('mousedown', handler);
   }, [projectPopover]);
 
+  useEffect(() => {
+    if (!assigneePopover) return;
+    const handler = (e) => {
+      if (assigneePopoverRef.current && !assigneePopoverRef.current.contains(e.target))
+        setAssigneePopover(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [assigneePopover]);
+
   // Close the ROI / status quick-edit popovers on an outside click.
   useEffect(() => {
     if (!roiEdit && !statusEdit) return;
@@ -114,6 +128,15 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
     setProjectPopover(false);
     onDeleted?.();
   };
+
+  const handleAssignPerson = async (userId) => {
+    const newId = task.assignee_id === userId ? null : userId;
+    await supabase.from('tasks').update({ assignee_id: newId, updated_at: new Date().toISOString() }).eq('id', task.id);
+    setAssigneePopover(false);
+    onDeleted?.();
+  };
+
+  const handleSetDueDate = (dateStr) => patchTask({ due_date: dateStr });
 
   const chooseRoi = (roi) => { setRoiEdit(false); if (roi !== task.roi) patchTask({ roi }); };
 
@@ -355,6 +378,70 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
                 </AnimatedPopover>
               </span>
             )}
+
+            {/* Assignee — click to change inline (optional team member) */}
+            {users.length > 0 && (
+              <span className="badge-edit-wrap" ref={assigneePopoverRef}>
+                {assignee ? (
+                  <button
+                    className="badge badge-assignee badge-editable"
+                    title={`Assigned to ${assignee.first_name} ${assignee.last_name} — click to change`}
+                    onClick={(e) => { e.stopPropagation(); setAssigneePopover(v => !v); setRoiEdit(false); setStatusEdit(false); }}
+                  >
+                    <Avatar
+                      src={assignee.avatar_url}
+                      color={assignee.color || '#6366f1'}
+                      initials={`${assignee.first_name[0]}${assignee.last_name[0]}`}
+                      size={14}
+                    />
+                    <span className="badge-project-text">{assignee.first_name} {assignee.last_name}</span>
+                  </button>
+                ) : (
+                  <button
+                    className="badge badge-add-project"
+                    title="Assign a team member"
+                    onClick={(e) => { e.stopPropagation(); setAssigneePopover(v => !v); setRoiEdit(false); setStatusEdit(false); }}
+                  >
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
+                    </svg>
+                    Assignee
+                  </button>
+                )}
+
+                <AnimatedPopover open={assigneePopover} className="card-edit-popover card-edit-popover-wide" onClick={(e) => e.stopPropagation()}>
+                  <p className="card-edit-popover-label">Assign to</p>
+                  <div className="card-edit-popover-scroll">
+                    {users.map(u => {
+                      const active = task.assignee_id === u.id;
+                      return (
+                        <button key={u.id} className={`card-edit-project-option ${active ? 'card-edit-project-option-active' : ''}`} onClick={() => handleAssignPerson(u.id)}>
+                          <Avatar
+                            src={u.avatar_url}
+                            color={u.color || '#6366f1'}
+                            initials={`${u.first_name[0]}${u.last_name[0]}`}
+                            size={20}
+                          />
+                          <span style={{ flex: 1 }}>{u.first_name} {u.last_name}</span>
+                          {active && (
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {assignee && (
+                    <div className="card-edit-project-remove-wrap">
+                      <button className="card-edit-project-remove" onClick={() => handleAssignPerson(task.assignee_id)}>
+                        Unassign
+                      </button>
+                    </div>
+                  )}
+                </AnimatedPopover>
+              </span>
+            )}
           </div>
 
           {/* Page — click the pencil to edit inline */}
@@ -425,11 +512,13 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
             <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>
               Noticed by <strong style={{ color: 'var(--text-muted)' }}>{task.noticed_by}</strong>
             </span>
-            {task.date_received && (
-              <span style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'var(--mono)' }}>
-                {format(new Date(task.date_received), 'MMM d, yyyy')}
-              </span>
-            )}
+            <DatePicker
+              variant="badge"
+              value={task.due_date}
+              completed={task.status === 'completed'}
+              placeholder="Due date"
+              onChange={handleSetDueDate}
+            />
           </div>
         </div>
 

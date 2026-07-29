@@ -23,10 +23,11 @@ const isUrl = (str) => { try { return Boolean(new URL(str)) && /^https?:\/\//i.t
 const shortenUrl = (url) => { try { const u = new URL(url); const path = u.pathname.replace(/\/$/, ''); return u.hostname + (path.length > 28 ? path.slice(0, 28) + '…' : path); } catch { return url; } };
 const namesOf = (t) => (t.completed_by || '').split(',').map(s => s.trim()).filter(Boolean);
 
-function CompletedRow({ task, onEdit, onDeleted }) {
+function CompletedRow({ task, users = [], onEdit, onDeleted }) {
   const [imgOpen, setImgOpen] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const assignee = users.find(u => u.id === task.assignee_id) || null;
 
   const handleDelete = async () => {
     await supabase.from('tasks').delete().eq('id', task.id);
@@ -70,6 +71,22 @@ function CompletedRow({ task, onEdit, onDeleted }) {
             <div className="meta-item">
               <span className="meta-label">Completed By</span>
               <span className="meta-value" style={{ color: 'var(--success)' }}>{task.completed_by || '—'}</span>
+            </div>
+            <div className="meta-item">
+              <span className="meta-label">Assignee</span>
+              {assignee ? (
+                <span className="meta-value" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Avatar
+                    src={assignee.avatar_url}
+                    color={assignee.color || '#6366f1'}
+                    initials={`${assignee.first_name[0]}${assignee.last_name[0]}`}
+                    size={18}
+                  />
+                  {assignee.first_name} {assignee.last_name}
+                </span>
+              ) : (
+                <span className="meta-value">—</span>
+              )}
             </div>
             <div className="meta-item">
               <span className="meta-label">Received</span>
@@ -325,6 +342,7 @@ export default function Completed() {
                   <CompletedRow
                     key={task.id}
                     task={task}
+                    users={users}
                     onEdit={setEditTask}
                     onDeleted={fetchData}
                   />

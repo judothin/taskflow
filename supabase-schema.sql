@@ -41,6 +41,8 @@ create table if not exists public.tasks (
   date_completed timestamptz,
   completed_by text,
   created_by uuid references public.profiles(id) on delete set null,
+  assignee_id uuid references public.profiles(id) on delete set null,
+  due_date date,
   is_guest boolean default false,
   updated_at timestamptz default now(),
   created_at timestamptz default now()
@@ -51,6 +53,14 @@ alter table public.tasks add column if not exists attachments jsonb default '[]'
 
 -- Migration: subtasks / checklist ([{ id, text, done }])
 alter table public.tasks add column if not exists subtasks jsonb default '[]'::jsonb;
+
+-- Migration: optional assignee (team member responsible for the task)
+alter table public.tasks add column if not exists assignee_id uuid references public.profiles(id) on delete set null;
+
+-- Migration: optional due date. Plain `date` (not timestamptz) — a due date
+-- is a calendar day, not a point in time, so there's no time-of-day/timezone
+-- to reconcile.
+alter table public.tasks add column if not exists due_date date;
 
 
 -- 2b. USER PREFERENCES
