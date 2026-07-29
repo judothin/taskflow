@@ -203,8 +203,72 @@ const CHANGELOG_2_0_0 = [
   },
 ];
 
+const CHANGELOG_2_1_0 = [
+  {
+    group: 'Ranks & badges',
+    items: [
+      'Earn ranks automatically as you use TaskFlow — Level badges (Bronze → Supreme) as you level up, Tenure badges for how long you\'ve been a member, and Task badges for hitting completion milestones (5 all the way to 1,000).',
+      'Your completed tasks are now counted automatically toward the Task badges.',
+      'See every badge — earned and locked — in the new Ranks & Badges section in Settings, and click any earned badge to choose which ones show in the top bar.',
+    ],
+  },
+  {
+    group: 'A brand-new top bar',
+    items: [
+      'Every page now has a persistent, frosted top bar showing where you are (breadcrumb), your rank badges, your level progress, and a live date & time.',
+      'Page actions moved up here too — New Task, Quick Log, Edit Dashboard, New Project and more now live in the top bar, so each page starts right at its content.',
+      'Cleaner pages overall: the big page titles and empty header space are gone.',
+    ],
+  },
+  {
+    group: 'Your Stats',
+    items: [
+      'A new stats card is permanently pinned to Settings, showing your total Tasks Completed and Tasks Created.',
+      'Prefer it on your dashboard? Add the new "Your Stats" widget from the Add Widget menu — resize and place it wherever you like.',
+    ],
+  },
+  {
+    group: 'Pomodoro',
+    items: [
+      'A dedicated Pomodoro page with your in-progress and queued tasks alongside the timer.',
+      'A Pomodoro widget for the dashboard, with custom focus and break lengths.',
+    ],
+  },
+  {
+    group: 'Pets, XP & rewards',
+    items: [
+      'Food & water are now an inventory you earn from creating and completing tasks and from leveling up — spend them to feed and water your pet, complete with a fill animation.',
+      'More ways to earn XP: daily streaks, clearing critical tasks, your first task of the day, and queue completions.',
+      'Pets no longer lose condition over the weekend.',
+    ],
+  },
+  {
+    group: 'Get things done faster',
+    items: [
+      'Bulk actions — hit "Select" on any task-card view to multi-select and add to queue, complete, or delete in one go.',
+      'Universal search — press / to open a command palette and jump to any task, project, file, or submission.',
+      'Keyboard shortcuts: / to search, n for a new task, q for Quick Log.',
+    ],
+  },
+  {
+    group: 'Tasks & cards',
+    items: [
+      'Subtasks & checklists inside any task, with progress shown right on the card and expanded by default.',
+      'Inline quick-edit on cards — change page, project, ROI, status, or add a subtask without opening the task; dropdowns have background blur and smooth open/close animations.',
+    ],
+  },
+  {
+    group: 'Smoother all around',
+    items: [
+      'Reloads are instant now — no white/black flash, the page just appears.',
+      'Subtle entrance animations across the app so content eases in instead of snapping.',
+    ],
+  },
+];
+
 const RELEASES = [
-  { version: 'v2.0.0', title: "What's New", sub: 'Personalize everything — themes, backgrounds & more', groups: CHANGELOG_2_0_0 },
+  { version: 'v2.1.0', title: "What's New", sub: 'Ranks & badges, a new top bar, stats, Pomodoro & more', groups: CHANGELOG_2_1_0 },
+  { version: 'v2.0.0', title: 'Previous update', sub: 'Personalize everything — themes, backgrounds & more', groups: CHANGELOG_2_0_0 },
   { version: 'v1.9.0', title: 'Previous update', sub: 'Customizable dashboard, widgets & notifications', groups: CHANGELOG_1_9_0 },
   { version: 'v1.8.0', title: 'Previous update', sub: 'Dashboard, Completed page & queue improvements', groups: CHANGELOG_1_8_0 },
 ];
