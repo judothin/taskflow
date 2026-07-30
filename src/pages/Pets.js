@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePets } from '../context/PetContext';
+import { useAuth } from '../context/AuthContext';
 import { speciesLabel, animationsFor, ANIMATION_LABELS, framePath } from '../lib/petSpecies';
 import { maxHealthForLevel, unlockedStylesForLevel, sacrificeEligible } from '../lib/petLogic';
 import { userXpToNext, petXpToNext } from '../lib/xp';
 import { BUILTIN_ENVIRONMENTS, environmentUrl } from '../lib/petEnvironments';
+import { visibleIdsFor, toggleVisible, SCENE_CHANGED } from '../lib/petScenePrefs';
 import PetSprite from '../components/PetSprite';
+import PetEnvironment from '../components/PetEnvironment';
 import PetSpinReveal from '../components/PetSpinReveal';
 import LevelBar from '../components/LevelBar';
 import PetInventory from '../components/PetInventory';
@@ -34,8 +37,24 @@ export default function Pets() {
     setPetEnvironment, setPetWalkArea, setPetIdleAnimation, setPetSize, uploadPetEnvironment,
     sacrificeForNewPet,
   } = usePets();
+  const { user } = useAuth();
+  const livingPets = pets.filter(p => !p.is_dead);
   const [viewedId, setViewedId] = useState(null);
   const viewed = pets.find(p => p.id === viewedId) || activePet || pets[0] || null;
+  // Clicking a pet in the scene focuses its stats/food (not the backdrop).
+  const [statFocusId, setStatFocusId] = useState(null);
+  const statFocus = pets.find(p => p.id === statFocusId) || viewed;
+
+  // Which pets are visible in the viewed pet's scene (default: just the owner).
+  const ownerId = viewed?.id;
+  const [visibleIds, setVisibleIds] = useState([]);
+  useEffect(() => {
+    const load = () => setVisibleIds(visibleIdsFor(user?.id, ownerId));
+    load();
+    window.addEventListener(SCENE_CHANGED, load);
+    return () => window.removeEventListener(SCENE_CHANGED, load);
+  }, [user?.id, ownerId]);
+  const visiblePets = livingPets.filter(p => visibleIds.includes(p.id));
 
   // Not reachable via the nav when gamification is off (personally opted
   // out, or the active team has it disabled) — bounce away from direct
@@ -44,7 +63,7 @@ export default function Pets() {
     if (!gamificationEnabled) navigate('/dashboard', { replace: true });
   }, [gamificationEnabled, navigate]);
 
-  const [action, setAction] = useState(null);
+  const [petAction, setPetAction] = useState(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [editingWalkArea, setEditingWalkArea] = useState(false);
@@ -63,15 +82,20 @@ export default function Pets() {
     const handler = (e) => {
       const d = e.detail || {};
       if (d.userXpGained) { setUserPopAmt(d.userXpGained); setUserPopKey(k => (k || 0) + 1); }
-      if (d.petXpGained && viewed && activePet && viewed.id === activePet.id) {
+      if (d.petXpGained && statFocus && activePet && statFocus.id === activePet.id) {
         setPetPopAmt(d.petXpGained); setPetPopKey(k => (k || 0) + 1);
       }
     };
     window.addEventListener('xp-awarded', handler);
     return () => window.removeEventListener('xp-awarded', handler);
-  }, [viewed, activePet]);
+  }, [statFocus, activePet]);
 
-  const selectPet = (id) => { setViewedId(id); setAction(null); setEditingName(false); setEditingWalkArea(false); };
+  const selectPet = (id) => { setViewedId(id); setStatFocusId(id); setEditingName(false); setEditingWalkArea(false); };
+
+  const handleSaveWalkArea = async (area) => {
+    await setPetWalkArea(viewed.id, area);
+    setEditingWalkArea(false);
+  };
 
   // Slider is driven straight off the pet's saved size_scale — setPetSize
   // updates context state immediately, so moving the slider resizes the pet
@@ -85,10 +109,6 @@ export default function Pets() {
     setEditingName(false);
   };
 
-  const handleSaveWalkArea = async (area) => {
-    await setPetWalkArea(viewed.id, area);
-    setEditingWalkArea(false);
-  };
 
   const handleEnvUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -133,9 +153,7 @@ export default function Pets() {
     );
   }
 
-  const maxHealth = viewed ? maxHealthForLevel(viewed.level) : 1;
   const unlockedStyles = viewed ? unlockedStylesForLevel(viewed.level) : 1;
-  const petXpNeeded = viewed ? petXpToNext(viewed.level) : 1;
   const userXpNeeded = userXpToNext(userLevel?.level || 1);
 
   return (
@@ -179,19 +197,15 @@ export default function Pets() {
       {viewed && (
         <div className="pet-detail-grid">
           <div className="card pets-card">
-            <div className="pet-detail-stage" style={{ backgroundImage: `url("${environmentUrl(viewed.environment)}")` }}>
-              <PetSprite
-                petId={viewed.id}
-                species={viewed.species}
-                style={viewed.style}
-                size={140}
-                relativeToStage
-                sizeScale={displayScale}
-                dead={viewed.is_dead}
-                action={action}
-                onActionDone={() => setAction(null)}
-                idleAnimation={viewed.idle_animation}
-                walkArea={viewed.walk_area}
+            <div className="pets-scene-wrap">
+              <PetEnvironment
+                pets={visiblePets}
+                activeId={activePet?.id}
+                focusedId={statFocus?.id}
+                onFocus={setStatFocusId}
+                oneShot={petAction}
+                backgroundUrl={environmentUrl(viewed.environment)}
+                aspectRatio="4 / 3"
               />
               {editingWalkArea && (
                 <WalkAreaEditor
@@ -201,6 +215,28 @@ export default function Pets() {
                 />
               )}
             </div>
+
+            {/* Which pets appear in this environment */}
+            <div className="pets-visible-row">
+              <span className="pets-visible-label">In {viewed.name}'s scene:</span>
+              {livingPets.map(p => {
+                const shown = visibleIds.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    className={`pets-visible-chip ${shown ? 'pets-visible-chip-on' : ''}`}
+                    onClick={() => setVisibleIds(toggleVisible(user?.id, ownerId, p.id))}
+                    title={shown ? `Hide ${p.name} from this scene` : `Show ${p.name} in this scene`}
+                  >
+                    <span className="pets-visible-eye">{shown ? '👁' : '🚫'}</span>
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="pets-card-desc" style={{ marginTop: 10, marginBottom: 0 }}>
+              Click a pet to focus its stats, drag fighting pets apart. Configuring <strong>{viewed.name}</strong>.
+            </p>
 
             {editingName ? (
               <form className="pet-rename-form" onSubmit={handleRename}>
@@ -226,8 +262,7 @@ export default function Pets() {
                   <button
                     key={anim}
                     className="btn btn-secondary btn-sm"
-                    onClick={() => setAction(anim)}
-                    disabled={!!action}
+                    onClick={() => setPetAction({ petId: viewed.id, anim, key: (petAction?.key || 0) + 1 })}
                   >
                     {ANIMATION_LABELS[anim] || anim}
                   </button>
@@ -247,15 +282,15 @@ export default function Pets() {
 
           <div className="pets-side-col">
             <div className="card pets-card">
-              <h2 className="pets-card-title">Stats</h2>
+              <h2 className="pets-card-title">Stats · {statFocus.name}</h2>
               <div className="pet-stat-block">
-                <StatBar label="HP"    value={viewed.health} max={maxHealth} color="#f87171" />
-                <StatBar label="Food"  value={viewed.hunger} max={100}      color="#fbbf24" />
-                <StatBar label="Water" value={viewed.water}  max={100}      color="#60a5fa" />
+                <StatBar label="HP"    value={statFocus.health} max={maxHealthForLevel(statFocus.level)} color="#f87171" />
+                <StatBar label="Food"  value={statFocus.hunger} max={100} color="#fbbf24" />
+                <StatBar label="Water" value={statFocus.water}  max={100} color="#60a5fa" />
               </div>
               <LevelBar
-                label={viewed.name} level={viewed.level} xp={viewed.xp}
-                xpToNext={petXpNeeded} color="#a78bfa"
+                label={statFocus.name} level={statFocus.level} xp={statFocus.xp}
+                xpToNext={petXpToNext(statFocus.level)} color="#a78bfa"
                 popKey={petPopKey} popAmount={petPopAmt}
               />
             </div>
@@ -263,9 +298,9 @@ export default function Pets() {
             <div className="card pets-card">
               <h2 className="pets-card-title">Inventory</h2>
               <p className="pets-card-desc">
-                Earn food &amp; water by creating tasks, completing them, and leveling up. Click to feed or water {viewed.name}.
+                Earn food &amp; water by creating tasks, completing them, and leveling up. Click to feed or water {statFocus.name}.
               </p>
-              <PetInventory pet={viewed} />
+              <PetInventory pet={statFocus} />
             </div>
 
             <div className="card pets-card">

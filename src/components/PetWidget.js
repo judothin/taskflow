@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePets } from '../context/PetContext';
+import { useAuth } from '../context/AuthContext';
 import { WidgetHead } from './dashboardWidgets';
 import { maxHealthForLevel, FEED_AMOUNT, WATER_AMOUNT } from '../lib/petLogic';
 import { petXpToNext } from '../lib/xp';
 import { environmentUrl } from '../lib/petEnvironments';
-import PetSprite from './PetSprite';
+import { visibleIdsFor, SCENE_CHANGED } from '../lib/petScenePrefs';
+import PetEnvironment from './PetEnvironment';
 import LevelBar from './LevelBar';
 import PetInventory from './PetInventory';
 import PetWidgetSettings from './PetWidgetSettings';
@@ -42,7 +44,27 @@ const StatRing = React.forwardRef(function StatRing({ label, icon, value, max },
 
 export default function PetWidget() {
   const navigate = useNavigate();
-  const { activePet } = usePets();
+  const { pets, activePet } = usePets();
+  const { user } = useAuth();
+  const livingPets = pets.filter(p => !p.is_dead);
+
+  // Which pet the stats/inventory below reflect — clicking a pet in the scene
+  // focuses it; defaults to the active pet. The backdrop stays the active
+  // pet's environment regardless of focus.
+  const [focusedId, setFocusedId] = useState(null);
+  const focusedPet = pets.find(p => p.id === focusedId) || activePet;
+
+  // Respect the per-scene visibility picked on the Pets page (default: the
+  // active pet only).
+  const ownerId = activePet?.id;
+  const [visibleIds, setVisibleIds] = useState([]);
+  useEffect(() => {
+    const load = () => setVisibleIds(visibleIdsFor(user?.id, ownerId));
+    load();
+    window.addEventListener(SCENE_CHANGED, load);
+    return () => window.removeEventListener(SCENE_CHANGED, load);
+  }, [user?.id, ownerId]);
+  const visiblePets = livingPets.filter(p => visibleIds.includes(p.id));
 
   const [petPopKey, setPetPopKey] = useState(null);
   const [petPopAmt, setPetPopAmt] = useState(0);
@@ -72,11 +94,11 @@ export default function PetWidget() {
   }, []);
 
   useEffect(() => {
-    if (activePet && !animatingRef.current.hunger) setDisplayHunger(activePet.hunger);
-  }, [activePet?.id, activePet?.hunger]);
+    if (focusedPet && !animatingRef.current.hunger) setDisplayHunger(focusedPet.hunger);
+  }, [focusedPet?.id, focusedPet?.hunger]);
   useEffect(() => {
-    if (activePet && !animatingRef.current.water) setDisplayWater(activePet.water);
-  }, [activePet?.id, activePet?.water]);
+    if (focusedPet && !animatingRef.current.water) setDisplayWater(focusedPet.water);
+  }, [focusedPet?.id, focusedPet?.water]);
 
   const launchTrail = useCallback((kind, sourceEl, ringRef, setDisplay, startValue, amount) => {
     const containerEl = bodyRef.current;
@@ -121,40 +143,38 @@ export default function PetWidget() {
     else launchTrail('water', sourceEl, waterRingRef, setDisplayWater, displayWater, WATER_AMOUNT);
   }, [launchTrail, displayHunger, displayWater]);
 
-  if (!activePet) {
+  if (!activePet || !focusedPet) {
     return (
       <>
-        <WidgetHead icon={PET_ICON} title="Your Pet" />
+        <WidgetHead icon={PET_ICON} title="Your Pets" />
         <p className="widget-empty">No active pet yet.</p>
       </>
     );
   }
 
-  const maxHealth = maxHealthForLevel(activePet.level);
+  const maxHealth = maxHealthForLevel(focusedPet.level);
 
   return (
     <>
       <WidgetHead
         icon={PET_ICON}
-        title="Your Pet"
-        action={<span className="widget-count">Lv {activePet.level}</span>}
+        title="Your Pets"
+        action={<span className="widget-count">Lv {focusedPet.level}</span>}
       />
       <div className="pet-widget-body" ref={bodyRef}>
-        <div className="pet-widget-stage" style={{ backgroundImage: `url("${environmentUrl(activePet.environment)}")` }}>
-          <PetSprite
-            petId={activePet.id}
-            species={activePet.species}
-            style={activePet.style}
-            size={84}
-            relativeToStage
-            sizeScale={activePet.size_scale ?? 1}
-            dead={activePet.is_dead}
-            idleAnimation={activePet.idle_animation}
-            walkArea={activePet.walk_area}
+        <div className="pet-widget-stage">
+          <PetEnvironment
+            pets={visiblePets}
+            compact
+            height="100%"
+            activeId={activePet.id}
+            focusedId={focusedPet.id}
+            onFocus={setFocusedId}
+            backgroundUrl={environmentUrl(activePet.environment)}
           />
 
           <div className="pet-widget-rings">
-            <StatRing label="Health" icon="❤️" value={activePet.health} max={maxHealth} />
+            <StatRing label="Health" icon="❤️" value={focusedPet.health} max={maxHealth} />
             <StatRing ref={foodRingRef} label="Food" icon="🍗" value={displayHunger} max={100} />
             <StatRing ref={waterRingRef} label="Water" icon="💧" value={displayWater} max={100} />
           </div>
@@ -173,17 +193,17 @@ export default function PetWidget() {
         </div>
 
         <div className="pet-widget-name">
-          {activePet.name}
-          {activePet.is_dead && <span className="pet-widget-dead-tag">Deceased</span>}
+          {focusedPet.name}
+          {focusedPet.is_dead && <span className="pet-widget-dead-tag">Deceased</span>}
         </div>
 
         <LevelBar
-          label={activePet.name} level={activePet.level} xp={activePet.xp}
-          xpToNext={petXpToNext(activePet.level)} color="#a78bfa"
+          label={focusedPet.name} level={focusedPet.level} xp={focusedPet.xp}
+          xpToNext={petXpToNext(focusedPet.level)} color="#a78bfa"
           popKey={petPopKey} popAmount={petPopAmt}
         />
 
-        <PetInventory pet={activePet} onUse={handleUse} />
+        <PetInventory pet={focusedPet} onUse={handleUse} />
 
         <button className="pet-widget-manage" onClick={() => navigate('/pets')}>
           Manage pets

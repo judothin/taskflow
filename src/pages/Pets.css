@@ -139,6 +139,45 @@
   margin: 0 0 14px;
 }
 
+/* ── Shared scene ────────────────────────────────────────── */
+/* Relatively-positioned so the WalkAreaEditor overlay fills the stage. */
+.pets-scene-wrap { position: relative; }
+
+/* Which pets appear in this environment */
+.pets-visible-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 12px;
+}
+.pets-visible-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+.pets-visible-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-3);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.pets-visible-chip-on {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: var(--accent-glow);
+  color: var(--text);
+}
+.pets-visible-eye { font-size: 12px; line-height: 1; }
+
 /* ── Pet size slider ─────────────────────────────────────── */
 .pet-size-row {
   display: flex;

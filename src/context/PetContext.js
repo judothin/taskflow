@@ -112,6 +112,38 @@ export function PetProvider({ children }) {
     await refresh();
   }, [uid, userLevel, pets, refresh]);
 
+  // One-click "care" used by the shared environment: spends up to one food
+  // AND one water (whatever's in stock) and tops the pet up by the set
+  // amounts. Returns what was actually given so the UI can pop indicators.
+  const carePet = useCallback(async (petId) => {
+    if (!uid) return { food: 0, water: 0 };
+    const pet = pets.find(p => p.id === petId);
+    if (!pet) return { food: 0, water: 0 };
+    const haveFood = (userLevel?.food || 0) > 0;
+    const haveWater = (userLevel?.water || 0) > 0;
+    if (!haveFood && !haveWater) return { food: 0, water: 0 };
+
+    const petPatch = {};
+    const userPatch = {};
+    let gaveFood = 0, gaveWater = 0;
+    if (haveFood) {
+      petPatch.hunger = Math.min(HUNGER_MAX, (Number(pet.hunger) || 0) + FEED_AMOUNT);
+      userPatch.food = (userLevel.food || 0) - 1;
+      gaveFood = 1;
+    }
+    if (haveWater) {
+      petPatch.water = Math.min(WATER_MAX, (Number(pet.water) || 0) + WATER_AMOUNT);
+      userPatch.water = (userLevel.water || 0) - 1;
+      gaveWater = 1;
+    }
+    await Promise.all([
+      supabase.from('pets').update(petPatch).eq('id', petId),
+      supabase.from('user_levels').update(userPatch).eq('user_id', uid),
+    ]);
+    await refresh();
+    return { food: gaveFood, water: gaveWater };
+  }, [uid, userLevel, pets, refresh]);
+
   const renamePet = useCallback(async (petId, name) => {
     await supabase.from('pets').update({ name }).eq('id', petId);
     await refresh();
@@ -231,7 +263,7 @@ export function PetProvider({ children }) {
       userLevel, pets, activePet, pendingUnlocks, loading, customEnvironments,
       food, water,
       gamificationEnabled, userGamificationEnabled, setGamificationEnabled,
-      refresh, feedPet, waterPet, renamePet, setActivePet, setPetStyle,
+      refresh, feedPet, waterPet, carePet, renamePet, setActivePet, setPetStyle,
       setPetEnvironment, setPetWalkArea, setPetIdleAnimation, setPetSize, uploadPetEnvironment,
       claimNextPendingUnlock, sacrificeForNewPet,
       currentPopup, dismissPopup,
