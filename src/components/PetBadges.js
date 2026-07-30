@@ -84,23 +84,27 @@ function RankImage({ src, size }) {
 //             With `selectable`, earned badges get a checkbox (checked when in
 //             `selected`) and clicking calls `onToggle(key)`.
 export default function RankBadges({
-  level, createdAt, tasksDone = 0, compact = false, size = 46, labels = false, title,
+  level, createdAt, tasksDone = 0, speciesOwned = 0, speciesTotal = 0, specialFlags = {},
+  compact = false, allEarned = false, size = 46, labels = false, title,
   shown = null, selectable = false, selected = [], onToggle,
 }) {
-  const { levelBadges, ageBadges, taskBadges, earnedCount, total } = getRankBadges(level, createdAt, tasksDone);
+  const { levelBadges, ageBadges, taskBadges, specialBadges, earnedCount, total } =
+    getRankBadges(level, createdAt, tasksDone, { speciesOwned, speciesTotal }, specialFlags);
 
   if (compact) {
-    const earnedAll = [...levelBadges, ...ageBadges, ...taskBadges].filter(b => b.earned);
+    const earnedAll = [...levelBadges, ...taskBadges, ...ageBadges, ...specialBadges].filter(b => b.earned);
     let show;
-    if (Array.isArray(shown)) {
+    if (allEarned) {
+      show = earnedAll;
+    } else if (Array.isArray(shown)) {
       show = earnedAll.filter(b => shown.includes(b.key));
     } else {
       const topLevel = [...levelBadges].reverse().find(b => b.earned);
       const topAge = [...ageBadges].reverse().find(b => b.earned);
       const topTask = [...taskBadges].reverse().find(b => b.earned);
-      show = [topLevel, topAge, topTask].filter(Boolean);
+      const special = specialBadges.filter(b => b.earned);
+      show = [topLevel, topAge, topTask, ...special].filter(Boolean);
     }
-    show = show.slice(0, 5);
     if (!show.length) return null;
     return (
       <div className="pet-badges-compact">
@@ -143,7 +147,19 @@ export default function RankBadges({
                 )}
               </div>
               <div className="pet-badge-name">{b.name}</div>
-              <div className="pet-badge-req">{b.req}</div>
+              {!b.earned && b.target ? (
+                <div className="pet-badge-progress">
+                  <div className="pet-badge-progress-track">
+                    <div
+                      className="pet-badge-progress-fill"
+                      style={{ width: `${Math.min(100, Math.round((b.cur / b.target) * 100))}%` }}
+                    />
+                  </div>
+                  <div className="pet-badge-req">{Math.min(b.cur, b.target)}/{b.target}{b.unit}</div>
+                </div>
+              ) : (
+                <div className="pet-badge-req">{b.req}</div>
+              )}
             </div>
           );
         })}
@@ -157,6 +173,7 @@ export default function RankBadges({
       {section('Level', levelBadges)}
       {section('Tasks', taskBadges)}
       {section('Age', ageBadges)}
+      {section('Special', specialBadges)}
     </div>
   );
 }

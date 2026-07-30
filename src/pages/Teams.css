@@ -142,6 +142,45 @@
 
 .team-member-row:hover { background: var(--bg-3); }
 
+/* Per-member streak chip + admin controls */
+.team-streak-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.team-streak-chip-paused { opacity: 0.7; }
+.team-streak-paused-tag {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  background: var(--bg-4);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.team-streak-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.team-streak-input {
+  width: 52px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-2);
+  color: var(--text);
+}
+.team-streak-input:focus { outline: none; border-color: var(--accent); }
+
 .team-member-info {
   display: flex;
   flex-direction: column;

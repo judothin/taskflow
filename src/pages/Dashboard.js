@@ -21,7 +21,7 @@ import ModalPortal from '../components/ModalPortal';
 import { TopBarPortal } from '../context/HeaderActionsContext';
 import {
   ActivityChartWidget, CompletedTodayWidget, RoiBreakdownWidget,
-  LeaderboardWidget, RecentActivityWidget, StreakWidget, StatsWidget,
+  LeaderboardWidget, RecentActivityWidget, StreakWidget, StatsWidget, BadgesWidget,
 } from '../components/dashboardWidgets';
 import {
   WIDGETS, SIZES, DEFAULT_LAYOUT, loadPrefsCache, savePrefsCache, normalizePrefs, sanitizeLayout, spanFor,
@@ -350,6 +350,7 @@ export default function Dashboard() {
       case 'activityChart':  return <ActivityChartWidget {...widgetCtx} />;
       case 'completedToday': return <CompletedTodayWidget {...widgetCtx} />;
       case 'stats':          return <StatsWidget />;
+      case 'badges':         return <BadgesWidget />;
       case 'notifications':  return <NotificationCenter />;
       case 'roiBreakdown':   return <RoiBreakdownWidget {...widgetCtx} />;
       case 'leaderboard':    return <LeaderboardWidget {...widgetCtx} />;

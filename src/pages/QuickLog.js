@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { awardTaskCreatedXp, awardTaskCompletedXp } from '../lib/xp';
+import { bumpTeamStreak } from '../lib/streak';
 import Avatar from '../components/Avatar';
 import FeedbackEditor from '../components/FeedbackEditor';
 import ModalPortal from '../components/ModalPortal';
@@ -75,6 +76,7 @@ export default function QuickLogModal({ onClose }) {
     if (err) { setError(err.message); return; }
     awardTaskCreatedXp(user?.id);
     awardTaskCompletedXp(user?.id, 'medium');
+    bumpTeamStreak(activeTeamId);
     window.dispatchEvent(new CustomEvent('tasks-changed'));
     setSuccessCount(c => c + 1);
     reset();

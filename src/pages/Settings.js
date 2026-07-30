@@ -7,6 +7,8 @@ import AvatarCrop from '../components/AvatarCrop';
 import RankBadges from '../components/PetBadges';
 import AccountStatsCard from '../components/AccountStatsCard';
 import { getRankBadges } from '../lib/petBadges';
+import { SPECIES_KEYS } from '../lib/petSpecies';
+import { useSpecialBadges } from '../context/SpecialBadgesContext';
 import { loadShownBadges, saveShownBadges } from '../lib/badgePrefs';
 import ModalPortal from '../components/ModalPortal';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
@@ -48,7 +50,8 @@ function ColorRow({ field, value, custom, onChange, onReset }) {
 
 export default function Settings() {
   const { profile, refreshProfile, user } = useAuth();
-  const { userGamificationEnabled, setGamificationEnabled, userLevel } = usePets();
+  const { userGamificationEnabled, setGamificationEnabled, userLevel, pets } = usePets();
+  const { specialFlags } = useSpecialBadges();
   const [shownBadges, setShownBadges] = useState(() => loadShownBadges(user?.id));
   const {
     getColor, setColor, resetColor, resetAll, isCustom, colors,
@@ -103,6 +106,7 @@ export default function Settings() {
     first_name: profile?.first_name || '',
     last_name:  profile?.last_name  || '',
     color:      profile?.color      || '#6366f1',
+    start_date: profile?.start_date || '',
   });
 
   // Avatar state
@@ -121,6 +125,12 @@ export default function Settings() {
 
   const set   = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
   const setPw = (k) => (e) => setPwForm(f => ({ ...f, [k]: e.target.value }));
+
+  // Tenure badges run off the editable start date (e.g. hire date), falling
+  // back to the account creation date.
+  const effectiveStart = profile?.start_date || user?.created_at;
+  const daysSince = (d) => (d ? Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / 86400000)) : 0);
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   const handleAvatarChange = (e) => {
     const file = e.target.files[0];
@@ -179,7 +189,7 @@ export default function Settings() {
       const avatar_url = await uploadAvatar();
       const { error } = await supabase
         .from('profiles')
-        .update({ first_name: form.first_name, last_name: form.last_name, color: form.color, avatar_url })
+        .update({ first_name: form.first_name, last_name: form.last_name, color: form.color, avatar_url, start_date: form.start_date || null })
         .eq('id', profile.id);
       if (error) throw error;
       setAvatarFile(null);
@@ -214,11 +224,14 @@ export default function Settings() {
 
   // Which badges show in the top bar. Default (uncustomized) = the highest
   // earned per track; toggling a badge makes the selection explicit.
-  const rb = getRankBadges(userLevel?.level, user?.created_at, userLevel?.tasks_completed);
+  const speciesOwned = new Set((pets || []).map(p => p.species)).size;
+  const speciesTotal = SPECIES_KEYS.length;
+  const rb = getRankBadges(userLevel?.level, effectiveStart, userLevel?.tasks_completed, { speciesOwned, speciesTotal }, specialFlags);
   const autoKeys = [
     [...rb.levelBadges].reverse().find(b => b.earned)?.key,
     [...rb.taskBadges].reverse().find(b => b.earned)?.key,
     [...rb.ageBadges].reverse().find(b => b.earned)?.key,
+    ...rb.specialBadges.filter(b => b.earned).map(b => b.key),
   ].filter(Boolean);
   const effectiveShown = shownBadges ?? autoKeys;
   const toggleBadge = (key) => {
@@ -301,6 +314,19 @@ export default function Settings() {
             <div className="form-group">
               <label className="label">Last Name</label>
               <input className="input" value={form.last_name} onChange={set('last_name')} required />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="label">
+              Start Date
+              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}> — e.g. your hire date; sets your tenure badges</span>
+            </label>
+            <input type="date" className="input" value={form.start_date} onChange={set('start_date')} max={todayStr} />
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+              {form.start_date
+                ? <>Day <strong style={{ color: 'var(--text)' }}>{daysSince(form.start_date) + 1}</strong> — {daysSince(form.start_date).toLocaleString()} day{daysSince(form.start_date) !== 1 ? 's' : ''} as a member.</>
+                : <>No start date set — using your account creation date ({daysSince(user?.created_at).toLocaleString()} days).</>}
             </div>
           </div>
 
@@ -609,8 +635,11 @@ export default function Settings() {
           </p>
           <RankBadges
             level={userLevel?.level}
-            createdAt={user?.created_at}
+            createdAt={effectiveStart}
             tasksDone={userLevel?.tasks_completed}
+            speciesOwned={speciesOwned}
+            speciesTotal={speciesTotal}
+            specialFlags={specialFlags}
             selectable
             selected={effectiveShown}
             onToggle={toggleBadge}

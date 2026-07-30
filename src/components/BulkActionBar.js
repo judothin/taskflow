@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { useAuth } from '../context/AuthContext';
 import { awardTaskCompletedXp } from '../lib/xp';
+import { bumpTeamStreak } from '../lib/streak';
 import Avatar from './Avatar';
 import './BulkActionBar.css';
 
@@ -130,6 +131,7 @@ export default function BulkActionBar({ selectedTasks = [], users = [], onChange
     for (const t of completable) {
       await awardTaskCompletedXp(user?.id, t.complexity, { roi: t.roi, status: t.status, wasQueued: t.status === 'in_progress' });
     }
+    if (completable.length) bumpTeamStreak(activeTeamId);
     await supabase.from('queue').delete().in('task_id', ids);
 
     // If we just completed whatever was in progress, promote the next queued

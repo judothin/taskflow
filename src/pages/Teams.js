@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers, regenerateInviteCode, setMemberRole, removeMember, renameTeam, setTeamGamification } from '../lib/teams';
+import { fetchTeamStreaks, setWeekendStreaks, adminSetStreak, adminSetStreakPaused } from '../lib/streak';
 import TeamJoinCreateForm from '../components/TeamJoinCreateForm';
 import Avatar from '../components/Avatar';
 import ModalPortal from '../components/ModalPortal';
@@ -38,6 +39,8 @@ export default function Teams() {
   const { teams, activeTeam, activeTeamId, switchTeam, isOwner, isAdmin, refreshTeams } = useTeam();
 
   const [members, setMembers] = useState([]);
+  const [streaks, setStreaks] = useState({});
+  const [savingWeekend, setSavingWeekend] = useState(false);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(null); // member object, or null
@@ -52,10 +55,14 @@ export default function Teams() {
   const [savingGamification, setSavingGamification] = useState(false);
 
   const loadMembers = useCallback(async () => {
-    if (!activeTeamId) { setMembers([]); setLoadingMembers(false); return; }
+    if (!activeTeamId) { setMembers([]); setStreaks({}); setLoadingMembers(false); return; }
     setLoadingMembers(true);
-    const list = await fetchTeamMembers(activeTeamId);
+    const [list, streakMap] = await Promise.all([
+      fetchTeamMembers(activeTeamId),
+      fetchTeamStreaks(activeTeamId),
+    ]);
     setMembers(list);
+    setStreaks(streakMap);
     setLoadingMembers(false);
   }, [activeTeamId]);
 
@@ -146,6 +153,44 @@ export default function Teams() {
       setError(err.message || 'Failed to update setting');
     } finally {
       setSavingGamification(false);
+    }
+  };
+
+  const handleToggleWeekend = async () => {
+    setSavingWeekend(true);
+    setError('');
+    try {
+      await setWeekendStreaks(activeTeamId, activeTeam.weekend_streaks === false);
+      await refreshTeams();
+    } catch (err) {
+      setError(err.message || 'Failed to update setting');
+    } finally {
+      setSavingWeekend(false);
+    }
+  };
+
+  const handleSetStreak = async (memberId, value) => {
+    const n = Math.max(0, parseInt(value, 10) || 0);
+    if (n === (streaks[memberId]?.current_streak || 0)) return;
+    setError('');
+    try {
+      await adminSetStreak(activeTeamId, memberId, n);
+      await loadMembers();
+    } catch (err) {
+      setError(err.message || 'Failed to set streak');
+    }
+  };
+
+  const handleTogglePauseStreak = async (memberId) => {
+    setError('');
+    setBusyId(memberId);
+    try {
+      await adminSetStreakPaused(activeTeamId, memberId, !streaks[memberId]?.paused);
+      await loadMembers();
+    } catch (err) {
+      setError(err.message || 'Failed to update streak');
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -248,6 +293,35 @@ export default function Teams() {
                       </div>
                       <span className={`team-role-badge team-role-badge-${m.role}`}>{m.role}</span>
 
+                      <span className={`team-streak-chip ${streaks[m.id]?.paused ? 'team-streak-chip-paused' : ''}`} title={streaks[m.id]?.paused ? 'Streak paused' : 'Current streak'}>
+                        🔥 {streaks[m.id]?.current_streak || 0}
+                        {streaks[m.id]?.paused && <span className="team-streak-paused-tag">paused</span>}
+                      </span>
+
+                      {isAdmin && (
+                        <span className="team-streak-controls">
+                          <input
+                            type="number"
+                            min="0"
+                            className="team-streak-input"
+                            key={`${m.id}-${streaks[m.id]?.current_streak || 0}`}
+                            defaultValue={streaks[m.id]?.current_streak || 0}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+                            onBlur={(e) => handleSetStreak(m.id, e.target.value)}
+                            aria-label={`Set ${m.first_name}'s streak`}
+                            title="Set streak count"
+                          />
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => handleTogglePauseStreak(m.id)}
+                            disabled={isBusy}
+                            title={streaks[m.id]?.paused ? 'Resume streak' : 'Pause streak (keeps progress)'}
+                          >
+                            {streaks[m.id]?.paused ? 'Resume' : 'Pause'}
+                          </button>
+                        </span>
+                      )}
+
                       {canManageRole && (
                         <button className="btn btn-ghost btn-sm" onClick={() => handleToggleRole(m)} disabled={isBusy}>
                           {m.role === 'admin' ? 'Make Member' : 'Make Admin'}
@@ -318,6 +392,34 @@ export default function Teams() {
                     disabled={savingGamification}
                     role="switch"
                     aria-checked={activeTeam.gamification_enabled !== false}
+                  >
+                    <span className="nc-toggle-thumb" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isOwner && (
+              <div className="card team-card">
+                <h2 className="team-card-title">Weekend streaks</h2>
+                <p className="team-card-desc">
+                  When <strong>on</strong>, weekends count toward streaks like any other day. When <strong>off</strong>,
+                  streaks pause on weekends — a missed Saturday/Sunday won't break anyone's streak, and activity on a
+                  weekend still adds to it.
+                </p>
+                <div className="theme-color-row" style={{ borderBottom: 'none', paddingLeft: 0, paddingRight: 0 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                      {activeTeam.weekend_streaks === false ? 'Weekends paused' : 'Weekends count'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`nc-toggle ${activeTeam.weekend_streaks !== false ? 'nc-toggle-on' : ''}`}
+                    onClick={handleToggleWeekend}
+                    disabled={savingWeekend}
+                    role="switch"
+                    aria-checked={activeTeam.weekend_streaks !== false}
                   >
                     <span className="nc-toggle-thumb" />
                   </button>

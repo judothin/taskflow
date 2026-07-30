@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TeamProvider, useTeam } from './context/TeamContext';
 import { PetProvider, usePets } from './context/PetContext';
+import { StreakProvider } from './context/StreakContext';
+import { SpecialBadgesProvider } from './context/SpecialBadgesContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { TopBarProvider } from './context/TopBarContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -160,6 +162,8 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <TeamProvider>
+            <StreakProvider>
+            <SpecialBadgesProvider>
             <PetProvider>
               <ThemeCustomizationProvider>
                 <TopBarProvider>
@@ -173,6 +177,8 @@ export default function App() {
                 </TopBarProvider>
               </ThemeCustomizationProvider>
             </PetProvider>
+            </SpecialBadgesProvider>
+            </StreakProvider>
           </TeamProvider>
         </AuthProvider>
       </ThemeProvider>

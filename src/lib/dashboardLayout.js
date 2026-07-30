@@ -53,6 +53,12 @@ export const WIDGETS = {
     icon: 'M12 20V10 M18 20V4 M6 20v-4',
     defaultSize: 'third',
   },
+  badges: {
+    name: 'Your Badges',
+    desc: 'Every rank & achievement badge you\'ve earned.',
+    icon: 'M12 15a7 7 0 100-14 7 7 0 000 14z M8.21 13.89L7 23l5-3 5 3-1.21-9.12',
+    defaultSize: 'half',
+  },
   notifications: {
     name: 'Notification Center',
     desc: 'Live activity feed with per-type alerts and a settings panel.',

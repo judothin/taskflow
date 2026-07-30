@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { awardTaskCreatedXp } from '../lib/xp';
+import { bumpTeamStreak } from '../lib/streak';
 import { format } from 'date-fns';
 import ModalPortal from '../components/ModalPortal';
 import AssigneeSelect from '../components/AssigneeSelect';
@@ -95,6 +96,7 @@ function SubmissionCard({ submission, users = [], onRefresh }) {
       });
       if (taskErr) throw taskErr;
       awardTaskCreatedXp(user?.id);
+      bumpTeamStreak(activeTeamId);
       const { error: subErr } = await supabase.from('submissions').update({
         page: page.trim(), feedback: feedback.trim(), noticed_by: noticedBy.trim(),
         png_url: finalImgs[0] || null, images: finalImgs,

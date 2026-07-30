@@ -7,6 +7,10 @@ import { useAuth } from '../context/AuthContext';
 import { usePets } from '../context/PetContext';
 import { supabase } from '../lib/supabase';
 import { StatTile, STAT_ICONS } from './AccountStatsCard';
+import { useSpecialBadges } from '../context/SpecialBadgesContext';
+import { getRankBadges } from '../lib/petBadges';
+import { SPECIES_KEYS } from '../lib/petSpecies';
+import RankBadges from './PetBadges';
 import './AccountStatsCard.css';
 
 // Live date/time readout for the dashboard top bar. Keeps its own tick so the
@@ -306,6 +310,47 @@ export function StatsWidget() {
             ? <span>~<strong>{ratio.toFixed(1)}×</strong> tasks completed for every one you create</span>
             : <span>Your all-time task activity</span>}
         </div>
+      </div>
+    </>
+  );
+}
+
+// Every rank + achievement badge the user has earned.
+export function BadgesWidget() {
+  const { user, profile } = useAuth();
+  const { userLevel, pets } = usePets();
+  const { specialFlags } = useSpecialBadges();
+
+  const speciesOwned = new Set((pets || []).map(p => p.species)).size;
+  const speciesTotal = SPECIES_KEYS.length;
+  const createdAt = profile?.start_date || user?.created_at;
+  const { earnedCount } = getRankBadges(
+    userLevel?.level, createdAt, userLevel?.tasks_completed,
+    { speciesOwned, speciesTotal }, specialFlags,
+  );
+
+  return (
+    <>
+      <WidgetHead
+        icon="M12 15a7 7 0 100-14 7 7 0 000 14z M8.21 13.89L7 23l5-3 5 3-1.21-9.12"
+        title="Your Badges"
+        action={<span className="widget-count">{earnedCount}</span>}
+      />
+      <div className="widget-pad">
+        {earnedCount > 0 ? (
+          <RankBadges
+            compact allEarned
+            level={userLevel?.level}
+            createdAt={createdAt}
+            tasksDone={userLevel?.tasks_completed}
+            speciesOwned={speciesOwned}
+            speciesTotal={speciesTotal}
+            specialFlags={specialFlags}
+            size={44}
+          />
+        ) : (
+          <p className="widget-empty">No badges yet — level up, keep a streak, and complete tasks to earn them.</p>
+        )}
       </div>
     </>
   );

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { awardTaskCompletedXp } from '../lib/xp';
+import { bumpTeamStreak } from '../lib/streak';
 import Avatar from './Avatar';
 import FeedbackContent from './FeedbackContent';
 import TaskSubtasks from './TaskSubtasks';
@@ -207,6 +208,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
     }).eq('id', task.id);
 
     awardTaskCompletedXp(user?.id, task.complexity, { roi: task.roi, status: task.status, wasQueued: isQueued || task.status === 'in_progress' });
+    bumpTeamStreak(activeTeamId);
 
     await supabase.from('queue').delete().eq('task_id', task.id);
 

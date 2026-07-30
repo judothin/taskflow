@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { awardTaskCreatedXp, awardTaskCompletedXp } from '../lib/xp';
+import { bumpTeamStreak } from '../lib/streak';
 import Avatar from './Avatar';
 import AssigneeSelect from './AssigneeSelect';
 import DatePicker from './DatePicker';
@@ -230,6 +231,7 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
 
       if (!isEdit && !isGuest) awardTaskCreatedXp(user?.id);
       if (isBeingCompleted && !isGuest) awardTaskCompletedXp(user?.id, payload.complexity, { roi: payload.roi, status: task?.status });
+      if ((!isEdit || isBeingCompleted) && !isGuest) bumpTeamStreak(activeTeamId);
 
       if (!isEdit && !isGuest && addToQueue && payload.status !== 'completed') {
         const { data: positions } = await supabase

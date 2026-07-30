@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback } from 'react';
-import { framePath, frameCount } from '../lib/petSpecies';
+import { framePath, frameCount, animationsFor } from '../lib/petSpecies';
 import { DEFAULT_WALK_AREA, isValidWalkArea } from '../lib/petLogic';
 import './PetEnvironment.css';
 
@@ -39,6 +39,19 @@ const IDLE_FUN_ANIMS = ['taunt', 'casting-spells', 'jump-start', 'sliding', 'idl
 
 const poolFor = (species, list) => list.filter(a => frameCount(species, a) > 1);
 const hasAnim = (species, a) => frameCount(species, a) > 1;
+
+// Preload every frame a shown pet might use, so switching animations never
+// shows an undecoded (blank/flashing) frame. Cached across mounts.
+const preloadCache = new Set();
+function preloadPet(species, style) {
+  animationsFor(species).forEach(anim => {
+    const count = frameCount(species, anim);
+    for (let i = 0; i < count; i++) {
+      const src = framePath(species, style, anim, i);
+      if (!preloadCache.has(src)) { preloadCache.add(src); const img = new Image(); img.src = src; }
+    }
+  });
+}
 
 function idleAnimFor(pet) {
   const a = pet.idle_animation;
@@ -318,6 +331,16 @@ export default function PetEnvironment({
     return () => cancelAnimationFrame(rafId);
   }, []);
 
+  // Preload all frames for the shown pets (only when the species/style set
+  // actually changes), eliminating decode flicker when animations switch.
+  const preloadKey = pets.map(p => `${p.species}:${p.style}`).join('|');
+  const lastPreload = useRef('');
+  useEffect(() => {
+    if (lastPreload.current === preloadKey) return;
+    lastPreload.current = preloadKey;
+    pets.forEach(p => preloadPet(p.species, p.style));
+  }, [pets, preloadKey]);
+
   // Play a one-shot animation on a specific pet (the Pets-page action picker).
   useEffect(() => {
     if (!oneShot || !oneShot.petId || !oneShot.anim) return;
@@ -415,6 +438,7 @@ export default function PetEnvironment({
             ref={el => setImg(p.id, el)}
             src={framePath(p.species, p.style, idleAnimFor(p), 0)}
             alt=""
+            decoding="sync"
             draggable={false}
           />
         </div>

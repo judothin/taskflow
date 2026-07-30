@@ -5,7 +5,11 @@ import { usePets } from '../context/PetContext';
 import { useTopBar } from '../context/TopBarContext';
 import { loadShownBadges } from '../lib/badgePrefs';
 import { NAV_ITEMS } from '../lib/navLayout';
+import { SPECIES_KEYS } from '../lib/petSpecies';
 import { useHeaderActions } from '../context/HeaderActionsContext';
+import { useStreak } from '../context/StreakContext';
+import { useSpecialBadges } from '../context/SpecialBadgesContext';
+import StreakFlame from './StreakFlame';
 import RankBadges from './PetBadges';
 import UserXpBar from './UserXpBar';
 import { DashboardClock } from './dashboardWidgets';
@@ -27,11 +31,13 @@ function routeTitle(pathname) {
 // breadcrumb on the left, and your rank badges, level bar, and date/time on
 // the right. Sticky + frosted.
 export default function TopBar() {
-  const { user } = useAuth();
-  const { userLevel, gamificationEnabled } = usePets();
+  const { user, profile } = useAuth();
+  const { userLevel, gamificationEnabled, pets } = usePets();
   const { display } = useTopBar();
   const { pathname } = useLocation();
   const headerActions = useHeaderActions();
+  const { days: streakDays, paused: streakPaused, teamId: streakTeamId } = useStreak();
+  const { specialFlags } = useSpecialBadges();
   const [shown, setShown] = useState(null);
 
   useEffect(() => {
@@ -44,16 +50,27 @@ export default function TopBar() {
 
   return (
     <div className="app-topbar">
-      <div className="app-topbar-crumb">
-        <span className="app-topbar-crumb-root">TaskFlow</span>
-        <svg className="app-topbar-crumb-sep" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-        <span className="app-topbar-crumb-current">{routeTitle(pathname)}</span>
+      <div className="app-topbar-left">
+        <StreakFlame days={streakDays} paused={streakPaused} teamId={streakTeamId} size={46} />
+        <div className="app-topbar-crumb">
+          <span className="app-topbar-crumb-root">TaskFlow</span>
+          <svg className="app-topbar-crumb-sep" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+          <span className="app-topbar-crumb-current">{routeTitle(pathname)}</span>
+        </div>
       </div>
       <div className="app-topbar-right">
         {headerActions && <div className="app-topbar-actions">{headerActions}</div>}
         <div className="app-topbar-cluster">
           {gamificationEnabled && (
-            <RankBadges level={userLevel?.level} createdAt={user?.created_at} tasksDone={userLevel?.tasks_completed} compact size={46} shown={shown} />
+            <RankBadges
+            level={userLevel?.level}
+            createdAt={profile?.start_date || user?.created_at}
+            tasksDone={userLevel?.tasks_completed}
+            speciesOwned={new Set((pets || []).map(p => p.species)).size}
+            speciesTotal={SPECIES_KEYS.length}
+            specialFlags={specialFlags}
+            compact size={46} shown={shown}
+          />
           )}
           {gamificationEnabled && <UserXpBar />}
           <DashboardClock showDate={display.date} showTime={display.time} />

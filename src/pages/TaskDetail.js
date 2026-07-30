@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { awardTaskCompletedXp } from '../lib/xp';
+import { bumpTeamStreak } from '../lib/streak';
 import Avatar from '../components/Avatar';
 import AssigneeSelect from '../components/AssigneeSelect';
 import DatePicker from '../components/DatePicker';
@@ -115,7 +116,7 @@ export default function TaskDetail() {
       }
       const { error: saveError } = await supabase.from('tasks').update(payload).eq('id', id);
       if (saveError) throw saveError;
-      if (isBeingCompleted) awardTaskCompletedXp(user?.id, payload.complexity, { roi: payload.roi, status: task.status });
+      if (isBeingCompleted) { awardTaskCompletedXp(user?.id, payload.complexity, { roi: payload.roi, status: task.status }); bumpTeamStreak(activeTeamId); }
       setTask(t => ({ ...t, ...payload }));
       setImageFile(null);
       setSaved(true);
