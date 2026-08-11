@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useNotifications, NOTIF_TYPES } from '../context/NotificationContext';
+import { supabase } from '../lib/supabase';
 import Avatar from './Avatar';
 import './NotificationCenter.css';
 
@@ -135,12 +136,25 @@ function NotificationDetail({ notif, onClose }) {
   const meta = NOTIF_TYPES[notif.type] || {};
   const d = notif.data || {};
 
+  // Resolve the task's project name (stored as an id on the task row). 'N/A'
+  // when the task isn't in a project.
+  const taskProjectId = d.kind === 'task' ? d.task?.project_id : null;
+  const [projectName, setProjectName] = useState(null);
+  useEffect(() => {
+    if (!taskProjectId) { setProjectName('N/A'); return; }
+    let live = true;
+    supabase.from('projects').select('title').eq('id', taskProjectId).maybeSingle()
+      .then(({ data }) => { if (live) setProjectName(data?.title || 'N/A'); });
+    return () => { live = false; };
+  }, [taskProjectId]);
+
   let rows = [];
   let action = null;
   if (d.kind === 'task') {
     const t = d.task;
     rows = [
       ['Page', t.page || '—'],
+      ['Project', projectName ?? '…'],
       ['Status', (t.status || '').replace('_', ' ')],
       ['ROI', t.roi || '—'],
       ['Noticed by', t.noticed_by || '—'],

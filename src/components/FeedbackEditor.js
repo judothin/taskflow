@@ -33,6 +33,17 @@ export default function FeedbackEditor({ value, onChange }) {
     }
   }, []);
 
+  // Reflect external value changes into the DOM — e.g. batch-add clears
+  // `feedback` for the next entry. Skip while the editor is focused so typing
+  // never fights the caret (onInput already keeps state in sync then).
+  useEffect(() => {
+    const el = editorRef.current;
+    if (!el || !initialized.current) return;
+    if (el === document.activeElement) return;
+    const incoming = normalizeHtml(value || '');
+    if (el.innerHTML !== incoming) el.innerHTML = incoming;
+  }, [value]);
+
   const sync = () => onChange(editorRef.current.innerHTML);
 
   // Paste as plain text — never let external styling into the document.

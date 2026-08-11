@@ -210,7 +210,6 @@ export default function Layout() {
 
   return (
     <div className={`layout ${collapsed ? 'nav-collapsed' : ''}`}>
-      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
 
       <button
         className="nav-toggle-tab"
@@ -386,9 +385,6 @@ export default function Layout() {
 
       <main className="main-content">
         <header className="mobile-header">
-          <button className="hamburger" onClick={() => setSidebarOpen(!sidebarOpen)}>
-            <span /><span /><span />
-          </button>
           <img src="/logo.png" alt="TaskFlow" className="mobile-logo-img" />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button className="mobile-search-btn" onClick={openSearch} aria-label="Search">
@@ -441,6 +437,80 @@ export default function Layout() {
           <span className="dock-label">More</span>
         </button>
       </nav>
+
+      {/* ── Full-screen mobile menu (opened from the dock's "More") ── */}
+      {sidebarOpen && (
+        <div className="mobile-menu">
+          <div className="mobile-menu-head">
+            <img src="/logo.png" alt="TaskFlow" className="mobile-menu-logo" />
+            <span className="mobile-menu-title">Menu</span>
+            <button className="mobile-menu-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <div className="mobile-menu-body">
+            <TeamSwitcher />
+
+            <button className="mobile-menu-search" onClick={() => { openSearch(); setSidebarOpen(false); }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              Search
+              <kbd className="mobile-menu-kbd">/</kbd>
+            </button>
+
+            <nav className="mobile-menu-nav">
+              {visibleNavLayout.map(({ id }) => {
+                const item = NAV_ITEMS[id];
+                return (
+                  <NavLink
+                    key={id}
+                    to={item.to}
+                    className={({ isActive }) => `mobile-menu-item ${isActive ? 'mobile-menu-item-active' : ''}`}
+                    onClick={() => setSidebarOpen(false)}
+                  >
+                    <NavIcon d={item.icon} />
+                    <span>{item.label}</span>
+                    {item.badge && <ProjectsNavBadge userId={user?.id} teamId={activeTeam?.id} />}
+                  </NavLink>
+                );
+              })}
+            </nav>
+          </div>
+
+          <div className="mobile-menu-footer">
+            {!hasCustomTheme && (
+              <button className="theme-toggle" onClick={toggle} aria-label="Toggle theme">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="theme-icon-sun">
+                  <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+                <div className="theme-track"><div className={`theme-thumb ${theme === 'light' ? 'theme-thumb-light' : ''}`} /></div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="theme-icon-moon">
+                  <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+                </svg>
+              </button>
+            )}
+
+            {activeTeam && (
+              <a href={`/submit/${activeTeam.slug}`} target="_blank" rel="noreferrer" className="guest-link" onClick={() => setSidebarOpen(false)}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6 M15 3h6v6 M10 14L21 3" />
+                </svg>
+                <span className="guest-link-text">Guest Portal</span>
+              </a>
+            )}
+
+            <div className="user-info">
+              <Avatar src={profile?.avatar_url} color={userColor} initials={initials} size={38} />
+              <div className="user-details">
+                <span className="user-name">{profile?.first_name} {profile?.last_name}</span>
+                <button onClick={handleSignOut} className="sign-out-btn">Sign out</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <GlobalSearch />
       <GlobalShortcuts />
