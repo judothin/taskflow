@@ -22,11 +22,9 @@ export const TASK_BADGES = TASK_THRESHOLDS.map(n => ({
   key: `task${n}`, count: n, name: `${n} Tasks`, tier: `task${n}`, img: RANK(`${n}t`),
 }));
 
-// Special one-off achievements (not a tiered track). `allpets` is derived from
-// the pet collection; the rest are activity achievements resolved from the DB
-// (see SpecialBadgesContext) and passed in as flags.
+// Special one-off achievements (not a tiered track). Activity achievements
+// resolved from the DB (see SpecialBadgesContext) and passed in as flags.
 export const SPECIAL_BADGES = [
-  { key: 'allpets',      name: 'Collector',    tier: 'allpets',      img: RANK('allpets') },
   { key: 'firefighter',  name: 'Firefighter',  tier: 'firefighter',  img: RANK('firefighter'),  req: 'Clear 25 critical tasks' },
   { key: 'century',      name: 'Century',      tier: 'century',      img: RANK('century'),      req: '100 done in one month' },
   { key: 'speed-runner', name: 'Speed Runner', tier: 'speed-runner', img: RANK('speed-runner'), req: 'Finish within 10 min' },
@@ -79,12 +77,10 @@ function dayLabel(d) {
 // Ranks are a USER thing: level badges from the user's level, age badges from
 // how long the account has existed, task badges from tasks completed. Returns
 // all three lists (each flagged `earned`) plus earned/total counts.
-export function getRankBadges(level, createdAt, tasksDone = 0, pets = {}, specialFlags = {}) {
+export function getRankBadges(level, createdAt, tasksDone = 0, specialFlags = {}) {
   const lvl = level || 1;
   const days = ageDaysSince(createdAt);
   const done = tasksDone || 0;
-  const owned = pets.speciesOwned || 0;
-  const totalSpecies = pets.speciesTotal || 0;
 
   const levelBadges = LEVEL_BADGES.map(b => ({
     ...b, kind: 'level', earned: lvl >= b.level, req: `Lv ${b.level}`, value: String(b.level),
@@ -98,18 +94,9 @@ export function getRankBadges(level, createdAt, tasksDone = 0, pets = {}, specia
     ...b, kind: 'task', earned: done >= b.count, req: `${b.count} done`, value: String(b.count),
     cur: done, target: b.count, unit: '',
   }));
-  const specialBadges = SPECIAL_BADGES.map(b => {
-    if (b.key === 'allpets') {
-      return {
-        ...b, kind: 'special',
-        earned: totalSpecies > 0 && owned >= totalSpecies,
-        req: 'Collect every pet',
-        value: totalSpecies ? `${owned}/${totalSpecies}` : '',
-        cur: owned, target: totalSpecies, unit: '',
-      };
-    }
-    return { ...b, kind: 'special', earned: !!specialFlags[b.key], req: b.req || '', value: '' };
-  });
+  const specialBadges = SPECIAL_BADGES.map(b => (
+    { ...b, kind: 'special', earned: !!specialFlags[b.key], req: b.req || '', value: '' }
+  ));
 
   const all = [...levelBadges, ...ageBadges, ...taskBadges, ...specialBadges];
   return {

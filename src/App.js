@@ -22,9 +22,6 @@ import Tasks from './pages/Tasks';
 import TaskDetail from './pages/TaskDetail';
 import Completed from './pages/Completed';
 import Teams from './pages/Teams';
-import Pets from './pages/Pets';
-import PetReveal from './pages/PetReveal';
-import ChooseGamification from './pages/ChooseGamification';
 import Settings from './pages/Settings';
 import Help from './pages/Help';
 import Files from './pages/Files';
@@ -34,7 +31,6 @@ import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import Pomodoro from './pages/Pomodoro';
 import Layout from './components/Layout';
-import PetPopupHost from './components/PetPopupHost';
 
 // A single, consistent boot loader for every gate. It's transparent (so the
 // already-painted theme background shows through) and its spinner only fades in
@@ -71,32 +67,6 @@ const OnboardingRoute = () => {
   return teams.length === 0 ? <Onboarding /> : <Navigate to="/dashboard" replace />;
 };
 
-// Runs after RequireTeam/RequireGamificationChoice, so a team already
-// exists and the user has answered "do you want pets/XP?" by this point.
-// Sends anyone with zero pets or an unclaimed pet unlock to /pet-reveal
-// first — unless they've personally opted out, in which case there's
-// nothing to reveal and they should never be forced through this at all.
-const RequirePet = ({ children }) => {
-  const { pets, pendingUnlocks, loading, userGamificationEnabled } = usePets();
-  if (loading) return <RouteLoader />;
-  if (!userGamificationEnabled) return children;
-  const needsReveal = pets.length === 0 || pendingUnlocks > 0;
-  return needsReveal ? <Navigate to="/pet-reveal" replace /> : children;
-};
-
-// Runs after RequireTeam. New signups (and existing users who never got a
-// pet — see the migration's backfill) haven't said whether they even want
-// the pet/XP system yet; send them to choose before anything else. Once
-// `gamification_choice_made` is true this is a pure passthrough forever.
-const RequireGamificationChoice = ({ children }) => {
-  const { userLevel, loading } = usePets();
-  if (loading) return <RouteLoader />;
-  if (userLevel && userLevel.gamification_choice_made === false) {
-    return <Navigate to="/choose-gamification" replace />;
-  }
-  return children;
-};
-
 /**
  * On a tab's first load, always land on the dashboard.
  * sessionStorage persists across refresh within the same tab (so a refresh
@@ -113,7 +83,7 @@ function TabFirstLoadRedirect() {
     sessionStorage.setItem(KEY, '1');
 
     // Leave auth / guest entry points alone.
-    const exempt = ['/login', '/register', '/submit', '/onboarding', '/pet-reveal', '/choose-gamification'];
+    const exempt = ['/login', '/register', '/submit', '/onboarding'];
     if (exempt.includes(location.pathname) || location.pathname.startsWith('/submit/')) return;
 
     if (location.pathname !== '/dashboard') {
@@ -132,9 +102,7 @@ function AppRoutes() {
       <Route path="/submit" element={<GuestPortal />} />
       <Route path="/submit/:slug" element={<GuestPortal />} />
       <Route path="/onboarding" element={<PrivateRoute><OnboardingRoute /></PrivateRoute>} />
-      <Route path="/choose-gamification" element={<PrivateRoute><RequireTeam><ChooseGamification /></RequireTeam></PrivateRoute>} />
-      <Route path="/pet-reveal" element={<PrivateRoute><RequireTeam><RequireGamificationChoice><PetReveal /></RequireGamificationChoice></RequireTeam></PrivateRoute>} />
-      <Route path="/" element={<PrivateRoute><RequireTeam><RequireGamificationChoice><RequirePet><Layout /></RequirePet></RequireGamificationChoice></RequireTeam></PrivateRoute>}>
+      <Route path="/" element={<PrivateRoute><RequireTeam><Layout /></RequireTeam></PrivateRoute>}>
         <Route index element={<Navigate to="/dashboard" />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="active" element={<ActiveTasks />} />
@@ -142,7 +110,6 @@ function AppRoutes() {
         <Route path="tasks/:id" element={<TaskDetail />} />
         <Route path="completed" element={<Completed />} />
         <Route path="teams" element={<Teams />} />
-        <Route path="pets" element={<Pets />} />
         <Route path="settings" element={<Settings />} />
         <Route path="help" element={<Help />} />
         <Route path="files" element={<Files />} />
@@ -171,7 +138,6 @@ export default function App() {
                     <PomodoroProvider>
                       <TabFirstLoadRedirect />
                       <AppRoutes />
-                      <PetPopupHost />
                     </PomodoroProvider>
                   </NotificationProvider>
                 </TopBarProvider>

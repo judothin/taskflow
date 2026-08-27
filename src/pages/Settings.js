@@ -7,7 +7,6 @@ import AvatarCrop from '../components/AvatarCrop';
 import RankBadges from '../components/PetBadges';
 import AccountStatsCard from '../components/AccountStatsCard';
 import { getRankBadges } from '../lib/petBadges';
-import { SPECIES_KEYS } from '../lib/petSpecies';
 import { useSpecialBadges } from '../context/SpecialBadgesContext';
 import { loadShownBadges, saveShownBadges } from '../lib/badgePrefs';
 import ModalPortal from '../components/ModalPortal';
@@ -50,7 +49,7 @@ function ColorRow({ field, value, custom, onChange, onReset }) {
 
 export default function Settings() {
   const { profile, refreshProfile, user } = useAuth();
-  const { userGamificationEnabled, setGamificationEnabled, userLevel, pets } = usePets();
+  const { userGamificationEnabled, setGamificationEnabled, userLevel } = usePets();
   const { specialFlags } = useSpecialBadges();
   const [shownBadges, setShownBadges] = useState(() => loadShownBadges(user?.id));
   const {
@@ -224,9 +223,7 @@ export default function Settings() {
 
   // Which badges show in the top bar. Default (uncustomized) = the highest
   // earned per track; toggling a badge makes the selection explicit.
-  const speciesOwned = new Set((pets || []).map(p => p.species)).size;
-  const speciesTotal = SPECIES_KEYS.length;
-  const rb = getRankBadges(userLevel?.level, effectiveStart, userLevel?.tasks_completed, { speciesOwned, speciesTotal }, specialFlags);
+  const rb = getRankBadges(userLevel?.level, effectiveStart, userLevel?.tasks_completed, specialFlags);
   const autoKeys = [
     [...rb.levelBadges].reverse().find(b => b.earned)?.key,
     [...rb.taskBadges].reverse().find(b => b.earned)?.key,
@@ -418,17 +415,17 @@ export default function Settings() {
 
       {/* Gamification opt-in/out */}
       <div className="card">
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Pets &amp; Levels</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Levels &amp; Badges</h2>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-          Earn XP and level up by completing tasks, and unlock a pet that grows with you.
+          Earn XP, level up, and unlock rank badges by completing tasks.
         </p>
         <div className="theme-color-row" style={{ borderBottom: 'none', paddingLeft: 0, paddingRight: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Enable pets &amp; XP</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Enable XP &amp; levels</div>
             <div style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>
               {userGamificationEnabled
-                ? 'Turning this off pauses your XP and pet at their current level.'
-                : "You'll pick up right where you left off — or get a fresh pet to open if you never had one."}
+                ? 'Turning this off pauses your XP and hides levels & badges.'
+                : "You'll pick up right where you left off."}
             </div>
           </div>
           <button
@@ -637,8 +634,6 @@ export default function Settings() {
             level={userLevel?.level}
             createdAt={effectiveStart}
             tasksDone={userLevel?.tasks_completed}
-            speciesOwned={speciesOwned}
-            speciesTotal={speciesTotal}
             specialFlags={specialFlags}
             selectable
             selected={effectiveShown}

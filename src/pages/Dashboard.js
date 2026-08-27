@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
-import { usePets } from '../context/PetContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { useTopBar } from '../context/TopBarContext';
 import TaskCard from '../components/TaskCard';
@@ -13,7 +12,6 @@ import ProjectsWidget from '../components/ProjectsWidget';
 import NotificationCenter from '../components/NotificationCenter';
 import QueueWidget from '../components/QueueWidget';
 import PomodoroWidget from '../components/PomodoroWidget';
-import PetWidget from '../components/PetWidget';
 import ActiveTasksList from '../components/ActiveTasksList';
 import BulkActionBar from '../components/BulkActionBar';
 import useBulkSelect from '../lib/useBulkSelect';
@@ -64,7 +62,6 @@ const loadFocusCache = (teamId) => {
 export default function Dashboard() {
   const { profile, user } = useAuth();
   const { activeTeamId } = useTeam();
-  const { gamificationEnabled } = usePets();
   const uid = user?.id;
   const navigate = useNavigate();
   const [tasks, setTasks] = useState([]);
@@ -358,7 +355,6 @@ export default function Dashboard() {
       case 'streak':         return <StreakWidget {...widgetCtx} />;
       case 'queue':          return <QueueWidget />;
       case 'pomodoro':       return <PomodoroWidget />;
-      case 'pet':            return <PetWidget />;
       case 'projects':       return <ProjectsWidget />;
       default:               return null;
     }
@@ -425,7 +421,7 @@ export default function Dashboard() {
       ? renderPlaceholder(block)
       : (SELF_CONTAINED.has(block.type)
           ? renderContent(block.type)
-          : <div className={`dash-card ${block.type === 'pet' ? 'dash-card-pet' : ''}`}>{renderContent(block.type)}</div>);
+          : <div className="dash-card">{renderContent(block.type)}</div>);
 
     return (
       <div key={block.type} className={`dash-cell ${editing ? 'dash-cell-edit' : ''}`} style={style} {...dragProps}>
@@ -434,13 +430,9 @@ export default function Dashboard() {
     );
   };
 
-  // The pet widget is force-hidden (not offerable to add back, and any
-  // saved instance of it doesn't render) whenever gamification is off —
-  // personally opted out, or the active team has it disabled.
-  const visibleLayout = gamificationEnabled ? layout : layout.filter(b => b.type !== 'pet');
+  const visibleLayout = layout;
   const available = Object.keys(WIDGETS)
-    .filter(t => !WIDGETS[t].locked && !layout.some(b => b.type === t))
-    .filter(t => gamificationEnabled || t !== 'pet');
+    .filter(t => !WIDGETS[t].locked && !layout.some(b => b.type === t));
 
   return (
     <div className="dashboard fade-in">

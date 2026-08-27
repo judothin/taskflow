@@ -84,12 +84,12 @@ function RankImage({ src, size }) {
 //             With `selectable`, earned badges get a checkbox (checked when in
 //             `selected`) and clicking calls `onToggle(key)`.
 export default function RankBadges({
-  level, createdAt, tasksDone = 0, speciesOwned = 0, speciesTotal = 0, specialFlags = {},
+  level, createdAt, tasksDone = 0, specialFlags = {},
   compact = false, allEarned = false, size = 46, labels = false, title,
   shown = null, selectable = false, selected = [], onToggle,
 }) {
   const { levelBadges, ageBadges, taskBadges, specialBadges, earnedCount, total } =
-    getRankBadges(level, createdAt, tasksDone, { speciesOwned, speciesTotal }, specialFlags);
+    getRankBadges(level, createdAt, tasksDone, specialFlags);
 
   if (compact) {
     const earnedAll = [...levelBadges, ...taskBadges, ...ageBadges, ...specialBadges].filter(b => b.earned);

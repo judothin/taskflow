@@ -5,7 +5,6 @@ import { usePets } from '../context/PetContext';
 import { useTopBar } from '../context/TopBarContext';
 import { loadShownBadges } from '../lib/badgePrefs';
 import { NAV_ITEMS } from '../lib/navLayout';
-import { SPECIES_KEYS } from '../lib/petSpecies';
 import { useHeaderActions } from '../context/HeaderActionsContext';
 import { useStreak } from '../context/StreakContext';
 import { useSpecialBadges } from '../context/SpecialBadgesContext';
@@ -32,7 +31,7 @@ function routeTitle(pathname) {
 // the right. Sticky + frosted.
 export default function TopBar() {
   const { user, profile } = useAuth();
-  const { userLevel, gamificationEnabled, pets } = usePets();
+  const { userLevel, gamificationEnabled } = usePets();
   const { display } = useTopBar();
   const { pathname } = useLocation();
   const headerActions = useHeaderActions();
@@ -66,8 +65,6 @@ export default function TopBar() {
             level={userLevel?.level}
             createdAt={profile?.start_date || user?.created_at}
             tasksDone={userLevel?.tasks_completed}
-            speciesOwned={new Set((pets || []).map(p => p.species)).size}
-            speciesTotal={SPECIES_KEYS.length}
             specialFlags={specialFlags}
             compact size={46} shown={shown}
           />

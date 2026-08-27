@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
-import { usePets } from '../context/PetContext';
 import { useTheme } from '../context/ThemeContext';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
 import { supabase } from '../lib/supabase';
@@ -10,7 +9,6 @@ import { fetchUserPrefs, saveUserPrefs, saveUserPrefsDebounced } from '../lib/us
 import { NAV_ITEMS, sanitizeNavLayout, loadNavLayoutCache, saveNavLayoutCache } from '../lib/navLayout';
 import QueuePanel from './QueuePanel';
 import Avatar from './Avatar';
-import PetSprite from './PetSprite';
 import GlobalSearch, { OPEN_EVENT } from './GlobalSearch';
 import GlobalShortcuts from './GlobalShortcuts';
 import TopBar from './TopBar';
@@ -112,7 +110,6 @@ export default function Layout() {
   const { profile, user, signOut } = useAuth();
   const uid = user?.id;
   const { activeTeam } = useTeam();
-  const { activePet, gamificationEnabled } = usePets();
   const { theme, toggle } = useTheme();
   const { colors } = useThemeCustomization();
   const navigate = useNavigate();
@@ -205,7 +202,7 @@ export default function Layout() {
   // filtered out of BOTH the visible list and the customize/edit list, so
   // there's nothing to toggle back on for something the user can't reach
   // anyway (going to /pets directly also redirects away, see Pets.js).
-  const effectiveNavLayout = gamificationEnabled ? navLayout : navLayout.filter(b => b.id !== 'pets');
+  const effectiveNavLayout = navLayout;
   const visibleNavLayout = effectiveNavLayout.filter(b => b.visible);
 
   return (
@@ -224,20 +221,7 @@ export default function Layout() {
 
       <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''} ${collapsed ? 'sidebar-collapsed' : ''}`}>
         <div className="sidebar-logo">
-          {activePet && gamificationEnabled ? (
-            <div className="logo-mark logo-pet-mark">
-              <PetSprite
-                species={activePet.species}
-                style={activePet.style}
-                size={36}
-                dead={activePet.is_dead}
-                idleAnimation={activePet.idle_animation}
-                roam={false}
-              />
-            </div>
-          ) : (
-            <img src="/logo.png" alt="TaskFlow" className="logo-mark" />
-          )}
+          <img src="/logo.png" alt="TaskFlow" className="logo-mark" />
           <span className="logo-text">TaskFlow</span>
         </div>
 

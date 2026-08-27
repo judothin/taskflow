@@ -9,7 +9,6 @@ import { supabase } from '../lib/supabase';
 import { StatTile, STAT_ICONS } from './AccountStatsCard';
 import { useSpecialBadges } from '../context/SpecialBadgesContext';
 import { getRankBadges } from '../lib/petBadges';
-import { SPECIES_KEYS } from '../lib/petSpecies';
 import RankBadges from './PetBadges';
 import './AccountStatsCard.css';
 
@@ -318,15 +317,12 @@ export function StatsWidget() {
 // Every rank + achievement badge the user has earned.
 export function BadgesWidget() {
   const { user, profile } = useAuth();
-  const { userLevel, pets } = usePets();
+  const { userLevel } = usePets();
   const { specialFlags } = useSpecialBadges();
 
-  const speciesOwned = new Set((pets || []).map(p => p.species)).size;
-  const speciesTotal = SPECIES_KEYS.length;
   const createdAt = profile?.start_date || user?.created_at;
   const { earnedCount } = getRankBadges(
-    userLevel?.level, createdAt, userLevel?.tasks_completed,
-    { speciesOwned, speciesTotal }, specialFlags,
+    userLevel?.level, createdAt, userLevel?.tasks_completed, specialFlags,
   );
 
   return (
@@ -343,8 +339,6 @@ export function BadgesWidget() {
             level={userLevel?.level}
             createdAt={createdAt}
             tasksDone={userLevel?.tasks_completed}
-            speciesOwned={speciesOwned}
-            speciesTotal={speciesTotal}
             specialFlags={specialFlags}
             size={44}
           />
