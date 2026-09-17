@@ -66,7 +66,18 @@ function initExisting(task) {
   return [];
 }
 
-export default function TaskForm({ task, onClose, onSaved, isGuest = false, users = [], projects = [], defaultProjectId = '' }) {
+// Convert plain text (e.g. a deep-linked comment body, which may have newlines
+// and image URLs on their own lines) into safe HTML for the rich feedback
+// editor: escape all markup so nothing injects, keep line breaks.
+function plainToHtml(text) {
+  const esc = String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return esc.split(/\r?\n/).join('<br>');
+}
+
+export default function TaskForm({ task, onClose, onSaved, isGuest = false, users = [], projects = [], defaultProjectId = '', prefill = null }) {
   const { user, profile } = useAuth();
   const { activeTeamId } = useTeam();
   const isEdit = !!task;
@@ -77,11 +88,14 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
     ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
     : '';
 
+  // Deep-link prefill only applies to a brand-new task (never when editing).
+  const seed = (!isEdit && prefill) ? prefill : null;
+
   const [form, setForm] = useState({
     status:     task?.status     || 'open',
-    page:       task?.page       || '',
-    feedback:   task?.feedback   || '',
-    noticed_by: task?.noticed_by || defaultNoticedBy,
+    page:       task?.page       || seed?.page || '',
+    feedback:   task?.feedback   || (seed?.feedback ? plainToHtml(seed.feedback) : ''),
+    noticed_by: task?.noticed_by || (seed?.noticed || defaultNoticedBy),
     roi:        task?.roi        || 'medium',
     complexity: task?.complexity || 'medium',
     project_id: task?.project_id || defaultProjectId || '',

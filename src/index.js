@@ -2,6 +2,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { applyCachedThemeEarly } from './lib/themeColors';
+import { captureNewTaskDeepLink } from './lib/deepLink';
+
+// Capture any ?new=1&page=…&feedback=…&noticed=… deep link before React/auth
+// run, so the params survive a login redirect and the URL is stripped clean.
+captureNewTaskDeepLink();
 
 // Paint the user's real theme (incl. background image) before the first React
 // render so reloads don't flash through white → black → image.

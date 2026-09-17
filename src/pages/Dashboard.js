@@ -8,6 +8,7 @@ import { useTopBar } from '../context/TopBarContext';
 import TaskCard from '../components/TaskCard';
 import TaskForm from '../components/TaskForm';
 import QuickLogModal from './QuickLog';
+import { consumeNewTaskDeepLink } from '../lib/deepLink';
 import ProjectsWidget from '../components/ProjectsWidget';
 import NotificationCenter from '../components/NotificationCenter';
 import QueueWidget from '../components/QueueWidget';
@@ -75,7 +76,17 @@ export default function Dashboard() {
   const [statCache, setStatCache] = useState(loadStatCache);
   const [editTask, setEditTask] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [deepLinkPrefill, setDeepLinkPrefill] = useState(null);
   const [showQuickLog, setShowQuickLog] = useState(false);
+
+  // Deep link from an external tool (?new=1&page=&feedback=&noticed=). The
+  // params were captured + stripped at boot (see lib/deepLink); once the
+  // dashboard mounts (post-auth) we open Create Task pre-filled. Consuming
+  // clears the stash, so a refresh won't reopen it.
+  useEffect(() => {
+    const dl = consumeNewTaskDeepLink();
+    if (dl) { setDeepLinkPrefill(dl); setShowCreate(true); }
+  }, []);
   const focusSelect = useBulkSelect();
 
   // ── Dashboard layout / edit mode ──────────────────────────
@@ -545,7 +556,7 @@ export default function Dashboard() {
       )}
 
       {showCreate && (
-        <TaskForm onClose={() => setShowCreate(false)} onSaved={fetchData} users={users} projects={projects} />
+        <TaskForm prefill={deepLinkPrefill} onClose={() => { setShowCreate(false); setDeepLinkPrefill(null); }} onSaved={fetchData} users={users} projects={projects} />
       )}
       {editTask && (
         <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={fetchData} users={users} projects={projects} />
