@@ -16,8 +16,20 @@ const TTL_MS = 15 * 60 * 1000;   // stale stash is ignored after 15 min
 const MAX_PAGE = 2048;
 const MAX_FEEDBACK = 20000;      // truncate absurdly long bodies rather than break
 const MAX_NAME = 200;
+const MAX_ATTACHMENTS = 10;
+// Attachments may only come from the dev site's uploads dir (also enforced
+// server-side in /api/fetch-attachment).
+const ATTACH_PREFIX = 'https://dev.palmerindustries.com/wp-content/uploads/';
 
-const DEEPLINK_PARAMS = ['new', 'page', 'feedback', 'noticed', 'source'];
+const DEEPLINK_PARAMS = ['new', 'page', 'feedback', 'noticed', 'source', 'attachments'];
+
+function parseAttachments(raw) {
+  return String(raw || '')
+    .split('|')
+    .map(s => s.trim())
+    .filter(u => u.startsWith(ATTACH_PREFIX))
+    .slice(0, MAX_ATTACHMENTS);
+}
 
 const clamp = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
 
@@ -33,6 +45,7 @@ export function captureNewTaskDeepLink() {
       feedback: clamp(p.get('feedback') || '', MAX_FEEDBACK),
       noticed: clamp(p.get('noticed') || '', MAX_NAME).trim(),
       source: clamp(p.get('source') || '', MAX_NAME),
+      attachments: parseAttachments(p.get('attachments')),
       ts: Date.now(),
     };
     try { sessionStorage.setItem(KEY, JSON.stringify(data)); } catch { /* storage full/blocked */ }
@@ -60,6 +73,7 @@ export function consumeNewTaskDeepLink() {
       feedback: typeof data.feedback === 'string' ? data.feedback : '',
       noticed: typeof data.noticed === 'string' ? data.noticed : '',
       source: typeof data.source === 'string' ? data.source : '',
+      attachments: Array.isArray(data.attachments) ? parseAttachments(data.attachments.join('|')) : [],
     };
   } catch { return null; }
 }

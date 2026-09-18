@@ -333,6 +333,7 @@ body.has-bg-image .completed-results {
 }
 
 .modal {
+  position: relative;
   background: var(--bg-2);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
@@ -344,6 +345,37 @@ body.has-bg-image .completed-results {
   box-shadow: var(--shadow-lg);
   animation: fadeIn 0.2s ease;
 }
+
+/* Drag-and-drop overlay covering the whole modal */
+.attach-dropzone {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  border-radius: var(--radius-lg);
+  border: 2px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* Spinner shown on a pending attachment while it's being fetched */
+.attach-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-light);
+  border-top-color: var(--accent);
+  animation: attach-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes attach-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 768px) {
   .modal-overlay { padding: 0; align-items: flex-end; }

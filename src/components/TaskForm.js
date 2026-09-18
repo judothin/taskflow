@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
@@ -22,6 +22,35 @@ const COMPLEXITIES = ['high', 'medium', 'low'];
 const MAX_TOTAL_BYTES = 6 * 1024 * 1024; // 6 MB
 
 const ACCEPT = 'image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip';
+const ALLOWED_EXT = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'zip'];
+
+// Type allowlist shared by picker / paste / drop.
+function isAllowedFile(file) {
+  if ((file.type || '').startsWith('image/')) return true;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  return ALLOWED_EXT.includes(ext);
+}
+
+let _pidSeq = 0;
+const nextPendingId = () => `pf_${Date.now().toString(36)}_${_pidSeq++}`;
+
+function filenameFromUrl(u) {
+  try {
+    const last = decodeURIComponent(new URL(u).pathname.split('/').pop() || '');
+    return last || '';
+  } catch { return ''; }
+}
+
+// Server-fetch a CORS-less remote image (deep link) via our own endpoint,
+// returning a File for the normal upload pipeline.
+async function fetchRemoteImage(url) {
+  const res = await fetch(`/api/fetch-attachment?url=${encodeURIComponent(url)}`);
+  if (!res.ok) throw new Error(`fetch failed (${res.status})`);
+  const blob = await res.blob();
+  if (!blob.type.startsWith('image/')) throw new Error('not an image');
+  const name = filenameFromUrl(url) || `attachment-${Date.now()}.png`;
+  return new File([blob], name, { type: blob.type });
+}
 
 function getFileKind(name) {
   const ext = name.split('.').pop().toLowerCase();
@@ -108,6 +137,9 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
   // pending  = new files chosen by the user, not yet uploaded
   const [existing, setExisting]   = useState(() => initExisting(task));
   const [pending,  setPending]    = useState([]);
+  const [dragOver, setDragOver]   = useState(false);
+  const [fetchFailCount, setFetchFailCount] = useState(0);
+  const dragDepth = useRef(0);
   const [addToQueue, setAddToQueue] = useState(false);
   const [batchAdd,   setBatchAdd]   = useState(false);
   const [batchCount, setBatchCount] = useState(0);
@@ -130,45 +162,137 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
   // Total bytes across all pending files
   const pendingBytes = pending.reduce((s, p) => s + p.file.size, 0);
 
-  const handleFiles = (e) => {
-    const chosen = Array.from(e.target.files || []);
-    if (!chosen.length) return;
-    fileRef.current.value = '';
+  // Single entry point for the file picker, paste, and drag-drop. Enforces the
+  // type allowlist + 6 MB total cap and dedupes by name+size.
+  const addFiles = (fileList) => {
+    const incoming = Array.from(fileList || []).filter(Boolean);
+    if (!incoming.length) return;
 
-    const newBytes = chosen.reduce((s, f) => s + f.size, 0);
-    if (pendingBytes + newBytes > MAX_TOTAL_BYTES) {
-      setError(`Total attachment size would exceed 6 MB. Please choose smaller files.`);
-      return;
+    let bytes = pending.reduce((s, p) => s + (p.size || 0), 0);
+    const accepted = [];
+    let over = false, badType = false;
+
+    for (const file of incoming) {
+      if (!isAllowedFile(file)) { badType = true; continue; }
+      const dup = (arr) => arr.some(p => p.name === file.name && p.size === file.size);
+      if (dup(pending) || dup(accepted)) continue;            // dedupe silently
+      if (bytes + file.size > MAX_TOTAL_BYTES) { over = true; continue; }
+      bytes += file.size;
+      const kind = getFileKind(file.name);
+      accepted.push({
+        id: nextPendingId(), file, kind,
+        preview: kind === 'image' ? URL.createObjectURL(file) : null,
+        name: file.name, size: file.size,
+      });
     }
 
-    setError('');
-    const newPending = chosen.map(file => {
-      const kind = getFileKind(file.name);
-      return {
-        file,
-        kind,
-        preview: kind === 'image' ? URL.createObjectURL(file) : null,
-        name: file.name,
-        size: file.size,
-      };
-    });
-    setPending(prev => [...prev, ...newPending]);
+    if (accepted.length) setPending(prev => [...prev, ...accepted]);
+    if (over) setError('Total attachment size would exceed 6 MB — some files were skipped.');
+    else if (badType && !accepted.length) setError('That file type isn’t supported.');
+    else if (accepted.length) setError('');
   };
 
-  const removePending = (i) => {
+  const handleFiles = (e) => {
+    addFiles(e.target.files);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  // Ctrl/Cmd+V of an image anywhere in the modal → attach it. Screenshot tools
+  // give a nameless image blob, so we generate one. If the paste also carries
+  // text, we take only the image (and stop it landing in the feedback field).
+  const handlePaste = (e) => {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imgs = items.filter(it => it.kind === 'file' && (it.type || '').startsWith('image/'));
+    if (!imgs.length) return; // plain text paste — let it flow to the field
+    e.preventDefault();
+    const files = imgs.map(it => {
+      const f = it.getAsFile();
+      if (!f) return null;
+      if (f.name && f.name !== 'image.png') return f;
+      const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+      return new File([f], `pasted-${Date.now()}.${ext}`, { type: f.type });
+    }).filter(Boolean);
+    addFiles(files);
+  };
+
+  // Drag-drop anywhere over the modal. A depth counter avoids the highlight
+  // flickering as the pointer crosses child elements.
+  const handleDragEnter = (e) => {
+    if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragOver(true);
+  };
+  const handleDragOver = (e) => {
+    if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const handleDragLeave = () => {
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  };
+  const handleDrop = (e) => {
+    if (!e.dataTransfer?.files?.length) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragOver(false);
+    addFiles(e.dataTransfer.files);
+  };
+
+  const removePending = (id) => {
     setPending(prev => {
-      const next = [...prev];
-      if (next[i].preview) URL.revokeObjectURL(next[i].preview);
-      next.splice(i, 1);
-      return next;
+      const target = prev.find(p => p.id === id);
+      if (target?.preview) URL.revokeObjectURL(target.preview);
+      return prev.filter(p => p.id !== id);
     });
   };
+
+  // Deep-link attachments (?attachments=url1|url2). Show a fetching chip per
+  // URL immediately, download each server-side (bypasses the dev site's
+  // missing CORS), then swap in the real file — or drop the chip and count a
+  // failure. Runs once for a brand-new task.
+  useEffect(() => {
+    const urls = (seed?.attachments || []).slice(0, 10);
+    if (!urls.length) return undefined;
+    let alive = true;
+
+    const placeholders = urls.map(url => ({
+      id: nextPendingId(), file: null, kind: 'image', preview: null,
+      name: filenameFromUrl(url) || 'image', size: 0, fetching: true,
+    }));
+    setPending(prev => [...prev, ...placeholders]);
+
+    urls.forEach((url, i) => {
+      const phId = placeholders[i].id;
+      fetchRemoteImage(url).then(file => {
+        if (!alive) return;
+        setPending(prev => {
+          const bytes = prev.reduce((s, p) => s + (p.size || 0), 0);
+          if (bytes + file.size > MAX_TOTAL_BYTES) {           // over the 6 MB cap
+            setFetchFailCount(c => c + 1);
+            return prev.filter(p => p.id !== phId);
+          }
+          return prev.map(p => (p.id === phId
+            ? { id: phId, file, kind: 'image', preview: URL.createObjectURL(file), name: file.name, size: file.size, fetching: false }
+            : p));
+        });
+      }).catch(() => {
+        if (!alive) return;
+        setPending(prev => prev.filter(p => p.id !== phId));
+        setFetchFailCount(c => c + 1);
+      });
+    });
+
+    return () => { alive = false; };
+  }, []);
 
   const removeExisting = (i) => setExisting(prev => prev.filter((_, idx) => idx !== i));
 
   const uploadAll = async () => {
     const uploaded = [...existing];
     for (const p of pending) {
+      if (!p.file) continue; // still-fetching deep-link placeholder
       const ext = p.file.name.split('.').pop();
       const path = `tasks/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const { error: upErr } = await supabase.storage.from('task-images').upload(path, p.file, {
@@ -314,7 +438,22 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
     <>
       <ModalPortal>
       <div className="modal-overlay">
-        <div className="modal">
+        <div
+          className="modal"
+          onPaste={handlePaste}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {dragOver && (
+            <div className="attach-dropzone">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4 M17 8l-5-5-5 5 M12 3v12"/>
+              </svg>
+              <span>Drop to attach</span>
+            </div>
+          )}
           <div className="modal-header">
             <h2 style={{ fontSize: 18, fontWeight: 700 }}>
               {isEdit ? 'Edit Task' : 'Create Task'}
@@ -479,15 +618,17 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
                           </button>
                         </div>
                       ))}
-                      {pending.map((p, i) => (
-                        <div key={`pe-${i}`} className="attach-item attach-item-new">
-                          {p.kind === 'image'
-                            ? <img src={p.preview} alt={p.name} className="attach-thumb" />
-                            : <FileIcon kind={p.kind} />
+                      {pending.map((p) => (
+                        <div key={p.id} className="attach-item attach-item-new">
+                          {p.fetching
+                            ? <span className="attach-spinner" aria-label="Fetching" />
+                            : p.kind === 'image'
+                              ? <img src={p.preview} alt={p.name} className="attach-thumb" />
+                              : <FileIcon kind={p.kind} />
                           }
                           <span className="attach-name">{p.name}</span>
-                          <span className="attach-size">{fmtBytes(p.size)}</span>
-                          <button type="button" className="attach-remove" onClick={() => removePending(i)}>
+                          <span className="attach-size">{p.fetching ? 'Fetching…' : fmtBytes(p.size)}</span>
+                          <button type="button" className="attach-remove" onClick={() => removePending(p.id)}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                             </svg>
@@ -507,8 +648,13 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
                       <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66L9.41 17.41A2 2 0 016.59 14.59L15.78 5.4"/>
                     </svg>
                     {hasFiles ? 'Add more files' : 'Attach files'}
-                    <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>· images, PDF, DOCX, PPTX, XLSX…</span>
+                    <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>· or paste / drop them here</span>
                   </button>
+                  {fetchFailCount > 0 && (
+                    <div style={{ fontSize: 12, color: '#f87171', marginTop: 6 }}>
+                      {fetchFailCount} attachment{fetchFailCount !== 1 ? "s couldn't" : " couldn't"} be fetched.
+                    </div>
+                  )}
                   <input
                     ref={fileRef}
                     type="file"
