@@ -13,6 +13,7 @@ import GlobalSearch, { OPEN_EVENT } from './GlobalSearch';
 import GlobalShortcuts from './GlobalShortcuts';
 import TopBar from './TopBar';
 import { HeaderActionsProvider } from '../context/HeaderActionsContext';
+import ErrorBoundary from './ErrorBoundary';
 import './Layout.css';
 
 const openSearch = () => window.dispatchEvent(new CustomEvent(OPEN_EVENT));
@@ -382,7 +383,7 @@ export default function Layout() {
         <HeaderActionsProvider>
           <TopBar />
           <div className="page-content">
-            <Outlet />
+            <ErrorBoundary><Outlet /></ErrorBoundary>
           </div>
         </HeaderActionsProvider>
       </main>

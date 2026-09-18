@@ -8,7 +8,7 @@ import { useTopBar } from '../context/TopBarContext';
 import TaskCard from '../components/TaskCard';
 import TaskForm from '../components/TaskForm';
 import QuickLogModal from './QuickLog';
-import { consumeNewTaskDeepLink } from '../lib/deepLink';
+import { consumeNewTaskDeepLink, clearDeepLinkFromUrl } from '../lib/deepLink';
 import ProjectsWidget from '../components/ProjectsWidget';
 import NotificationCenter from '../components/NotificationCenter';
 import QueueWidget from '../components/QueueWidget';
@@ -84,8 +84,14 @@ export default function Dashboard() {
   // dashboard mounts (post-auth) we open Create Task pre-filled. Consuming
   // clears the stash, so a refresh won't reopen it.
   useEffect(() => {
-    const dl = consumeNewTaskDeepLink();
-    if (dl) { setDeepLinkPrefill(dl); setShowCreate(true); }
+    let dl = null;
+    try { dl = consumeNewTaskDeepLink(); } catch { dl = null; }
+    if (!dl) return;
+    // Open with whatever parsed; a bad param never blocks the modal.
+    setDeepLinkPrefill(dl);
+    setShowCreate(true);
+    // Clean the URL only now that we've committed to opening.
+    clearDeepLinkFromUrl();
   }, []);
   const focusSelect = useBulkSelect();
 

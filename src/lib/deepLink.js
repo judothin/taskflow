@@ -33,11 +33,13 @@ function parseAttachments(raw) {
 
 const clamp = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
 
-// Run once, as early as possible (see index.js). No-op unless `new` is present.
+// Run once, as early as possible (see index.js). No-op unless `new` is
+// present. Only STASHES the params (survives a login redirect); the URL is
+// cleaned later by clearDeepLinkFromUrl() once the modal has actually opened,
+// so a render failure can never both blank the page AND lose the params.
 export function captureNewTaskDeepLink() {
   try {
-    const url = new URL(window.location.href);
-    const p = url.searchParams;
+    const p = new URL(window.location.href).searchParams;
     if (!p.get('new')) return;
 
     const data = {
@@ -49,13 +51,20 @@ export function captureNewTaskDeepLink() {
       ts: Date.now(),
     };
     try { sessionStorage.setItem(KEY, JSON.stringify(data)); } catch { /* storage full/blocked */ }
+  } catch { /* malformed URL — nothing to do */ }
+}
 
-    // Strip only our params, keep anything else, then rewrite the URL.
-    DEEPLINK_PARAMS.forEach(k => p.delete(k));
-    const qs = p.toString();
-    const cleaned = url.pathname + (qs ? `?${qs}` : '') + url.hash;
-    window.history.replaceState(null, '', cleaned);
-  } catch { /* malformed URL / no history — nothing to do */ }
+// Strip our params from the address bar (keeps any others). Call this only
+// after the modal is up, so a refresh won't reopen and the URL stays clean.
+export function clearDeepLinkFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    let touched = false;
+    DEEPLINK_PARAMS.forEach(k => { if (url.searchParams.has(k)) { url.searchParams.delete(k); touched = true; } });
+    if (!touched) return;
+    const qs = url.searchParams.toString();
+    window.history.replaceState(null, '', url.pathname + (qs ? `?${qs}` : '') + url.hash);
+  } catch { /* no history / malformed — leave the URL as-is */ }
 }
 
 // Read-and-clear the stash. Returns null if none / stale / malformed.

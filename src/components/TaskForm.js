@@ -160,7 +160,9 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   // Total bytes across all pending files
-  const pendingBytes = pending.reduce((s, p) => s + p.file.size, 0);
+  // `size` (not `p.file.size`) — deep-link "fetching" placeholders have no
+  // file yet, so guarding here keeps a pending image from blanking the modal.
+  const pendingBytes = pending.reduce((s, p) => s + (p.size || 0), 0);
 
   // Single entry point for the file picker, paste, and drag-drop. Enforces the
   // type allowlist + 6 MB total cap and dedupes by name+size.
@@ -253,36 +255,44 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
   // missing CORS), then swap in the real file — or drop the chip and count a
   // failure. Runs once for a brand-new task.
   useEffect(() => {
-    const urls = (seed?.attachments || []).slice(0, 10);
+    let urls = [];
+    try {
+      urls = (Array.isArray(seed?.attachments) ? seed.attachments : []).slice(0, 10);
+    } catch { urls = []; }
     if (!urls.length) return undefined;
     let alive = true;
 
-    const placeholders = urls.map(url => ({
-      id: nextPendingId(), file: null, kind: 'image', preview: null,
-      name: filenameFromUrl(url) || 'image', size: 0, fetching: true,
-    }));
-    setPending(prev => [...prev, ...placeholders]);
+    try {
+      const placeholders = urls.map(url => ({
+        id: nextPendingId(), file: null, kind: 'image', preview: null,
+        name: filenameFromUrl(url) || 'image', size: 0, fetching: true,
+      }));
+      setPending(prev => [...prev, ...placeholders]);
 
-    urls.forEach((url, i) => {
-      const phId = placeholders[i].id;
-      fetchRemoteImage(url).then(file => {
-        if (!alive) return;
-        setPending(prev => {
-          const bytes = prev.reduce((s, p) => s + (p.size || 0), 0);
-          if (bytes + file.size > MAX_TOTAL_BYTES) {           // over the 6 MB cap
-            setFetchFailCount(c => c + 1);
-            return prev.filter(p => p.id !== phId);
-          }
-          return prev.map(p => (p.id === phId
-            ? { id: phId, file, kind: 'image', preview: URL.createObjectURL(file), name: file.name, size: file.size, fetching: false }
-            : p));
+      urls.forEach((url, i) => {
+        const phId = placeholders[i].id;
+        fetchRemoteImage(url).then(file => {
+          if (!alive) return;
+          setPending(prev => {
+            const bytes = prev.reduce((s, p) => s + (p.size || 0), 0);
+            if (bytes + file.size > MAX_TOTAL_BYTES) {           // over the 6 MB cap
+              setFetchFailCount(c => c + 1);
+              return prev.filter(p => p.id !== phId);
+            }
+            return prev.map(p => (p.id === phId
+              ? { id: phId, file, kind: 'image', preview: URL.createObjectURL(file), name: file.name, size: file.size, fetching: false }
+              : p));
+          });
+        }).catch(() => {
+          if (!alive) return;
+          setPending(prev => prev.filter(p => p.id !== phId));
+          setFetchFailCount(c => c + 1);
         });
-      }).catch(() => {
-        if (!alive) return;
-        setPending(prev => prev.filter(p => p.id !== phId));
-        setFetchFailCount(c => c + 1);
       });
-    });
+    } catch {
+      // A bad attachments payload must never take the modal down.
+      setFetchFailCount(c => c + 1);
+    }
 
     return () => { alive = false; };
   }, []);

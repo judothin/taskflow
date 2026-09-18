@@ -346,6 +346,33 @@ body.has-bg-image .completed-results {
   animation: fadeIn 0.2s ease;
 }
 
+/* Page-level error boundary fallback */
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 24px;
+}
+.error-boundary-card {
+  max-width: 460px;
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  text-align: center;
+}
+.error-boundary-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.error-boundary-msg {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  word-break: break-word;
+  margin-bottom: 20px;
+}
+.error-boundary-actions { display: flex; gap: 8px; justify-content: center; }
+
 /* Drag-and-drop overlay covering the whole modal */
 .attach-dropzone {
   position: absolute;
