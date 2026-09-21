@@ -439,6 +439,27 @@ body.has-bg-image .task-card-featured:hover {
   margin-top: auto;
 }
 
+/* Left half of the footer — "Noticed by" plus the posted date, which wrap
+   under each other on a narrow card instead of squeezing the due-date badge. */
+.task-card-footer-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.task-card-posted {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.task-card-posted svg { opacity: 0.7; flex-shrink: 0; }
+
 /* ── Action bar ────────────────────────────────────────────── */
 .task-card-actions {
   display: flex;

@@ -304,10 +304,10 @@ export default function TaskDetail() {
                 </div>
               );
             })()}
-            {task.date_received && (
+            {(task.date_received || task.created_at) && (
               <div className="task-detail-meta-row">
-                <span className="task-detail-meta-label">Received</span>
-                <span className="task-detail-meta-val">{format(new Date(task.date_received), 'MMM d, yyyy')}</span>
+                <span className="task-detail-meta-label">Posted</span>
+                <span className="task-detail-meta-val">{format(new Date(task.date_received || task.created_at), 'MMM d, yyyy — h:mm a')}</span>
               </div>
             )}
             {task.date_completed && (

@@ -171,7 +171,7 @@
 /* ── Stats ───────────────────────────────────────────────── */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 14px;
 }
 
@@ -915,6 +915,14 @@
 .dash-add-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
 
 /* ── Responsive ──────────────────────────────────────────── */
+/* Six stat tiles in a row: tighten them on laptop widths. */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .stats-grid { gap: 10px; }
+  .stat-card  { padding: 16px 10px; }
+  .stat-value { font-size: 28px; }
+  .stat-label { font-size: 11px; letter-spacing: 0.03em; }
+}
+
 @media (max-width: 768px) {
   .stats-grid          { grid-template-columns: repeat(3, 1fr); gap: 10px; }
   /* !important: the desktop column count is set inline (scales with the

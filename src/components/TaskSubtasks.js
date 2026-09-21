@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { asSubtasks, makeSubtask, subtaskProgress } from '../lib/subtasks';
+import { asSubtasks, makeSubtask, sortSubtasks, subtaskProgress } from '../lib/subtasks';
+import useFlipRows from '../lib/useFlipRows';
 import './Subtasks.css';
 
 // Read + quick-edit checklist shown on a TaskCard. Collapsed by default to a
@@ -8,18 +9,20 @@ import './Subtasks.css';
 // new subtasks added inline. Every change persists the whole `subtasks` array
 // back to the task (same pattern as FeedbackContent).
 export default function TaskSubtasks({ taskId, subtasks, onChanged, defaultExpanded = false }) {
-  const [list, setList] = useState(() => asSubtasks(subtasks));
+  const [list, setList] = useState(() => sortSubtasks(asSubtasks(subtasks)));
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
+  const { rowRef, capture } = useFlipRows();
 
-  useEffect(() => { setList(asSubtasks(subtasks)); }, [subtasks]);
+  useEffect(() => { setList(sortSubtasks(asSubtasks(subtasks))); }, [subtasks]);
 
   const { done, total, pct, allDone } = subtaskProgress(list);
 
   const stop = (e) => e.stopPropagation();
 
-  const persist = async (next) => {
+  const persist = async (unsorted) => {
+    const next = sortSubtasks(unsorted);
     setList(next); // optimistic
     if (!taskId) return;
     await supabase.from('tasks').update({ subtasks: next, updated_at: new Date().toISOString() }).eq('id', taskId);
@@ -29,6 +32,7 @@ export default function TaskSubtasks({ taskId, subtasks, onChanged, defaultExpan
 
   const toggle = (e, id) => {
     e.stopPropagation();
+    capture(); // the row is about to sink past the unchecked ones — slide it
     persist(list.map(s => (s.id === id ? { ...s, done: !s.done } : s)));
   };
 
@@ -38,6 +42,7 @@ export default function TaskSubtasks({ taskId, subtasks, onChanged, defaultExpan
     const text = draft.trim();
     if (!text) return;
     setDraft('');
+    capture(); // a new row lands above the done ones, nudging them down
     persist([...list, makeSubtask(text)]);
   };
 
@@ -95,7 +100,7 @@ export default function TaskSubtasks({ taskId, subtasks, onChanged, defaultExpan
       {expanded && (
         <div className="st-card-list">
           {list.map(s => (
-            <label key={s.id} className={`st-card-item ${s.done ? 'st-card-item-done' : ''}`} onClick={stop}>
+            <label key={s.id} ref={rowRef(s.id)} className={`st-card-item ${s.done ? 'st-card-item-done' : ''}`} onClick={stop}>
               <input
                 type="checkbox"
                 className="st-check"

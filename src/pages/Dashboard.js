@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { isToday } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
@@ -36,7 +37,13 @@ const STATUS_FILTERS = [
   { key: 'in_progress', label: 'In Progress', color: 'var(--st-inprogress)' },
   { key: 'on_hold',     label: 'On Hold',     color: 'var(--st-onhold)' },
   { key: 'completed',   label: 'Completed',   color: 'var(--st-completed)' },
+  // Not a status — a "how am I doing right now" number. Opens the Completed
+  // page, which already lands on today's completions.
+  { key: 'done_today',  label: 'Done Today',  color: 'var(--accent)', to: '/completed' },
 ];
+
+const doneTodayCount = (completed) =>
+  (completed || []).filter(t => t.date_completed && isToday(new Date(t.date_completed))).length;
 
 // Widgets that render their own outer container (no shared card chrome).
 const SELF_CONTAINED = new Set(['focus', 'allTasks', 'projects']);
@@ -44,8 +51,15 @@ const SELF_CONTAINED = new Set(['focus', 'allTasks', 'projects']);
 // Cache the last-known status counts so the locked top bar shows real numbers
 // immediately on mount/refresh instead of flashing 0 while tasks load.
 const STAT_CACHE_KEY = 'tf-stat-counts';
+const todayKey = () => new Date().toDateString();
 const loadStatCache = () => {
-  try { return JSON.parse(localStorage.getItem(STAT_CACHE_KEY)) || {}; } catch { return {}; }
+  try {
+    const c = JSON.parse(localStorage.getItem(STAT_CACHE_KEY)) || {};
+    // The status counts stay valid across days; "done today" does not, so it
+    // is dropped when the cache was written on an earlier day.
+    if (c.day !== todayKey()) delete c.done_today;
+    return c;
+  } catch { return {}; }
 };
 
 // Cache the last-known Current Focus list (per team) so it renders with real
@@ -226,6 +240,8 @@ export default function Dashboard() {
       in_progress: active.filter(t => t.status === 'in_progress').length,
       on_hold:     active.filter(t => t.status === 'on_hold').length,
       completed:   done.length,
+      done_today:  doneTodayCount(done),
+      day:         todayKey(),
     };
     setStatCache(counts);
     try { localStorage.setItem(STAT_CACHE_KEY, JSON.stringify(counts)); } catch {}
@@ -296,6 +312,7 @@ export default function Dashboard() {
   const statCount = (key) => {
     // While the first fetch is in flight, show cached counts (no 0-flash).
     if (loading) return statCache[key] ?? 0;
+    if (key === 'done_today') return doneTodayCount(completedTasks);
     if (key === 'completed') return completedTasks.length;
     // Critical = critical status OR critical ROI (both are "urgent").
     if (key === 'critical') return tasks.filter(t => t.status === 'critical' || t.roi === 'critical').length;
@@ -510,8 +527,8 @@ export default function Dashboard() {
         {STATUS_FILTERS.map(s => (
           <button key={s.key}
             className="stat-card stat-card-btn"
-            onClick={() => navigate('/active', { state: { status: s.key } })}
-            title={`View ${s.label} tasks`}>
+            onClick={() => (s.to ? navigate(s.to) : navigate('/active', { state: { status: s.key } }))}
+            title={s.key === 'done_today' ? "View today's completed tasks" : `View ${s.label} tasks`}>
             <div className="stat-value" style={{ color: s.color }}>{statCount(s.key)}</div>
             <div className="stat-label">{s.label}</div>
           </button>

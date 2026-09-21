@@ -46,6 +46,14 @@
 }
 .st-editor-row:focus-within { border-color: var(--border-light); }
 
+/* Stacked while sliding, so a row crossing another rides cleanly over it.
+   Ties break on DOM order, which puts the sunk row on top — the one that
+   moved. The background is already opaque, so nothing shows through. */
+.st-editor-row.flip-sliding {
+  position: relative;
+  z-index: 1;
+}
+
 .st-editor-input {
   flex: 1;
   min-width: 0;
@@ -174,6 +182,16 @@
   transition: background 0.1s ease;
 }
 .st-card-item:hover { background: var(--bg-3); }
+
+/* While a checked row sinks to the bottom it crosses the rows coming up past
+   it. These rows are transparent by default, so they get the card's own
+   background for the length of the slide — otherwise the two show through
+   each other on the way past. */
+.st-card-item.flip-sliding {
+  background: var(--bg-2);
+  position: relative;
+  z-index: 1;
+}
 
 .st-card-item-label {
   font-size: 13px;

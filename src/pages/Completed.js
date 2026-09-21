@@ -89,8 +89,8 @@ function CompletedRow({ task, users = [], onEdit, onDeleted }) {
               )}
             </div>
             <div className="meta-item">
-              <span className="meta-label">Received</span>
-              <span className="meta-value mono">{task.date_received ? format(new Date(task.date_received), 'MMM d, yyyy') : '—'}</span>
+              <span className="meta-label">Posted</span>
+              <span className="meta-value mono">{(task.date_received || task.created_at) ? format(new Date(task.date_received || task.created_at), 'MMM d, yyyy') : '—'}</span>
             </div>
             <div className="meta-item">
               <span className="meta-label">Completed</span>

@@ -1,21 +1,28 @@
 import React, { useRef } from 'react';
-import { asSubtasks, makeSubtask, subtaskProgress } from '../lib/subtasks';
+import { asSubtasks, makeSubtask, sortSubtasks, subtaskProgress } from '../lib/subtasks';
+import useFlipRows from '../lib/useFlipRows';
 import './Subtasks.css';
 
 // Controlled checklist editor used inside TaskForm / TaskDetail.
 //   value    – array of { id, text, done }
 //   onChange – (nextArray) => void
 export default function SubtaskEditor({ value, onChange }) {
-  const list = asSubtasks(value);
+  // Rendered (and saved) with the checked-off items sunk to the bottom, so a
+  // box ticked here behaves exactly like one ticked on the card.
+  const list = sortSubtasks(asSubtasks(value));
   const rowRefs = useRef({});
+  const { rowRef: flipRef, capture } = useFlipRows();
 
-  const commit = (next) => onChange(next);
+  const commit = (next) => onChange(sortSubtasks(next));
 
   const update = (id, patch) => commit(list.map(s => (s.id === id ? { ...s, ...patch } : s)));
-  const remove = (id) => commit(list.filter(s => s.id !== id));
+  const remove = (id) => { capture(); commit(list.filter(s => s.id !== id)); };
+
+  const toggleDone = (s) => { capture(); update(s.id, { done: !s.done }); };
 
   const add = (focus = true) => {
     const item = makeSubtask('');
+    capture(); // the empty row lands above the done ones, nudging them down
     commit([...list, item]);
     if (focus) setTimeout(() => rowRefs.current[item.id]?.focus(), 0);
   };
@@ -38,12 +45,12 @@ export default function SubtaskEditor({ value, onChange }) {
   return (
     <div className="st-editor">
       {list.map((s, idx) => (
-        <div key={s.id} className={`st-editor-row ${s.done ? 'st-editor-row-done' : ''}`}>
+        <div key={s.id} ref={flipRef(s.id)} className={`st-editor-row ${s.done ? 'st-editor-row-done' : ''}`}>
           <input
             type="checkbox"
             className="st-check"
             checked={s.done}
-            onChange={() => update(s.id, { done: !s.done })}
+            onChange={() => toggleDone(s)}
           />
           <input
             ref={el => { rowRefs.current[s.id] = el; }}

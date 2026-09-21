@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { format } from 'date-fns';
+import { format, isSameYear } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -32,6 +32,15 @@ const ROI_MAP = {
 };
 
 // Inline quick-edit option lists (statuses match TaskForm's allowed set).
+// When the task was posted. `date_received` is set on every create path; the
+// created_at fallback covers any older row where it was never written.
+const postedAt = (task) => {
+  const raw = task.date_received || task.created_at;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d) ? null : d;
+};
+
 const ROI_OPTIONS    = ['critical', 'high', 'medium', 'low'];
 const STATUS_OPTIONS = ['open', 'in_progress', 'on_hold', 'completed'];
 
@@ -63,6 +72,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
   const canComplete     = task.status !== 'completed';
   const linkedProject   = projects.find(p => p.id === task.project_id) || null;
   const assignee        = users.find(u => u.id === task.assignee_id) || null;
+  const posted          = postedAt(task);
 
   useEffect(() => {
     if (!canQueue) { setIsQueued(false); return; }
@@ -511,8 +521,18 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
 
           {/* Footer */}
           <div className="task-card-footer">
-            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-              Noticed by <strong style={{ color: 'var(--text-muted)' }}>{task.noticed_by}</strong>
+            <span className="task-card-footer-meta">
+              <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+                Noticed by <strong style={{ color: 'var(--text-muted)' }}>{task.noticed_by}</strong>
+              </span>
+              {posted && (
+                <span className="task-card-posted" title={`Posted ${format(posted, 'EEEE, MMM d, yyyy — h:mm a')}`}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                  Posted {format(posted, isSameYear(posted, new Date()) ? 'MMM d' : 'MMM d, yyyy')}
+                </span>
+              )}
             </span>
             <DatePicker
               variant="badge"
