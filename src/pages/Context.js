@@ -6,6 +6,7 @@ import { InlineClock } from '../components/dashboardWidgets';
 import ModalPortal from '../components/ModalPortal';
 import useIsPhone from '../lib/useIsPhone';
 import { searchRank } from '../lib/fuzzySearch';
+import { CONTEXT_CHANGED } from '../components/QuickContext';
 import './Context.css';
 
 // Team knowledge that isn't a task, a file or a project — "the captcha form is
@@ -56,6 +57,14 @@ export default function Context() {
       .filter(Boolean);
 
   useEffect(() => { load(); }, [load]);
+
+  // The top-bar quick-add writes straight to the table, so this page needs
+  // telling when it does.
+  useEffect(() => {
+    const handler = () => load();
+    window.addEventListener(CONTEXT_CHANGED, handler);
+    return () => window.removeEventListener(CONTEXT_CHANGED, handler);
+  }, [load]);
 
   const filtered = useMemo(() => searchRank(entries, search, e => [
     { text: e.subject, weight: 3 },

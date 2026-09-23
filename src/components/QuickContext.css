@@ -1,0 +1,52 @@
+/* ── Quick context button (top bar, every page) ─────────────── */
+.qctx-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.qctx-trigger:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+.qctx-trigger svg { flex-shrink: 0; }
+
+.qctx-modal { max-width: 520px; }
+.qctx-textarea {
+  resize: vertical;
+  min-height: 110px;
+  line-height: 1.6;
+  font-family: var(--font);
+}
+
+/* Confirmation replaces the form rather than sitting under it, so the sheet
+   doesn't jump taller on save. */
+.qctx-saved {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 34px 16px;
+  color: var(--success);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  /* Icon only — the top bar is tight on a phone and the sheet names itself. */
+  .qctx-trigger-label { display: none; }
+  .qctx-trigger { padding: 9px; min-width: 40px; min-height: 40px; justify-content: center; }
+  /* 16px stops iOS zooming the viewport when a field takes focus. */
+  .qctx-modal .input, .qctx-modal .qctx-textarea { font-size: 16px; }
+}

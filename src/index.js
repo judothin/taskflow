@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { applyCachedThemeEarly } from './lib/themeColors';
 import { captureNewTaskDeepLink } from './lib/deepLink';
+import { watchForUpdates } from './lib/appUpdate';
 
 // Capture any ?new=1&page=…&feedback=…&noticed=… deep link before React/auth
 // run, so the params survive a login redirect and the URL is stripped clean.
@@ -25,6 +26,16 @@ requestAnimationFrame(() => requestAnimationFrame(() => {
 // and its shell keeps working offline. Failures are non-fatal.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      // Resuming an installed app doesn't re-navigate, so nothing would
+      // otherwise ask whether a newer worker exists.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+    }).catch(() => {});
   });
 }
+
+// An installed app is frozen and resumed rather than reloaded, so it can run a
+// stale build indefinitely. See lib/appUpdate.js.
+watchForUpdates();

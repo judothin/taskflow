@@ -177,9 +177,11 @@
 .mtask-chevron-open { transform: rotate(180deg); color: var(--row-color, var(--accent)); }
 /* transition in MobileMotion.css */
 
-/* Layout only — the open/close transition lives in MobileMotion.css. */
+/* Collapse owns the height animation; this is just the box it draws in.
+   overflow: hidden is what clips the content while the height is mid-flight. */
+.collapse { overflow: hidden; transition-property: height; transition-timing-function: var(--m-out, ease); }
 .mtask-drawer { border-bottom: 1px solid var(--border); }
-.mtask-drawer-inner { padding: 2px 14px 14px 52px; }
+.mtask-drawer .collapse-inner { padding: 2px 14px 14px 52px; }
 .mtask-rows > :last-child.mtask-drawer { border-bottom: none; }
 
 /* TaskSubtasks is shared with the desktop card, where it hides behind a

@@ -9,6 +9,7 @@ import { useHeaderActions } from '../context/HeaderActionsContext';
 import { useStreak } from '../context/StreakContext';
 import { useSpecialBadges } from '../context/SpecialBadgesContext';
 import StreakFlame from './StreakFlame';
+import QuickContext from './QuickContext';
 import useIsPhone from '../lib/useIsPhone';
 import RankBadges from './PetBadges';
 import UserXpBar from './UserXpBar';
@@ -72,6 +73,7 @@ export default function TopBar() {
         </div>
       </div>
       <div className="app-topbar-right">
+        <QuickContext />
         {headerActions && <div className="app-topbar-actions">{headerActions}</div>}
         <div className="app-topbar-cluster">
           {gamificationEnabled && (

@@ -6,7 +6,7 @@
      falling back to the cached shell when offline.
    - Static assets (JS/CSS/images) are stale-while-revalidate for instant loads. */
 
-const CACHE = 'taskflow-v1';
+const CACHE = 'taskflow-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -26,6 +26,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return; // never intercept Supabase/fonts/etc.
+
+  // The staleness check reads this to compare the deployed build against the
+  // running one (see lib/appUpdate.js). Serving it from cache would have it
+  // compare a build against itself and never detect an update.
+  if (url.pathname === '/asset-manifest.json') return;
 
   // App navigations: try the network, fall back to the cached shell offline.
   if (request.mode === 'navigate') {

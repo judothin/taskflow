@@ -7,7 +7,7 @@ import { subtaskProgress } from '../lib/subtasks';
 import { completeTask } from '../lib/completeTask';
 import Avatar from './Avatar';
 import TaskSubtasks from './TaskSubtasks';
-import useMountTransition from '../lib/useMountTransition';
+import Collapse from './Collapse';
 import ModalPortal from './ModalPortal';
 import './MobileTaskList.css';
 
@@ -144,9 +144,6 @@ function MobileTaskRow({ task, users, onChanged, index = 0 }) {
   // means a round trip per box. A task with no checklist has nothing to drop
   // down, so it opens the full view instead.
   const expandable = total > 0;
-  // Kept mounted through the close so the drawer can animate shut as well as
-  // open — see useMountTransition.
-  const drawer = useMountTransition(expandable && open, 240);
   const onRowTap = () => {
     if (expandable) setOpen(v => !v);
     else navigate(`/tasks/${task.id}`);
@@ -215,23 +212,21 @@ function MobileTaskRow({ task, users, onChanged, index = 0 }) {
         </button>
       </div>
 
-      {drawer.mounted && (
-        <div className={`mtask-drawer ${drawer.shown ? 'mtask-drawer-open' : ''}`}>
-          <div className="mtask-drawer-inner">
-            <TaskSubtasks
-              taskId={task.id}
-              subtasks={task.subtasks}
-              onChanged={onChanged}
-              defaultExpanded
-            />
-            <button type="button" className="mtask-open" onClick={() => navigate(`/tasks/${task.id}`)}>
-              Open full view
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </button>
-          </div>
-        </div>
+      {expandable && (
+        <Collapse open={open} className="mtask-drawer">
+          <TaskSubtasks
+            taskId={task.id}
+            subtasks={task.subtasks}
+            onChanged={onChanged}
+            defaultExpanded
+          />
+          <button type="button" className="mtask-open" onClick={() => navigate(`/tasks/${task.id}`)}>
+            Open full view
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        </Collapse>
       )}
 
       {sheet && (

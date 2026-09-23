@@ -9,9 +9,9 @@
       properties a phone GPU can composite without re-laying-out
       the page — animating width, height, top or margin drops a
       mid-range phone to single-digit frame rates. The one
-      exception is the drawer, which animates grid-template-rows
-      because that's the only way to reach "auto" height (see
-      below).
+      exception is the expanding drawer, whose height has to be
+      animated to reveal anything; Collapse.js measures it so that
+      stays a single short transition rather than per-frame work.
    2. Everything is reachable instantly. Nothing waits on an
       animation to become tappable, and the whole file is
       disabled under prefers-reduced-motion.
@@ -34,15 +34,16 @@
 @media (max-width: 768px) {
 
   /* ── Page transitions ───────────────────────────────────────
-     Shorter and tighter than the desktop's 400ms fade. A phone
-     changes screens constantly, and a long entrance on every tab
-     tap turns into a stutter. */
+     Opacity only, and quick. The page was sliding up at the same
+     time as its rows were staggering in, so two motions ran over
+     each other and the whole screen looked like it was swimming.
+     The page just appears; the rows carry the motion. */
   .fade-in {
-    animation: m-page var(--m-base) var(--m-out) both;
+    animation: m-page 130ms linear both;
   }
   @keyframes m-page {
-    from { opacity: 0; transform: translate3d(0, 10px, 0); }
-    to   { opacity: 1; transform: none; }
+    from { opacity: 0; }
+    to   { opacity: 1; }
   }
 
   /* ── List entry ─────────────────────────────────────────────
@@ -89,22 +90,14 @@
   }
 
   /* ── Expanding drawer ───────────────────────────────────────
-     grid-template-rows 0fr → 1fr is the one way to transition to
-     a content-derived height; `height: auto` is not animatable
-     and a fixed pixel height would clip a long checklist. The
-     inner element carries the overflow so the content is clipped
-     rather than squashed on the way. */
-  .mtask-drawer {
-    display: grid;
-    grid-template-rows: 0fr;
-    opacity: 0;
-    transition: grid-template-rows var(--m-slow) var(--m-out),
-                opacity var(--m-fast) linear;
-  }
-  .mtask-drawer-open { grid-template-rows: 1fr; opacity: 1; }
-  .mtask-drawer-inner { overflow: hidden; min-height: 0; }
+     Height comes from Collapse, which measures the content — see
+     that component for why the CSS-only approaches didn't hold
+     up. All this adds is the content fading in behind the
+     opening, so the panel doesn't arrive fully drawn at 0 height. */
+  .collapse-inner { opacity: 0; transition: opacity var(--m-base) var(--m-out); }
+  .collapse-open > .collapse-inner { opacity: 1; }
 
-  .mtask-chevron { transition: transform var(--m-slow) var(--m-out); }
+  .mtask-chevron { transition: transform var(--m-base) var(--m-out); }
 
   /* ── Ticking a subtask off ──────────────────────────────────
      A small pop on the box itself. This is the single most
@@ -183,23 +176,55 @@
    Motion off. Not a courtesy — for people with vestibular
    disorders, sliding and scaling UI causes real symptoms. Every
    animation above collapses to an instant state change; nothing
-   is left mid-transform, and the drawer still opens because its
-   grid row snaps rather than eases.
+   is left mid-transform, and the drawer still opens — its height
+   snaps rather than eases.
    ══════════════════════════════════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {
   .fade-in,
   .mtask-row,
   .ctx-card,
-  .mtask-drawer,
   .msheet,
   .msheet-overlay,
   .st-check,
   .mdetail-title,
   .mdetail-section,
   .mdetail-action,
-  .loading-pulse::after {
+  .loading-pulse::after,
+  .collapse,
+  .collapse-inner {
     animation: none !important;
     transition: none !important;
   }
-  .mtask-drawer { opacity: 1; }
+  .collapse-inner { opacity: 1; }
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   Installed app (home screen)
+   ------------------------------------------------------------
+   There's no browser chrome to absorb gestures here, so the page
+   has to behave like an app surface rather than a document.
+   ══════════════════════════════════════════════════════════════ */
+@media (display-mode: standalone) {
+  /* Rubber-banding the whole page reveals the background behind
+     the app and makes it feel like a web page in a costume. Keep
+     the overscroll inside scrollers that actually scroll. */
+  html, body { overscroll-behavior-y: none; }
+
+  /* No text cursor or selection on chrome you only ever tap.
+     Content keeps normal selection — you still want to copy a
+     task's text. */
+  .mobile-dock,
+  .mobile-header,
+  .app-topbar,
+  .mtask-main,
+  .dock-item {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* The status bar is translucent in standalone, so the fixed dock
+     and header have to hold their own safe-area padding. */
+  .mobile-dock { padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
 }
