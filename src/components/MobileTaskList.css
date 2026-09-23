@@ -179,7 +179,15 @@
 
 /* Collapse owns the height animation; this is just the box it draws in.
    overflow: hidden is what clips the content while the height is mid-flight. */
-.collapse { overflow: hidden; transition-property: height; transition-timing-function: var(--m-out, ease); }
+/* height comes from Collapse.js; this is the box it draws in. The curve is a
+   plain ease-out rather than the overshooting one — a box that springs past
+   its own height and settles back reads as a wobble, not as polish. */
+.collapse {
+  overflow: hidden;
+  height: 0;
+  transition-property: height;
+  transition-timing-function: cubic-bezier(0.25, 0.8, 0.35, 1);
+}
 .mtask-drawer { border-bottom: 1px solid var(--border); }
 .mtask-drawer .collapse-inner { padding: 2px 14px 14px 52px; }
 .mtask-rows > :last-child.mtask-drawer { border-bottom: none; }
@@ -410,3 +418,47 @@
   color: var(--text-dim);
 }
 .mfilter-option-on .mfilter-option-count { color: var(--accent); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   Swipe to complete
+   ══════════════════════════════════════════════════════════════ */
+.swipe { position: relative; overflow: hidden; }
+
+/* The track sits behind the row and is revealed as it moves. */
+.swipe-track {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 22px;
+  background: var(--st-completed);
+  color: #fff;
+  transition: opacity 120ms linear, background 140ms linear;
+  pointer-events: none;
+}
+/* Armed: the colour deepens, so the commit point is felt AND seen. */
+.swipe-track-armed { background: color-mix(in srgb, var(--st-completed) 82%, #000); }
+
+.swipe-icon {
+  display: flex;
+  transition: transform 140ms cubic-bezier(0.34, 1.46, 0.64, 1);
+}
+
+.swipe-surface {
+  position: relative;
+  /* The browser keeps vertical scrolling on the compositor; we only ever
+     handle horizontal. This is what stops the list feeling sticky. */
+  touch-action: pan-y;
+  background: var(--bg-2);
+  will-change: transform;
+}
+/* Only while settling — during the drag the row must track the finger with no
+   transition at all, or it lags behind and feels like treacle. */
+.swipe-surface-settling {
+  transition: transform 190ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swipe-surface-settling, .swipe-icon, .swipe-track { transition: none; }
+}

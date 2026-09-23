@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, isBefore, parseISO, startOfToday } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
@@ -8,6 +8,7 @@ import { completeTask } from '../lib/completeTask';
 import Avatar from './Avatar';
 import TaskSubtasks from './TaskSubtasks';
 import Collapse from './Collapse';
+import SwipeToComplete from './SwipeToComplete';
 import ModalPortal from './ModalPortal';
 import './MobileTaskList.css';
 
@@ -74,7 +75,7 @@ export function CompleteSheet({ task, users, onClose, onDone }) {
   };
 
   return (
-    <ModalPortal>
+    <ModalPortal onDismiss={onClose}>
       <div className="msheet-overlay" onClick={onClose}>
         <div className="msheet" onClick={e => e.stopPropagation()} role="dialog" aria-label="Mark complete">
           <span className="msheet-grabber" aria-hidden="true" />
@@ -129,6 +130,8 @@ export function CompleteSheet({ task, users, onClose, onDone }) {
 // ── One row ───────────────────────────────────────────────────
 function MobileTaskRow({ task, users, onChanged, index = 0 }) {
   const navigate = useNavigate();
+  const { user, profile } = useAuth();
+  const { activeTeamId } = useTeam();
   const [sheet, setSheet] = useState(false);
   const [open, setOpen] = useState(false);
   const meta = STATUS_META[task.status] || STATUS_META.open;
@@ -144,14 +147,39 @@ function MobileTaskRow({ task, users, onChanged, index = 0 }) {
   // means a round trip per box. A task with no checklist has nothing to drop
   // down, so it opens the full view instead.
   const expandable = total > 0;
+  const rowRef = useRef(null);
+
+  // Swiping completes it as YOU — the overwhelmingly common case, and the
+  // whole value of a gesture is that it takes no decisions. Completing on
+  // someone else's behalf is still a tap on the circle, which opens the sheet.
+  // With no name on the profile there's nothing to write, so fall back to it.
+  const myName = `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim();
+  const swipeComplete = async () => {
+    if (!myName) { setSheet(true); return; }
+    await completeTask({ task, completedBy: [myName], userId: user?.id, teamId: activeTeamId });
+    onChanged?.();
+  };
+
   const onRowTap = () => {
-    if (expandable) setOpen(v => !v);
-    else navigate(`/tasks/${task.id}`);
+    if (!expandable) { navigate(`/tasks/${task.id}`); return; }
+    const opening = !open;
+    setOpen(opening);
+    // Expanding a row near the bottom of the screen pushes its own checklist
+    // out of view, so you open it and see nothing. Once the panel has finished
+    // growing, pull the row back into frame — `nearest` means a row that's
+    // already fully visible doesn't move at all.
+    if (opening) {
+      setTimeout(() => {
+        rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }, 240);
+    }
   };
 
   return (
     <>
+      <SwipeToComplete onCommit={swipeComplete} disabled={task.status === 'completed'}>
       <div
+        ref={rowRef}
         className={`mtask-row ${open ? 'mtask-row-open' : ''}`}
         style={{ '--row-color': meta.color, '--i': index }}
       >
@@ -211,6 +239,7 @@ function MobileTaskRow({ task, users, onChanged, index = 0 }) {
           )}
         </button>
       </div>
+      </SwipeToComplete>
 
       {expandable && (
         <Collapse open={open} className="mtask-drawer">

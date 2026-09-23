@@ -94,7 +94,13 @@
      that component for why the CSS-only approaches didn't hold
      up. All this adds is the content fading in behind the
      opening, so the panel doesn't arrive fully drawn at 0 height. */
-  .collapse-inner { opacity: 0; transition: opacity var(--m-base) var(--m-out); }
+  /* The content fades in over the FIRST half of the opening, not alongside it.
+     Matching the two durations left the checklist washed out while the box was
+     already most of the way open, which read as slow. */
+  .collapse-inner {
+    opacity: 0;
+    transition: opacity 120ms linear;
+  }
   .collapse-open > .collapse-inner { opacity: 1; }
 
   .mtask-chevron { transition: transform var(--m-base) var(--m-out); }

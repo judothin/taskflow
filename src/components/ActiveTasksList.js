@@ -225,7 +225,7 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
       )}
 
       {filterOpen && (
-        <ModalPortal>
+        <ModalPortal onDismiss={() => setFilterOpen(false)}>
           <div className="msheet-overlay" onClick={() => setFilterOpen(false)}>
             <div className="msheet" onClick={e => e.stopPropagation()} role="dialog" aria-label="Filter tasks">
               <span className="msheet-grabber" aria-hidden="true" />

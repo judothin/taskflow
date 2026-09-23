@@ -11,6 +11,8 @@ import Avatar from '../components/Avatar';
 import CompletionCalendar from '../components/CompletionCalendar';
 import FeedbackContent from '../components/FeedbackContent';
 import QuickLogModal from './QuickLog';
+import MobileTaskList from '../components/MobileTaskList';
+import useIsPhone from '../lib/useIsPhone';
 import ModalPortal from '../components/ModalPortal';
 import './Dashboard.css';
 import './Tasks.css';
@@ -167,6 +169,7 @@ function CompletedRow({ task, users = [], onEdit, onDeleted }) {
 export default function Completed() {
   const location = useLocation();
   const { activeTeamId } = useTeam();
+  const isPhone = useIsPhone();
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -337,6 +340,13 @@ export default function Completed() {
           ) : (
             <div className="completed-results">
               <div className="completed-results-count">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</div>
+              {isPhone ? (
+                /* Done is one of the five dock tabs, so it gets the same row
+                   treatment as the other lists rather than the desktop card —
+                   it was the last mobile screen still rendering desktop
+                   density. Already-completed rows don't swipe. */
+                <MobileTaskList tasks={filtered} users={users} onChanged={fetchData} />
+              ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {filtered.map(task => (
                   <CompletedRow
@@ -348,6 +358,7 @@ export default function Completed() {
                   />
                 ))}
               </div>
+              )}
             </div>
           )}
         </div>

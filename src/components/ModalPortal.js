@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import useSheetGestures from './SheetGestures';
+import useIsPhone from '../lib/useIsPhone';
 
 // ── Page scroll lock ──────────────────────────────────────────
 // Locking `body` alone does nothing here. The browser only propagates the
@@ -54,8 +56,11 @@ function unlockScroll() {
  *
  * Also freezes the page behind it — see the scroll lock above.
  */
-export default function ModalPortal({ children }) {
+export default function ModalPortal({ children, onDismiss }) {
   const elRef = useRef(null);
+  // Phones only: a sheet you can push back down. Opt-in per modal, because
+  // only the caller knows how to close itself.
+  useSheetGestures(elRef, onDismiss, useIsPhone());
 
   if (!elRef.current) {
     elRef.current = document.createElement('div');

@@ -67,7 +67,7 @@ export default function QuickContext() {
       </button>
 
       {open && (
-        <ModalPortal>
+        <ModalPortal onDismiss={close}>
           <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) close(); }}>
             <div className="modal qctx-modal">
               <div className="modal-header">
