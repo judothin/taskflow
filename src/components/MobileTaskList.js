@@ -6,6 +6,7 @@ import { useTeam } from '../context/TeamContext';
 import { subtaskProgress } from '../lib/subtasks';
 import { completeTask } from '../lib/completeTask';
 import Avatar from './Avatar';
+import TaskSubtasks from './TaskSubtasks';
 import ModalPortal from './ModalPortal';
 import './MobileTaskList.css';
 
@@ -124,6 +125,7 @@ export function CompleteSheet({ task, users, onClose, onDone }) {
 function MobileTaskRow({ task, users, onChanged }) {
   const navigate = useNavigate();
   const [sheet, setSheet] = useState(false);
+  const [open, setOpen] = useState(false);
   const meta = STATUS_META[task.status] || STATUS_META.open;
   const { done, total } = subtaskProgress(task.subtasks);
   const assignee = users.find(u => u.id === task.assignee_id);
@@ -131,9 +133,19 @@ function MobileTaskRow({ task, users, onChanged }) {
     && task.status !== 'completed'
     && isBefore(parseISO(task.due_date), startOfToday());
 
+  // Tapping a task with a checklist drops it open in place — ticking items off
+  // is the companion's whole job, and making that a page navigation each time
+  // means a round trip per box. A task with no checklist has nothing to drop
+  // down, so it opens the full view instead.
+  const expandable = total > 0;
+  const onRowTap = () => {
+    if (expandable) setOpen(v => !v);
+    else navigate(`/tasks/${task.id}`);
+  };
+
   return (
     <>
-      <div className="mtask-row" style={{ '--row-color': meta.color }}>
+      <div className={`mtask-row ${open ? 'mtask-row-open' : ''}`} style={{ '--row-color': meta.color }}>
         <button
           type="button"
           className="mtask-check"
@@ -146,7 +158,8 @@ function MobileTaskRow({ task, users, onChanged }) {
         <button
           type="button"
           className="mtask-main"
-          onClick={() => navigate(`/tasks/${task.id}`)}
+          onClick={onRowTap}
+          aria-expanded={expandable ? open : undefined}
         >
           <span className="mtask-title">{titleOf(task)}</span>
           <span className="mtask-meta">
@@ -173,7 +186,32 @@ function MobileTaskRow({ task, users, onChanged }) {
             size={28}
           />
         )}
+
+        {expandable && (
+          <span className={`mtask-chevron ${open ? 'mtask-chevron-open' : ''}`} aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
+        )}
       </div>
+
+      {expandable && open && (
+        <div className="mtask-drawer">
+          <TaskSubtasks
+            taskId={task.id}
+            subtasks={task.subtasks}
+            onChanged={onChanged}
+            defaultExpanded
+          />
+          <button type="button" className="mtask-open" onClick={() => navigate(`/tasks/${task.id}`)}>
+            Open full view
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {sheet && (
         <CompleteSheet

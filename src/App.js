@@ -22,6 +22,7 @@ import Tasks from './pages/Tasks';
 import TaskDetail from './pages/TaskDetail';
 import Completed from './pages/Completed';
 import Settings from './pages/Settings';
+import useIsPhone from './lib/useIsPhone';
 import Context from './pages/Context';
 import Focus from './pages/Focus';
 import Stats from './pages/Stats';
@@ -97,6 +98,14 @@ function TabFirstLoadRedirect() {
   return null;
 }
 
+// The landing page differs by device: a phone opens the companion's Focus
+// screen (what you're working on now), a desktop opens the full dashboard.
+// The widget grid is a poor first thing to meet on a phone.
+function HomeRedirect() {
+  const isPhone = useIsPhone();
+  return <Navigate to={isPhone ? '/focus' : '/dashboard'} replace />;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -106,7 +115,7 @@ function AppRoutes() {
       <Route path="/submit/:slug" element={<GuestPortal />} />
       <Route path="/onboarding" element={<PrivateRoute><OnboardingRoute /></PrivateRoute>} />
       <Route path="/" element={<PrivateRoute><RequireTeam><Layout /></RequireTeam></PrivateRoute>}>
-        <Route index element={<Navigate to="/dashboard" />} />
+        <Route index element={<HomeRedirect />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="active" element={<ActiveTasks />} />
         {/* Companion destinations — the phone dock's five tabs. They're

@@ -17,10 +17,20 @@ create table if not exists public.context_entries (
   team_id     uuid references public.teams(id) on delete cascade not null,
   subject     text not null,
   description text not null default '',
+  -- Source files this context is about, as an array of file_entries ids.
+  -- Stored as JSONB to match how the app already keeps list columns
+  -- (tasks.subtasks, tasks.attachments, file_entries.images).
+  file_ids    jsonb not null default '[]'::jsonb,
   created_by  uuid references public.profiles(id) on delete set null,
   created_at  timestamptz default now(),
   updated_at  timestamptz default now()
 );
+
+-- Safe to re-run over an earlier version of this migration that predates the
+-- file links: `create table if not exists` above won't add a column to a table
+-- that already exists.
+alter table public.context_entries
+  add column if not exists file_ids jsonb not null default '[]'::jsonb;
 
 -- The only read pattern is "everything for the active team, newest first".
 create index if not exists context_entries_team_idx

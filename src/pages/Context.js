@@ -11,7 +11,7 @@ import './Context.css';
 // Team knowledge that isn't a task, a file or a project — "the captcha form is
 // an Elementor plugin called X". A subject to find it by, a description
 // holding what you actually want back later.
-const EMPTY_FORM = { subject: '', description: '' };
+const EMPTY_FORM = { subject: '', description: '', fileIds: [] };
 
 export default function Context() {
   const { user } = useAuth();
@@ -19,6 +19,8 @@ export default function Context() {
   const isPhone = useIsPhone();
 
   const [entries, setEntries] = useState([]);
+  const [files, setFiles] = useState([]);
+  const [fileQuery, setFileQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -30,14 +32,28 @@ export default function Context() {
 
   const load = useCallback(async () => {
     if (!activeTeamId) { setEntries([]); setLoading(false); return; }
-    const { data } = await supabase
-      .from('context_entries')
-      .select('*')
-      .eq('team_id', activeTeamId)
-      .order('updated_at', { ascending: false });
+    const [{ data }, { data: fileRows }] = await Promise.all([
+      supabase.from('context_entries').select('*')
+        .eq('team_id', activeTeamId).order('updated_at', { ascending: false }),
+      supabase.from('file_entries').select('id, name, path, section')
+        .eq('team_id', activeTeamId).order('name'),
+    ]);
     setEntries(data || []);
+    setFiles(fileRows || []);
     setLoading(false);
   }, [activeTeamId]);
+
+  // id → file, for rendering the chips on each card without a second lookup.
+  const fileById = useMemo(() => {
+    const m = new Map();
+    files.forEach(f => m.set(f.id, f));
+    return m;
+  }, [files]);
+
+  const linkedFiles = (entry) =>
+    (Array.isArray(entry.file_ids) ? entry.file_ids : [])
+      .map(id => fileById.get(id))
+      .filter(Boolean);
 
   useEffect(() => { load(); }, [load]);
 
@@ -46,13 +62,33 @@ export default function Context() {
     { text: e.description, weight: 1 },
   ]), [entries, search]);
 
-  const openAdd = () => { setEditEntry(null); setForm(EMPTY_FORM); setFormError(''); setShowForm(true); };
+  const openAdd = () => {
+    setEditEntry(null); setForm(EMPTY_FORM); setFormError(''); setFileQuery(''); setShowForm(true);
+  };
   const openEdit = (entry) => {
     setEditEntry(entry);
-    setForm({ subject: entry.subject || '', description: entry.description || '' });
+    setForm({
+      subject: entry.subject || '',
+      description: entry.description || '',
+      fileIds: Array.isArray(entry.file_ids) ? entry.file_ids : [],
+    });
     setFormError('');
+    setFileQuery('');
     setShowForm(true);
   };
+
+  const toggleFile = (id) => setForm(f => ({
+    ...f,
+    fileIds: f.fileIds.includes(id) ? f.fileIds.filter(x => x !== id) : [...f.fileIds, id],
+  }));
+
+  // Ranked by the same forgiving matcher the rest of the app uses, so the
+  // picker finds "mini inpo gal" when you type "mini gallery".
+  const fileOptions = useMemo(() => searchRank(files, fileQuery, f => [
+    { text: f.name, weight: 3 },
+    { text: f.path, weight: 2 },
+    { text: f.section, weight: 1.5 },
+  ]).slice(0, 40), [files, fileQuery]);
 
   const save = async () => {
     if (!form.subject.trim()) { setFormError('Subject is required.'); return; }
@@ -61,6 +97,7 @@ export default function Context() {
     const payload = {
       subject: form.subject.trim(),
       description: form.description.trim(),
+      file_ids: form.fileIds,
       updated_at: new Date().toISOString(),
     };
     const { error } = editEntry
@@ -161,6 +198,18 @@ export default function Context() {
                 </div>
               </div>
               {entry.description && <p className="ctx-card-desc">{entry.description}</p>}
+              {linkedFiles(entry).length > 0 && (
+                <div className="ctx-card-files">
+                  {linkedFiles(entry).map(f => (
+                    <span key={f.id} className="ctx-file-chip" title={f.path}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      {f.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </article>
           ))}
         </div>
@@ -200,6 +249,73 @@ export default function Context() {
                       onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                     />
                   </div>
+                  <div className="form-group">
+                    <label className="label">
+                      Files
+                      <span className="label-note"> — source files this is about</span>
+                    </label>
+
+                    {form.fileIds.length > 0 && (
+                      <div className="ctx-picked">
+                        {form.fileIds.map(id => {
+                          const f = fileById.get(id);
+                          if (!f) return null;
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              className="ctx-file-chip ctx-file-chip-on"
+                              onClick={() => toggleFile(id)}
+                              title={`Remove ${f.name}`}
+                            >
+                              {f.name}
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                              </svg>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <input
+                      className="input"
+                      placeholder={files.length ? 'Search files to link…' : 'No files on this team yet'}
+                      value={fileQuery}
+                      disabled={!files.length}
+                      onChange={e => setFileQuery(e.target.value)}
+                    />
+
+                    {files.length > 0 && (
+                      <div className="ctx-file-list">
+                        {fileOptions.length === 0 ? (
+                          <p className="ctx-file-none">No files match "{fileQuery}".</p>
+                        ) : fileOptions.map(f => {
+                          const on = form.fileIds.includes(f.id);
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              className={`ctx-file-row ${on ? 'ctx-file-row-on' : ''}`}
+                              onClick={() => toggleFile(f.id)}
+                              aria-pressed={on}
+                            >
+                              <span className="ctx-file-row-text">
+                                <span className="ctx-file-row-name">{f.name}</span>
+                                <span className="ctx-file-row-path">{[f.section, f.path].filter(Boolean).join(' · ')}</span>
+                              </span>
+                              {on && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
                   {formError && <div className="error-msg">⚠ {formError}</div>}
                 </div>
               </div>

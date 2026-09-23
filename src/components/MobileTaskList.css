@@ -137,6 +137,65 @@
 .mtask-due { font-size: 12.5px; color: var(--text-dim); }
 .mtask-due-over { color: var(--danger); font-weight: 600; }
 
+/* Expanded row: the checklist drops in under it, inside the same list block
+   so it reads as part of that task rather than a floating panel. */
+.mtask-row-open { border-bottom-color: transparent; }
+
+.mtask-chevron {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--text-dim);
+  transition: transform 0.18s ease;
+}
+.mtask-chevron-open { transform: rotate(180deg); color: var(--row-color, var(--accent)); }
+
+.mtask-drawer {
+  padding: 2px 14px 14px 52px;
+  border-bottom: 1px solid var(--border);
+  animation: mtask-drop 0.16s ease;
+}
+.mtask-rows > :last-child.mtask-drawer { border-bottom: none; }
+
+@keyframes mtask-drop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* TaskSubtasks is shared with the desktop card, where it hides behind a
+   progress bar and caps its own height. Open on purpose here, at thumb size. */
+.mtask-drawer .st-card { margin-top: 0; }
+.mtask-drawer .st-card-header { display: none; }
+.mtask-drawer .st-card-list {
+  max-height: none;
+  overflow: visible;
+  margin-top: 0;
+  gap: 2px;
+}
+.mtask-drawer .st-card-item { min-height: 44px; padding: 7px 8px; }
+.mtask-drawer .st-card-item-label { font-size: 14.5px; line-height: 1.4; }
+.mtask-drawer .st-check { width: 21px; height: 21px; }
+.mtask-drawer .st-check:checked::after {
+  left: 6px; top: 2.5px; width: 5px; height: 10px;
+}
+
+.mtask-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 9px 4px;
+  min-height: 40px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .mtask-empty {
   padding: 48px 20px;
   text-align: center;
