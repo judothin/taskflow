@@ -204,6 +204,18 @@ input, select, textarea {
 ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
+/* No scrollbars on a phone. A visible track is a pointer affordance — it
+   exists so a mouse has something to grab. With a finger you just scroll, so
+   the bar is only chrome taking up width, and on Android it draws a permanent
+   grey stripe down every list. iOS already hides its own; this makes the two
+   behave the same.
+   Three properties because three engines: the pseudo-element for WebKit and
+   Blink, scrollbar-width for Firefox, -ms-overflow-style for legacy Edge. */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  * { scrollbar-width: none; -ms-overflow-style: none; }
+}
+
 /* Utility classes */
 .btn {
   display: inline-flex;
