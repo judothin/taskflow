@@ -9,7 +9,7 @@ import AssigneeSelect from './AssigneeSelect';
 import DatePicker from './DatePicker';
 import FeedbackEditor from './FeedbackEditor';
 import SubtaskEditor from './SubtaskEditor';
-import { asSubtasks } from '../lib/subtasks';
+import { asSubtasks, cleanSubtasks } from '../lib/subtasks';
 import ModalPortal from './ModalPortal';
 
 // Run once in Supabase:
@@ -349,6 +349,7 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
       const payload = {
         ...form,
         ...overrides,
+        subtasks: cleanSubtasks(form.subtasks),
         attachments,
         png_url: firstImage?.url || null,
         project_id: form.project_id || null,

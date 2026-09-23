@@ -14,7 +14,7 @@ import FeedbackEditor from '../components/FeedbackEditor';
 import SubtaskEditor from '../components/SubtaskEditor';
 import useIsPhone from '../lib/useIsPhone';
 import MobileTaskDetail from '../components/MobileTaskDetail';
-import { asSubtasks } from '../lib/subtasks';
+import { asSubtasks, cleanSubtasks } from '../lib/subtasks';
 import TaskAttachments from '../components/TaskAttachments';
 import ModalPortal from '../components/ModalPortal';
 import '../components/TaskCard.css';
@@ -113,7 +113,7 @@ export default function TaskDetail() {
     setError('');
     try {
       const png_url = await uploadImage();
-      const payload = { ...form, png_url, assignee_id: form.assignee_id || null, due_date: form.due_date || null, updated_at: new Date().toISOString() };
+      const payload = { ...form, png_url, subtasks: cleanSubtasks(form.subtasks), assignee_id: form.assignee_id || null, due_date: form.due_date || null, updated_at: new Date().toISOString() };
       const isBeingCompleted = payload.status === 'completed' && task.status !== 'completed';
       if (isBeingCompleted) {
         payload.date_completed = new Date().toISOString();

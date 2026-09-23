@@ -188,8 +188,8 @@ export default function Context() {
         </div>
       ) : (
         <div className="ctx-list">
-          {filtered.map(entry => (
-            <article key={entry.id} className="ctx-card">
+          {filtered.map((entry, i) => (
+            <article key={entry.id} className="ctx-card" style={{ '--i': i }}>
               <div className="ctx-card-head">
                 <h2 className="ctx-card-subject">{entry.subject}</h2>
                 <div className="ctx-card-actions">

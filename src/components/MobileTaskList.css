@@ -103,7 +103,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 .mtask-row:active { background: var(--bg-3); }
 
@@ -114,6 +114,22 @@
   color: var(--text);
   /* Two lines, then ellipsis — a long title shouldn't push the list into
      a scroll of one item. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* What the task actually says, under the title. Two lines: enough to tell
+   two similarly-named tasks apart without turning the list into a wall of
+   paragraphs — the full text is a tap away on the detail screen. Sits between
+   the title and the meta row so the row still reads top-down: what it is,
+   what it says, where it stands. */
+.mtask-detail {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -157,21 +173,14 @@
   display: flex;
   align-items: center;
   color: var(--text-dim);
-  transition: transform 0.18s ease;
 }
 .mtask-chevron-open { transform: rotate(180deg); color: var(--row-color, var(--accent)); }
+/* transition in MobileMotion.css */
 
-.mtask-drawer {
-  padding: 2px 14px 14px 52px;
-  border-bottom: 1px solid var(--border);
-  animation: mtask-drop 0.16s ease;
-}
+/* Layout only — the open/close transition lives in MobileMotion.css. */
+.mtask-drawer { border-bottom: 1px solid var(--border); }
+.mtask-drawer-inner { padding: 2px 14px 14px 52px; }
 .mtask-rows > :last-child.mtask-drawer { border-bottom: none; }
-
-@keyframes mtask-drop {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
 
 /* TaskSubtasks is shared with the desktop card, where it hides behind a
    progress bar and caps its own height. Open on purpose here, at thumb size. */

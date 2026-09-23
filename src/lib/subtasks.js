@@ -26,6 +26,17 @@ export function subtaskProgress(value) {
   return { done, total, pct, allDone: total > 0 && done === total };
 }
 
+// What actually gets saved. The editor deliberately keeps a blank row around
+// while you type — pressing Enter after a subtask opens the next one, which is
+// the whole point of the keyboard flow — but a blank row is scaffolding, not
+// data. Every save path runs through here so a trailing empty row can't reach
+// the database and come back as "(untitled)" on the card.
+export function cleanSubtasks(value) {
+  return asSubtasks(value)
+    .map(s => ({ ...s, text: s.text.trim() }))
+    .filter(s => s.text);
+}
+
 // Checked-off items sink to the bottom. Stable: within the done and not-done
 // groups the author's original ordering is preserved, so toggling a box only
 // ever moves that one row. Used by every checklist surface (card + detail) and

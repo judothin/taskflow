@@ -7,6 +7,7 @@ import { subtaskProgress } from '../lib/subtasks';
 import { completeTask } from '../lib/completeTask';
 import Avatar from './Avatar';
 import TaskSubtasks from './TaskSubtasks';
+import useMountTransition from '../lib/useMountTransition';
 import ModalPortal from './ModalPortal';
 import './MobileTaskList.css';
 
@@ -32,6 +33,10 @@ export const STATUS_META = {
   on_hold:     { label: 'On Hold',     color: 'var(--st-onhold)' },
   completed:   { label: 'Completed',   color: 'var(--st-completed)' },
 };
+
+// Feedback is stored as rich-text HTML. A row wants a plain, collapsed
+// snippet of it — tags out, runs of whitespace down to single spaces.
+const strip = (html) => (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
 export const isUrl = (s) => { try { return Boolean(new URL(s)) && /^https?:\/\//i.test(s); } catch { return false; } };
 export const titleOf = (task) => {
@@ -122,13 +127,14 @@ export function CompleteSheet({ task, users, onClose, onDone }) {
 }
 
 // ── One row ───────────────────────────────────────────────────
-function MobileTaskRow({ task, users, onChanged }) {
+function MobileTaskRow({ task, users, onChanged, index = 0 }) {
   const navigate = useNavigate();
   const [sheet, setSheet] = useState(false);
   const [open, setOpen] = useState(false);
   const meta = STATUS_META[task.status] || STATUS_META.open;
   const { done, total } = subtaskProgress(task.subtasks);
   const assignee = users.find(u => u.id === task.assignee_id);
+  const detail = strip(task.feedback);
   const overdue = task.due_date
     && task.status !== 'completed'
     && isBefore(parseISO(task.due_date), startOfToday());
@@ -138,6 +144,9 @@ function MobileTaskRow({ task, users, onChanged }) {
   // means a round trip per box. A task with no checklist has nothing to drop
   // down, so it opens the full view instead.
   const expandable = total > 0;
+  // Kept mounted through the close so the drawer can animate shut as well as
+  // open — see useMountTransition.
+  const drawer = useMountTransition(expandable && open, 240);
   const onRowTap = () => {
     if (expandable) setOpen(v => !v);
     else navigate(`/tasks/${task.id}`);
@@ -145,7 +154,10 @@ function MobileTaskRow({ task, users, onChanged }) {
 
   return (
     <>
-      <div className={`mtask-row ${open ? 'mtask-row-open' : ''}`} style={{ '--row-color': meta.color }}>
+      <div
+        className={`mtask-row ${open ? 'mtask-row-open' : ''}`}
+        style={{ '--row-color': meta.color, '--i': index }}
+      >
         <button
           type="button"
           className="mtask-check"
@@ -167,6 +179,7 @@ function MobileTaskRow({ task, users, onChanged }) {
         >
           <span className="mtask-main-text">
             <span className="mtask-title">{titleOf(task)}</span>
+            {detail && <span className="mtask-detail">{detail}</span>}
             <span className="mtask-meta">
               <span className="mtask-status">
                 <span className="mtask-dot" />
@@ -202,20 +215,22 @@ function MobileTaskRow({ task, users, onChanged }) {
         </button>
       </div>
 
-      {expandable && open && (
-        <div className="mtask-drawer">
-          <TaskSubtasks
-            taskId={task.id}
-            subtasks={task.subtasks}
-            onChanged={onChanged}
-            defaultExpanded
-          />
-          <button type="button" className="mtask-open" onClick={() => navigate(`/tasks/${task.id}`)}>
-            Open full view
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </button>
+      {drawer.mounted && (
+        <div className={`mtask-drawer ${drawer.shown ? 'mtask-drawer-open' : ''}`}>
+          <div className="mtask-drawer-inner">
+            <TaskSubtasks
+              taskId={task.id}
+              subtasks={task.subtasks}
+              onChanged={onChanged}
+              defaultExpanded
+            />
+            <button type="button" className="mtask-open" onClick={() => navigate(`/tasks/${task.id}`)}>
+              Open full view
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
 
@@ -253,8 +268,8 @@ export default function MobileTaskList({ tasks, groups, users = [], onChanged, e
             </h3>
           )}
           <div className="mtask-rows">
-            {section.tasks.map(task => (
-              <MobileTaskRow key={task.id} task={task} users={users} onChanged={onChanged} />
+            {section.tasks.map((task, i) => (
+              <MobileTaskRow key={task.id} task={task} users={users} onChanged={onChanged} index={i} />
             ))}
           </div>
         </section>

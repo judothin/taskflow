@@ -15,6 +15,7 @@ import TopBar from './TopBar';
 import { HeaderActionsProvider } from '../context/HeaderActionsContext';
 import ErrorBoundary from './ErrorBoundary';
 import './Layout.css';
+import './MobileMotion.css';
 
 const openSearch = () => window.dispatchEvent(new CustomEvent(OPEN_EVENT));
 
