@@ -24,8 +24,21 @@ const NavIcon = ({ d }) => (
   </svg>
 );
 
-// Short, single-word labels read better under a dock icon ("Active Tasks" → "Active").
-const dockLabel = (label) => label.split(' ')[0];
+// The phone dock's five tabs, in thumb order: what you're on now, then the
+// wider lists, then the numbers, then the one place you can write. Labels are
+// one word so five fit across a phone without truncating.
+const COMPANION_TABS = [
+  { to: '/focus',     label: 'Focus',
+    icon: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z' },
+  { to: '/active',    label: 'Tasks',
+    icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 M9 12h6 M9 16h4' },
+  { to: '/completed', label: 'Done',
+    icon: 'M22 11.08V12a10 10 0 11-5.93-9.14 M22 4L12 14.01l-3-3' },
+  { to: '/stats',     label: 'Stats',
+    icon: 'M12 20V10 M18 20V4 M6 20v-4' },
+  { to: '/quicklog',  label: 'Log',
+    icon: 'M12 5v14 M5 12h14' },
+];
 
 function ProjectsNavBadge({ userId, teamId }) {
   const [count, setCount] = useState(0);
@@ -98,7 +111,7 @@ function TeamSwitcher() {
             </button>
           ))}
           <div className="team-switcher-divider" />
-          <button className="team-switcher-option team-switcher-manage" onClick={() => { setOpen(false); navigate('/teams'); }}>
+          <button className="team-switcher-option team-switcher-manage" onClick={() => { setOpen(false); navigate('/settings?section=teams'); }}>
             Manage teams
           </button>
         </div>
@@ -377,7 +390,15 @@ export default function Layout() {
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
             </button>
-            <Avatar src={profile?.avatar_url} color={userColor} initials={initials} size={32} />
+            <button
+              type="button"
+              className="mobile-menu-btn"
+              onClick={() => setSidebarOpen(v => !v)}
+              aria-label="Menu"
+              aria-expanded={sidebarOpen}
+            >
+              <Avatar src={profile?.avatar_url} color={userColor} initials={initials} size={32} />
+            </button>
           </div>
         </header>
         <HeaderActionsProvider>
@@ -388,39 +409,25 @@ export default function Layout() {
         </HeaderActionsProvider>
       </main>
 
-      {/* ── Mobile dock (bottom tab bar) — app-style primary nav on phones ── */}
+      {/* ── Mobile dock (bottom tab bar) ──────────────────────────
+          Fixed companion tabs, NOT the customizable sidebar layout: the
+          phone build has one job (see what's on your plate, tick it off as
+          you go), and these five are it. Everything else — settings, teams,
+          projects, files — is still reachable from the avatar menu in the
+          header, which is also why all five slots can be tabs instead of
+          spending one on "More". */}
       <nav className="mobile-dock" aria-label="Primary">
-        {visibleNavLayout.slice(0, 4).map(({ id }) => {
-          const item = NAV_ITEMS[id];
-          return (
-            <NavLink
-              key={id}
-              to={item.to}
-              className={({ isActive }) => `dock-item ${isActive ? 'dock-item-active' : ''}`}
-              onClick={() => setSidebarOpen(false)}
-            >
-              <span className="dock-icon">
-                <NavIcon d={item.icon} />
-                {item.badge && <ProjectsNavBadge userId={user?.id} teamId={activeTeam?.id} />}
-              </span>
-              <span className="dock-label">{dockLabel(item.label)}</span>
-            </NavLink>
-          );
-        })}
-        <button
-          type="button"
-          className={`dock-item dock-more ${sidebarOpen ? 'dock-item-active' : ''}`}
-          onClick={() => setSidebarOpen(v => !v)}
-          aria-label="More"
-          aria-expanded={sidebarOpen}
-        >
-          <span className="dock-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
-            </svg>
-          </span>
-          <span className="dock-label">More</span>
-        </button>
+        {COMPANION_TABS.map(tab => (
+          <NavLink
+            key={tab.to}
+            to={tab.to}
+            className={({ isActive }) => `dock-item ${isActive ? 'dock-item-active' : ''}`}
+            onClick={() => setSidebarOpen(false)}
+          >
+            <span className="dock-icon"><NavIcon d={tab.icon} /></span>
+            <span className="dock-label">{tab.label}</span>
+          </NavLink>
+        ))}
       </nav>
 
       {/* ── Full-screen mobile menu (opened from the dock's "More") ── */}

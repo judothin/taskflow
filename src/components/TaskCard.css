@@ -139,10 +139,6 @@ body.has-bg-image .task-card-featured:hover {
   gap: 10px;
 }
 
-.task-card-content-clickable {
-  cursor: pointer;
-}
-
 .task-card-featured .task-card-content {
   padding: 20px 22px;
 }
@@ -459,6 +455,14 @@ body.has-bg-image .task-card-featured:hover {
   white-space: nowrap;
 }
 .task-card-posted svg { opacity: 0.7; flex-shrink: 0; }
+
+/* Companion mode shows the due date as plain text — the editable DatePicker
+   badge it replaces is desktop-only. */
+.badge-due-readonly {
+  background: var(--bg-3);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
 
 /* ── Action bar ────────────────────────────────────────────── */
 .task-card-actions {

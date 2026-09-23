@@ -1,0 +1,220 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { format, isBefore, parseISO, startOfToday } from 'date-fns';
+import { useAuth } from '../context/AuthContext';
+import { useTeam } from '../context/TeamContext';
+import { subtaskProgress } from '../lib/subtasks';
+import { completeTask } from '../lib/completeTask';
+import Avatar from './Avatar';
+import ModalPortal from './ModalPortal';
+import './MobileTaskList.css';
+
+// ══════════════════════════════════════════════════════════════
+// Mobile task list
+// --------------------------------------------------------------
+// The desktop TaskCard shows everything at once: badge wall, rich-text
+// feedback, attachments, an inline subtask grid, a six-button action rail.
+// That's right for a wide screen you're working from and wrong for a phone
+// you're glancing at — it turns into a wall of 11px text.
+//
+// So the phone gets its own row instead of a squeezed card, following what
+// every list-shaped task app settles on: one line of title, one line of
+// meta, a big circle to tick it off, and everything else deferred to the
+// detail screen. Two targets per row, both comfortably past 44px: the circle
+// completes, the rest opens.
+// ══════════════════════════════════════════════════════════════
+
+export const STATUS_META = {
+  critical:    { label: 'Critical',    color: 'var(--st-critical)' },
+  open:        { label: 'Open',        color: 'var(--st-open)' },
+  in_progress: { label: 'In Progress', color: 'var(--st-inprogress)' },
+  on_hold:     { label: 'On Hold',     color: 'var(--st-onhold)' },
+  completed:   { label: 'Completed',   color: 'var(--st-completed)' },
+};
+
+export const isUrl = (s) => { try { return Boolean(new URL(s)) && /^https?:\/\//i.test(s); } catch { return false; } };
+export const titleOf = (task) => {
+  const page = task.page || 'Untitled';
+  if (!isUrl(page)) return page;
+  // A bare URL is unreadable at a glance — show the last meaningful segment.
+  try {
+    const u = new URL(page);
+    const seg = u.pathname.split('/').filter(Boolean).pop();
+    return seg ? seg.replace(/[-_]/g, ' ') : u.hostname;
+  } catch { return page; }
+};
+
+// ── Bottom sheet: who finished it ─────────────────────────────
+// The task table wants `completed_by` names, so completion can't be a single
+// silent tap. It's still one tap in the common case: you're pre-selected, so
+// the sheet opens ready to confirm.
+export function CompleteSheet({ task, users, onClose, onDone }) {
+  const { user, profile } = useAuth();
+  const { activeTeamId } = useTeam();
+  const myName = `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim();
+  const [picked, setPicked] = useState(() => (myName ? [myName] : []));
+  const [saving, setSaving] = useState(false);
+
+  const toggle = (name) =>
+    setPicked(p => (p.includes(name) ? p.filter(n => n !== name) : [...p, name]));
+
+  const confirm = async () => {
+    if (!picked.length || saving) return;
+    setSaving(true);
+    await completeTask({ task, completedBy: picked, userId: user?.id, teamId: activeTeamId });
+    setSaving(false);
+    onDone?.();
+    onClose();
+  };
+
+  return (
+    <ModalPortal>
+      <div className="msheet-overlay" onClick={onClose}>
+        <div className="msheet" onClick={e => e.stopPropagation()} role="dialog" aria-label="Mark complete">
+          <span className="msheet-grabber" aria-hidden="true" />
+
+          <h2 className="msheet-title">Mark complete</h2>
+          <p className="msheet-task">{titleOf(task)}</p>
+
+          <div className="msheet-label">Completed by</div>
+          <div className="msheet-people">
+            {users.map(u => {
+              const name = `${u.first_name} ${u.last_name}`;
+              const on = picked.includes(name);
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  className={`msheet-person ${on ? 'msheet-person-on' : ''}`}
+                  onClick={() => toggle(name)}
+                  aria-pressed={on}
+                >
+                  <Avatar
+                    src={u.avatar_url}
+                    color={u.color || '#6366f1'}
+                    initials={`${u.first_name[0] || ''}${u.last_name[0] || ''}`}
+                    size={32}
+                  />
+                  <span className="msheet-person-name">{u.first_name} {u.last_name}</span>
+                  <span className={`msheet-tick ${on ? 'msheet-tick-on' : ''}`}>
+                    {on && (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="msheet-actions">
+            <button type="button" className="msheet-confirm" disabled={!picked.length || saving} onClick={confirm}>
+              {saving ? 'Saving…' : 'Complete'}
+            </button>
+            <button type="button" className="msheet-cancel" onClick={onClose}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
+
+// ── One row ───────────────────────────────────────────────────
+function MobileTaskRow({ task, users, onChanged }) {
+  const navigate = useNavigate();
+  const [sheet, setSheet] = useState(false);
+  const meta = STATUS_META[task.status] || STATUS_META.open;
+  const { done, total } = subtaskProgress(task.subtasks);
+  const assignee = users.find(u => u.id === task.assignee_id);
+  const overdue = task.due_date
+    && task.status !== 'completed'
+    && isBefore(parseISO(task.due_date), startOfToday());
+
+  return (
+    <>
+      <div className="mtask-row" style={{ '--row-color': meta.color }}>
+        <button
+          type="button"
+          className="mtask-check"
+          onClick={() => setSheet(true)}
+          aria-label={`Mark ${titleOf(task)} complete`}
+        >
+          <span className="mtask-circle" />
+        </button>
+
+        <button
+          type="button"
+          className="mtask-main"
+          onClick={() => navigate(`/tasks/${task.id}`)}
+        >
+          <span className="mtask-title">{titleOf(task)}</span>
+          <span className="mtask-meta">
+            <span className="mtask-status">
+              <span className="mtask-dot" />
+              {meta.label}
+            </span>
+            {total > 0 && (
+              <span className="mtask-sub">{done}/{total}</span>
+            )}
+            {task.due_date && (
+              <span className={`mtask-due ${overdue ? 'mtask-due-over' : ''}`}>
+                {format(parseISO(task.due_date), 'MMM d')}
+              </span>
+            )}
+          </span>
+        </button>
+
+        {assignee && (
+          <Avatar
+            src={assignee.avatar_url}
+            color={assignee.color || '#6366f1'}
+            initials={`${assignee.first_name[0] || ''}${assignee.last_name[0] || ''}`}
+            size={28}
+          />
+        )}
+      </div>
+
+      {sheet && (
+        <CompleteSheet
+          task={task}
+          users={users}
+          onClose={() => setSheet(false)}
+          onDone={onChanged}
+        />
+      )}
+    </>
+  );
+}
+
+// ── The list ──────────────────────────────────────────────────
+// `groups` is [{ key, label, tasks }] when the caller wants headers (Focus
+// splits in-progress from up-next); plain `tasks` renders one flat list.
+export default function MobileTaskList({ tasks, groups, users = [], onChanged, empty }) {
+  const sections = groups || [{ key: 'all', label: null, tasks: tasks || [] }];
+  const count = sections.reduce((n, s) => n + s.tasks.length, 0);
+
+  if (!count) {
+    return <div className="mtask-empty">{empty || 'Nothing here.'}</div>;
+  }
+
+  return (
+    <div className="mtask-list">
+      {sections.filter(s => s.tasks.length).map(section => (
+        <section key={section.key} className="mtask-section">
+          {section.label && (
+            <h3 className="mtask-section-head">
+              {section.label}
+              <span className="mtask-section-count">{section.tasks.length}</span>
+            </h3>
+          )}
+          <div className="mtask-rows">
+            {section.tasks.map(task => (
+              <MobileTaskRow key={task.id} task={task} users={users} onChanged={onChanged} />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}

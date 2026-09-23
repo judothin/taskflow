@@ -3,10 +3,10 @@ import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers, regenerateInviteCode, setMemberRole, removeMember, renameTeam, setTeamGamification } from '../lib/teams';
 import { fetchTeamStreaks, setWeekendStreaks, adminSetStreak, adminSetStreakPaused } from '../lib/streak';
-import TeamJoinCreateForm from '../components/TeamJoinCreateForm';
-import Avatar from '../components/Avatar';
-import ModalPortal from '../components/ModalPortal';
-import './Teams.css';
+import TeamJoinCreateForm from './TeamJoinCreateForm';
+import Avatar from './Avatar';
+import ModalPortal from './ModalPortal';
+import './TeamSettings.css';
 
 function CopyButton({ value, label = 'Copy' }) {
   const [copied, setCopied] = useState(false);
@@ -34,7 +34,7 @@ function CopyButton({ value, label = 'Copy' }) {
   );
 }
 
-export default function Teams() {
+export default function TeamSettings() {
   const { user } = useAuth();
   const { teams, activeTeam, activeTeamId, switchTeam, isOwner, isAdmin, refreshTeams } = useTeam();
 
@@ -195,7 +195,7 @@ export default function Teams() {
   };
 
   return (
-    <div className="teams-page fade-in">
+    <div className="team-settings">
 
       {/* ── Team switcher ── */}
       <div className="team-switcher-row">
@@ -260,7 +260,6 @@ export default function Teams() {
           </div>
           {renameError && <div className="error-msg" style={{ marginBottom: 14 }}>⚠ {renameError}</div>}
 
-          <div className="teams-detail-grid">
           {/* ── Members ── */}
           <div className="card team-card">
             <h2 className="team-card-title">
@@ -343,7 +342,7 @@ export default function Teams() {
           </div>
 
           {/* ── Invite + guest link ── */}
-          <div className="teams-side-col">
+          <div className="team-settings-grid">
             <div className="card team-card">
               <h2 className="team-card-title">Invite people</h2>
               <p className="team-card-desc">Share this code (or link) so someone can join <strong>{activeTeam.name}</strong> as a member.</p>
@@ -427,7 +426,6 @@ export default function Teams() {
               </div>
             )}
           </div>
-        </div>
         </>
       )}
 

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { NAV_ITEMS } from '../lib/navLayout';
+import { SETTINGS_SECTIONS, sectionPath } from '../lib/settingsSections';
+import { searchRank } from '../lib/fuzzySearch';
 import ModalPortal from './ModalPortal';
 import './GlobalSearch.css';
 
@@ -11,6 +13,7 @@ import './GlobalSearch.css';
 export const OPEN_EVENT = 'open-global-search';
 
 const ICONS = {
+  context:    'M4 19.5A2.5 2.5 0 016.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z',
   task:       'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 M9 12h6 M9 16h4',
   project:    'M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z',
   file:       'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
@@ -18,8 +21,11 @@ const ICONS = {
   page:       'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
 };
 
-const GROUP_ORDER = ['page', 'task', 'project', 'file', 'submission'];
-const GROUP_LABEL = { page: 'Go to', task: 'Tasks', project: 'Projects', file: 'Files', submission: 'Submissions' };
+// Context first, deliberately: an entry there is something a person wrote
+// down BECAUSE it was hard to find, so when it matches it's almost always the
+// answer. Everything else is raw records that happen to contain the words.
+const GROUP_ORDER = ['context', 'page', 'task', 'project', 'file', 'submission'];
+const GROUP_LABEL = { context: 'Context', page: 'Go to', task: 'Tasks', project: 'Projects', file: 'Files', submission: 'Submissions' };
 const PER_GROUP = 6;
 
 const norm = (s) => (s || '').toString().toLowerCase();
@@ -40,7 +46,7 @@ export default function GlobalSearch() {
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState({ tasks: [], projects: [], files: [], submissions: [] });
+  const [data, setData] = useState({ context: [], tasks: [], projects: [], files: [], submissions: [] });
   const inputRef = useRef(null);
   const listRef = useRef(null);
 
@@ -66,7 +72,8 @@ export default function GlobalSearch() {
     let cancelled = false;
     setLoading(true);
     (async () => {
-      const [tasks, projects, files, submissions] = await Promise.all([
+      const [context, tasks, projects, files, submissions] = await Promise.all([
+        supabase.from('context_entries').select('id, subject, description').eq('team_id', activeTeamId).order('updated_at', { ascending: false }).limit(500),
         supabase.from('tasks').select('id, page, feedback, noticed_by, status, roi').eq('team_id', activeTeamId).order('date_received', { ascending: false }).limit(500),
         supabase.from('projects').select('id, title, description, status').eq('team_id', activeTeamId).order('updated_at', { ascending: false }).limit(300),
         supabase.from('file_entries').select('id, name, path, section, description').eq('team_id', activeTeamId).limit(500),
@@ -74,6 +81,7 @@ export default function GlobalSearch() {
       ]);
       if (cancelled) return;
       setData({
+        context: context.data || [],
         tasks: tasks.data || [],
         projects: projects.data || [],
         files: files.data || [],
@@ -87,36 +95,60 @@ export default function GlobalSearch() {
   // ── Build the (grouped) result set for the current query ──
   const groups = useMemo(() => {
     const q = norm(query).trim();
-    const pages = Object.entries(NAV_ITEMS)
-      .map(([id, item]) => ({ type: 'page', id, title: item.label, subtitle: item.to, to: item.to }))
-      .filter(p => !q || norm(p.title).includes(q));
+    // Settings sections are destinations too — several things that used to be
+    // their own page (Teams) now live inside one, and searching for them by
+    // name should still land you there.
+    // Each list is filtered AND ranked by the same scorer — see
+    // lib/fuzzySearch.js. Names carry more weight than body text, so a file
+    // called "checkout" outranks one that merely mentions checkout.
+    const pages = searchRank([
+      ...Object.entries(NAV_ITEMS)
+        .map(([id, item]) => ({ type: 'page', id, title: item.label, subtitle: item.to, to: item.to })),
+      ...SETTINGS_SECTIONS.map(sec => ({
+        type: 'page', id: `settings-${sec.id}`, title: sec.label,
+        subtitle: `Settings · ${sec.blurb}`, to: sectionPath(sec.id),
+      })),
+    ], q, p => [{ text: p.title, weight: 2 }]);
 
-    const matchTask = (t) => {
-      const hay = `${norm(t.page)} ${norm(strip(t.feedback))} ${norm(t.noticed_by)} ${norm(t.status)} ${norm(t.roi)}`;
-      return !q || hay.includes(q);
-    };
-    const tasks = data.tasks.filter(matchTask).map(t => ({
+    const context = searchRank(data.context, q, c => [
+      { text: c.subject, weight: 3 },
+      { text: c.description, weight: 1 },
+    ]).map(c => ({
+      type: 'context', id: c.id, title: c.subject,
+      subtitle: (c.description || '').slice(0, 90) || 'No description',
+      to: '/context',
+    }));
+
+    const tasks = searchRank(data.tasks, q, t => [
+      { text: t.page, weight: 3 },
+      { text: strip(t.feedback), weight: 1 },
+      { text: t.noticed_by, weight: 1 },
+      { text: `${t.status} ${t.roi}`, weight: 1 },
+    ]).map(t => ({
       type: 'task', id: t.id, title: t.page || '(no page)',
       subtitle: strip(t.feedback).slice(0, 80) || t.noticed_by || t.status,
       to: `/tasks/${t.id}`,
     }));
 
-    const projects = data.projects
-      .filter(p => !q || norm(p.title).includes(q) || norm(p.description).includes(q))
-      .map(p => ({ type: 'project', id: p.id, title: p.title || '(untitled project)', subtitle: strip(p.description).slice(0, 80) || p.status, to: `/projects/${p.id}` }));
+    const projects = searchRank(data.projects, q, p => [
+      { text: p.title, weight: 3 },
+      { text: strip(p.description), weight: 1 },
+    ]).map(p => ({ type: 'project', id: p.id, title: p.title || '(untitled project)', subtitle: strip(p.description).slice(0, 80) || p.status, to: `/projects/${p.id}` }));
 
-    const files = data.files
-      .filter(f => !q || norm(f.name).includes(q) || norm(f.path).includes(q) || norm(f.section).includes(q) || norm(f.description).includes(q))
-      .map(f => ({ type: 'file', id: f.id, title: f.name || f.path || '(file)', subtitle: [f.section, f.path].filter(Boolean).join(' · ').slice(0, 80), to: '/files' }));
+    const files = searchRank(data.files, q, f => [
+      { text: f.name, weight: 3 },
+      { text: f.path, weight: 2 },
+      { text: f.section, weight: 1.5 },
+      { text: f.description, weight: 1 },
+    ]).map(f => ({ type: 'file', id: f.id, title: f.name || f.path || '(file)', subtitle: [f.section, f.path].filter(Boolean).join(' · ').slice(0, 80), to: '/files' }));
 
-    const submissions = data.submissions
-      .filter(s => {
-        const hay = `${norm(s.page)} ${norm(strip(s.feedback))} ${norm(s.noticed_by)}`;
-        return !q || hay.includes(q);
-      })
-      .map(s => ({ type: 'submission', id: s.id, title: s.page || '(submission)', subtitle: strip(s.feedback).slice(0, 80) || s.noticed_by || s.status, to: '/submissions' }));
+    const submissions = searchRank(data.submissions, q, s => [
+      { text: s.page, weight: 3 },
+      { text: strip(s.feedback), weight: 1 },
+      { text: s.noticed_by, weight: 1 },
+    ]).map(s => ({ type: 'submission', id: s.id, title: s.page || '(submission)', subtitle: strip(s.feedback).slice(0, 80) || s.noticed_by || s.status, to: '/submissions' }));
 
-    const byType = { page: pages, task: tasks, project: projects, file: files, submission: submissions };
+    const byType = { context, page: pages, task: tasks, project: projects, file: files, submission: submissions };
     // When there's no query, don't dump every task/file — just show page jumps.
     if (!q) return [{ type: 'page', items: pages }];
 

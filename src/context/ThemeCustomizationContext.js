@@ -90,6 +90,9 @@ export function ThemeCustomizationProvider({ children }) {
   }, [uid]);
 
   const setColor   = useCallback((key, value) => commit({ ...colorsRef.current, [key]: value }), [commit]);
+  // Several keys at once. Two back-to-back setColor() calls would both read the
+  // same (pre-render) colorsRef, so the second would drop the first's change.
+  const setColorValues = useCallback((patch) => commit({ ...colorsRef.current, ...patch }), [commit]);
   const resetColor = useCallback((key) => {
     const next = { ...colorsRef.current };
     delete next[key];
@@ -155,7 +158,7 @@ export function ThemeCustomizationProvider({ children }) {
 
   return (
     <Ctx.Provider value={{
-      colors, setColor, resetColor, resetAll, getColor, isCustom,
+      colors, setColor, setColorValues, resetColor, resetAll, getColor, isCustom,
       backgrounds, maxBackgrounds: MAX_BACKGROUNDS, setBackground, uploadBackground, deleteBackground,
       savedThemes, saveTheme, applyTheme, deleteTheme, themesUsingBackground,
     }}>

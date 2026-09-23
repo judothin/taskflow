@@ -102,6 +102,68 @@
 }
 .st-editor-add:hover { border-color: var(--accent); color: var(--accent); }
 
+/* Add-subtask / add-preset sit on one line, wrapping on narrow forms */
+.st-editor-actions { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+
+/* ── Preset picker ── */
+.st-preset { display: flex; flex-direction: column; align-items: flex-start; }
+.st-preset-trigger-open { border-style: solid; border-color: var(--accent); color: var(--accent); }
+
+/* Expands inline instead of floating — see the note in
+   SubtaskPresetPicker.js about the scrolling modal body. */
+.st-preset-panel {
+  margin-top: 6px;
+  width: 100%;
+  min-width: 220px;
+  max-height: 232px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+
+.st-preset-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.st-preset-option:hover { background: var(--bg-3); }
+.st-preset-option-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-preset-option-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+}
+
+.st-preset-note {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.st-preset-note strong { color: var(--text); font-weight: 600; }
+
 .st-editor-progress {
   font-size: 11px;
   color: var(--text-dim);
@@ -162,18 +224,38 @@
 }
 .st-card-count-done { color: var(--st-completed); }
 
+/* Two columns at most, never more, collapsing to one when the card is too
+   narrow to split. --st-card-min is the floor on a column's width: 100% (the
+   default) forces a single column, and the theme engine drops it to a real
+   width when two-column checklists are turned on (Settings -> Subtask
+   Presets).
+     calc(50% - 6px) is the width of one of two columns (half the track, less
+   half the 12px gap). Making that the track MINIMUM is what caps the count:
+   auto-fit can't squeeze a third column in beside two that each already claim
+   half the row. Below the floor the two no longer fit and it falls back to
+   one — which is why this needs no breakpoint: card width is what decides,
+   and a card in a 4-across dashboard widget is narrow whatever the viewport
+   is doing. The outer min() covers the narrowest cards, where a fixed floor
+   would overflow instead of collapsing. */
 .st-card-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(var(--st-card-min, 100%), calc(50% - 6px))), 1fr));
+  gap: 1px 12px;
   margin-top: 4px;
   max-height: 190px;
   overflow-y: auto;
 }
 
+/* The add affordance always gets its own full-width row under the items. */
+.st-card-list > .st-card-add,
+.st-card-list > .st-card-add-row { grid-column: 1 / -1; }
+
 .st-card-item {
   display: flex;
-  align-items: center;
+  /* Top-aligned, not centered: a label that wraps to two lines would
+     otherwise push the box down to the middle of the block, leaving it
+     floating between the two lines. */
+  align-items: flex-start;
   gap: 9px;
   padding: 5px 8px;
   border-radius: var(--radius);
@@ -181,6 +263,11 @@
   border: 1px solid transparent;
   transition: background 0.1s ease;
 }
+
+/* Nudge the 16px box down to sit centered on the first line's text rather
+   than on its line box (13px text in a 1.6 line-height leaves ~2px of
+   half-leading above the glyphs). */
+.st-card-item > .st-check { margin-top: 2px; }
 .st-card-item:hover { background: var(--bg-3); }
 
 /* While a checked row sinks to the bottom it crosses the rows coming up past

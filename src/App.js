@@ -21,8 +21,11 @@ import ActiveTasks from './pages/ActiveTasks';
 import Tasks from './pages/Tasks';
 import TaskDetail from './pages/TaskDetail';
 import Completed from './pages/Completed';
-import Teams from './pages/Teams';
 import Settings from './pages/Settings';
+import Context from './pages/Context';
+import Focus from './pages/Focus';
+import Stats from './pages/Stats';
+import QuickLogPage from './pages/QuickLogPage';
 import Help from './pages/Help';
 import Files from './pages/Files';
 import GuestPortal from './pages/GuestPortal';
@@ -106,13 +109,22 @@ function AppRoutes() {
         <Route index element={<Navigate to="/dashboard" />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="active" element={<ActiveTasks />} />
+        {/* Companion destinations — the phone dock's five tabs. They're
+            ordinary pages, so they work at any width; the dock is just the
+            only place that links to them. */}
+        <Route path="focus" element={<Focus />} />
+        <Route path="stats" element={<Stats />} />
+        <Route path="quicklog" element={<QuickLogPage />} />
         <Route path="tasks" element={<Tasks />} />
         <Route path="tasks/:id" element={<TaskDetail />} />
         <Route path="completed" element={<Completed />} />
-        <Route path="teams" element={<Teams />} />
+        {/* Teams moved into Settings — keep old links, bookmarks and the
+            in-app "Manage teams" entry point working. */}
+        <Route path="teams" element={<Navigate to="/settings?section=teams" replace />} />
         <Route path="settings" element={<Settings />} />
         <Route path="help" element={<Help />} />
         <Route path="files" element={<Files />} />
+        <Route path="context" element={<Context />} />
         <Route path="pomodoro" element={<Pomodoro />} />
         <Route path="projects" element={<Projects />} />
         <Route path="projects/:id" element={<ProjectDetail />} />

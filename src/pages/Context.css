@@ -1,0 +1,159 @@
+/* ── Context page ──────────────────────────────────────────── */
+
+.ctx-page { display: flex; flex-direction: column; gap: 20px; }
+
+/* Header */
+.ctx-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.ctx-head-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  background: var(--accent-glow);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.ctx-head-text { flex: 1; min-width: 0; }
+.ctx-head-title { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+.ctx-head-sub { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+
+/* Search */
+.ctx-search { position: relative; display: flex; align-items: center; }
+.ctx-search-icon {
+  position: absolute;
+  left: 11px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+.ctx-search-input {
+  width: 220px;
+  padding: 9px 30px 9px 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ctx-search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.ctx-search-input::placeholder { color: var(--text-dim); }
+.ctx-search-clear {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.ctx-search-clear:hover { color: var(--text); background: var(--bg-3); }
+
+/* List */
+.ctx-list { display: flex; flex-direction: column; gap: 12px; }
+
+.ctx-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  transition: border-color 0.15s ease;
+}
+.ctx-card:hover { border-color: var(--border-light); }
+
+.ctx-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.ctx-card-subject {
+  flex: 1;
+  min-width: 0;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* Revealed on hover on a pointer device; always visible where there's no
+   hover to reveal them with. */
+.ctx-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.ctx-card:hover .ctx-card-actions,
+.ctx-card:focus-within .ctx-card-actions { opacity: 1; }
+@media (hover: none) { .ctx-card-actions { opacity: 1; } }
+
+.ctx-card-desc {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin-top: 8px;
+  /* Author's line breaks are meaningful here — it's a notes field. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ctx-textarea {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.6;
+  font-family: var(--font);
+}
+
+/* Empty + loading */
+.ctx-empty {
+  padding: 48px 24px;
+  text-align: center;
+  font-size: 14.5px;
+  color: var(--text-muted);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.ctx-empty-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 8px auto 16px;
+  max-width: 420px;
+  line-height: 1.6;
+}
+.ctx-empty p + .btn { margin-top: 14px; }
+
+.ctx-skeleton {
+  height: 84px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+@media (max-width: 768px) {
+  .ctx-head { gap: 10px; }
+  .ctx-search { order: 3; width: 100%; }
+  .ctx-search-input { width: 100%; font-size: 16px; }
+  .ctx-add { order: 2; }
+  .ctx-card-actions { opacity: 1; }
+}

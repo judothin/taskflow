@@ -233,20 +233,6 @@
   background: #dc2626;
 }
 
-.avatar-upload-full {
-  background: var(--bg-3);
-  border: 1px dashed var(--border-light);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.avatar-upload-full:hover {
-  border-color: var(--accent);
-  background: var(--accent-glow);
-}
-
 /* Prevent iOS input zoom (requires font-size >= 16px) */
 @media (max-width: 768px) {
   .guest-input { font-size: 16px !important; }

@@ -1,9 +1,10 @@
+/* Lives inside the Settings panel, which supplies the outer spacing. */
+.team-settings { display: flex; flex-direction: column; gap: 16px; }
+
 .team-switcher-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 20px;
-  margin-bottom: 20px;
 }
 
 .team-pill {
@@ -59,7 +60,6 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 14px;
 }
 
 .team-name-title {
@@ -81,21 +81,16 @@
   flex: 1;
 }
 
-.teams-detail-grid {
+/* The members list runs full width (its rows are dense — avatar, role,
+   streak controls, admin buttons), and the smaller cards below it fit as
+   many per row as the panel allows. auto-fit rather than a fixed column
+   count because two of the four are role-gated, so the number of cards
+   varies by who's looking. */
+.team-settings-grid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
   align-items: start;
-}
-
-@media (max-width: 900px) {
-  .teams-detail-grid { grid-template-columns: 1fr; }
-}
-
-.teams-side-col {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
 }
 
 .team-card-title {
@@ -134,6 +129,7 @@
 .team-member-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 8px 10px;
   border-radius: var(--radius);

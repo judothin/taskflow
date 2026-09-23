@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { asSubtasks, makeSubtask, sortSubtasks, subtaskProgress } from '../lib/subtasks';
 import useFlipRows from '../lib/useFlipRows';
+import SubtaskPresetPicker from './SubtaskPresetPicker';
 import './Subtasks.css';
 
 // Controlled checklist editor used inside TaskForm / TaskDetail.
@@ -68,12 +69,18 @@ export default function SubtaskEditor({ value, onChange }) {
         </div>
       ))}
 
-      <button type="button" className="st-editor-add" onClick={() => add()}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-        Add subtask
-      </button>
+      <div className="st-editor-actions">
+        <button type="button" className="st-editor-add" onClick={() => add()}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          Add subtask
+        </button>
+
+        {/* Appending: a preset adds to whatever's already here rather than
+            replacing it, so two presets can be stacked on one task. */}
+        <SubtaskPresetPicker onApply={(items) => commit([...list, ...items])} />
+      </div>
 
       {total > 0 && <span className="st-editor-progress">{done} / {total} done</span>}
     </div>

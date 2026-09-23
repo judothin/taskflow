@@ -1,0 +1,125 @@
+/* ══════════════════════════════════════════════════════════════
+   Mobile companion
+   ------------------------------------------------------------
+   The phone build is a companion to the desktop app, not a second
+   copy of it: you glance at what's on your plate and tick things
+   off as you finish them. Everything here is about making those
+   two things fast and thumb-sized. Writing lives on /quicklog.
+   Nothing in this file is phone-only by accident — the pages it
+   styles (Focus, Stats, Quick Log) work at any width; the rules
+   that actually change behavior are in the media query at the
+   bottom.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Shared page pieces ─────────────────────────────────────── */
+.companion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.companion-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+}
+.companion-empty-sub { font-size: 12.5px; color: var(--text-dim); margin-top: 6px; }
+
+/* ── Stats page ─────────────────────────────────────────────── */
+.companion-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.companion-streak-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.companion-streak-text { min-width: 0; }
+.companion-streak-days {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.companion-streak-paused {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  background: var(--bg-4);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+.companion-streak-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Quick Log page ─────────────────────────────────────────── */
+.companion-quicklog { max-width: 720px; }
+.companion-quicklog .quicklog-header { margin-bottom: 20px; }
+
+/* ══════════════════════════════════════════════════════════════
+   Phone only — 768px matches Layout.css's dock breakpoint and
+   useIsPhone.js's media query. Move all three together.
+   ══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* Cards are the whole interface here, so give them room and make
+     every remaining control a real thumb target. */
+  .companion-list { gap: 12px; }
+
+  /* Task counts read as a 3×2 block of big numbers rather than a
+     cramped single row. */
+  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+
+  .companion-stats-row { grid-template-columns: 1fr; }
+
+  /* The one write surface: full-width field targets, and a submit
+     button that can't be missed. */
+  .companion-quicklog { padding: 16px; }
+  .companion-quicklog .quicklog-submit {
+    width: 100%;
+    min-height: 50px;
+    font-size: 15px;
+  }
+  /* 16px stops iOS zooming the viewport when a field takes focus. */
+  .companion-quicklog .input,
+  .companion-quicklog .quicklog-form textarea { font-size: 16px; }
+
+  .companion-quicklog .quicklog-person-row { min-height: 48px; }
+
+  /* ── Page chrome ──────────────────────────────────────────
+     One clear title per screen and nothing competing with it.
+     The top bar stays (it's the only thing naming the current
+     screen — /active renders no heading of its own), but the
+     badge strip, XP bar and clock that ride along on the right
+     are desktop ornament and go. */
+  .app-topbar { padding: 12px 16px; }
+  .app-topbar-cluster { display: none; }
+  .app-topbar-crumb-root,
+  .app-topbar-crumb-sep { display: none; }
+  .app-topbar-crumb-current { font-size: 19px; font-weight: 700; }
+
+  .section-title {
+     font-size: 20px;
+     letter-spacing: -0.3px;
+     margin-bottom: 14px;
+  }
+  .focus-hint { display: none; }
+
+  /* ── Task counts ──────────────────────────────────────────
+     Big enough to read without leaning in; they're the whole
+     point of the Stats tab. */
+  .stat-card { padding: 18px 8px; }
+  .stat-value { font-size: 30px; }
+  .stat-label { font-size: 11.5px; }
+}

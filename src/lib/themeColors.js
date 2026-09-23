@@ -29,8 +29,14 @@ const MANAGED_VARS = [
   '--border', '--border-light',
   '--accent', '--accent-hover', '--accent-glow',
   '--st-critical', '--st-open', '--st-inprogress', '--st-onhold', '--st-completed',
-  '--logo-filter', '--glass-blur', '--bg-solid',
+  '--logo-filter', '--glass-blur', '--bg-solid', '--bg-tint', '--st-card-min',
 ];
+
+// Background tint — a color wash laid over the background image. Seeded here
+// so the picker has something to show before the user has chosen anything.
+export const DEFAULT_BG_TINT = '#000000';
+export const DEFAULT_BG_TINT_OPACITY = 0;
+export const MAX_BG_TINT_OPACITY = 0.9;
 
 // ── Color math ───────────────────────────────────────────────
 const clamp = (n) => Math.max(0, Math.min(255, Math.round(n)));
@@ -208,6 +214,14 @@ export function applyThemeColors(colors) {
   if (scale !== 1) root.style.setProperty('zoom', String(scale));
   if (c.bold) root.classList.add('a11y-bold');
 
+  // Subtask checklists on task cards, in one column (default) or two. A
+  // variable rather than a prop because task cards render from half a dozen
+  // places (dashboard, tasks, project detail, pomodoro, queue) — this way the
+  // preference reaches all of them without threading it through each one.
+  // The value is the narrowest a column may be, not a column count, so a card
+  // too narrow to split still collapses to one (see `.st-card-list`).
+  if (Number(c.subtaskColumns) === 2) root.style.setProperty('--st-card-min', '190px');
+
   // Background image: layer it on the body. Surfaces become translucent so the
   // image shows through (frosted glass — the blur is applied in CSS via
   // `body.has-bg-image`). The glass tint + the solid fallback behind the image
@@ -227,6 +241,13 @@ export function applyThemeColors(colors) {
     root.style.setProperty('--border-light', `rgba(${line}, 0.24)`);
     const blur = c.glassBlur == null ? 14 : Number(c.glassBlur);
     root.style.setProperty('--glass-blur', `${blur}px`);
+    // Tint wash over the image (see `body.has-bg-image::after` in index.css).
+    // It's a CSS variable rather than something painted into the image layer
+    // so that dragging the tint pickers never re-decodes or re-blurs the
+    // multi-MB background — same reasoning as the backgroundImage guard below.
+    const tintOp = Math.min(Math.max(Number(c.bgTintOpacity) || 0, 0), MAX_BG_TINT_OPACITY);
+    const tintHex = parseHex(c.bgTint) ? c.bgTint : DEFAULT_BG_TINT;
+    if (tintOp > 0) root.style.setProperty('--bg-tint', rgba(tintHex, tintOp));
     const cached = loadBgCache();
     const src = cached && cached.url === c.background ? cached.data : c.background;
     // Set directly on a real fixed-position element (see getBgLayer above) —

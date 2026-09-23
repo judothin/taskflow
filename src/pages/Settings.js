@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { usePets } from '../context/PetContext';
@@ -6,12 +7,19 @@ import Avatar from '../components/Avatar';
 import AvatarCrop from '../components/AvatarCrop';
 import RankBadges from '../components/PetBadges';
 import AccountStatsCard from '../components/AccountStatsCard';
+import SubtaskPresetsCard from '../components/SubtaskPresetsCard';
+import TeamSettings from '../components/TeamSettings';
+import { SettingRow, Toggle } from '../components/SettingsControls';
 import { getRankBadges } from '../lib/petBadges';
 import { useSpecialBadges } from '../context/SpecialBadgesContext';
 import { loadShownBadges, saveShownBadges } from '../lib/badgePrefs';
 import ModalPortal from '../components/ModalPortal';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
-import { THEME_FIELDS, STATUS_FIELDS, FONT_SCALES } from '../lib/themeColors';
+import {
+  THEME_FIELDS, STATUS_FIELDS, FONT_SCALES,
+  DEFAULT_BG_TINT, MAX_BG_TINT_OPACITY,
+} from '../lib/themeColors';
+import { SETTINGS_SECTIONS as SECTIONS, resolveSettingsSection } from '../lib/settingsSections';
 import './Dashboard.css';
 import './Auth.css';
 
@@ -20,9 +28,19 @@ const PRESET_COLORS = [
   '#8b5cf6','#ef4444','#06b6d4','#84cc16','#f97316'
 ];
 
+function Icon({ d, size = 17 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {d.split(' M').map((seg, i) => <path key={i} d={i === 0 ? seg : `M${seg}`} />)}
+    </svg>
+  );
+}
+
 // Module-level so its identity is stable — if it were defined inside Settings,
 // every color change would re-render Settings, remount the <input type="color">,
-// and close the native picker mid-drag.
+// and close the native picker mid-drag. Group/SettingRow live out here for the
+// same reason: they wrap those inputs.
 function ColorRow({ field, value, custom, onChange, onReset }) {
   return (
     <div className="theme-color-row">
@@ -33,17 +51,32 @@ function ColorRow({ field, value, custom, onChange, onReset }) {
         onChange={(e) => onChange(e.target.value)}
         title={field.label}
       />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{field.label}</div>
-        {field.desc && <div style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{field.desc}</div>}
+      <div className="settings-row-text">
+        <div className="settings-row-label">{field.label}</div>
+        {field.desc && <div className="settings-row-desc">{field.desc}</div>}
       </div>
-      <span style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text-dim)', textTransform: 'uppercase' }}>
-        {value}
-      </span>
+      <span className="theme-color-hex">{value}</span>
       {custom && (
         <button type="button" className="theme-color-reset" onClick={onReset}>Reset</button>
       )}
     </div>
+  );
+}
+
+// Collapsible sub-group inside a card, so long panels stay scannable.
+function Group({ title, count, defaultOpen = true, children }) {
+  return (
+    <details className="settings-group" open={defaultOpen}>
+      <summary className="settings-group-summary">
+        <svg className="settings-group-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+        <span className="settings-group-title">{title}</span>
+        {count != null && <span className="settings-group-count">{count}</span>}
+      </summary>
+      <div className="settings-group-body">{children}</div>
+    </details>
   );
 }
 
@@ -53,7 +86,7 @@ export default function Settings() {
   const { specialFlags } = useSpecialBadges();
   const [shownBadges, setShownBadges] = useState(() => loadShownBadges(user?.id));
   const {
-    getColor, setColor, resetColor, resetAll, isCustom, colors,
+    getColor, setColor, setColorValues, resetColor, resetAll, isCustom, colors,
     backgrounds, maxBackgrounds, setBackground, uploadBackground, deleteBackground,
     savedThemes, saveTheme, applyTheme, deleteTheme, themesUsingBackground,
   } = useThemeCustomization();
@@ -61,6 +94,17 @@ export default function Settings() {
   const bgInputRef = useRef();
   const logoChoice = colors.logo || 'auto';
   const [savingGamification, setSavingGamification] = useState(false);
+
+  // The open section lives in the URL (?section=appearance) so it survives a
+  // refresh, works with the back button, and can be linked to directly.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const section = resolveSettingsSection(searchParams.get('section'));
+  const activeSection = useMemo(() => SECTIONS.find(s => s.id === section), [section]);
+  const goTo = (id) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('section', id);
+    setSearchParams(next, { replace: true });
+  };
 
   const handleToggleGamification = async () => {
     setSavingGamification(true);
@@ -238,415 +282,451 @@ export default function Settings() {
     saveShownBadges(user?.id, next);
   };
 
+  // How many colors the user has overridden — shown on the "Reset all" button
+  // so it's obvious whether there's anything to reset.
+  const customCount = [...THEME_FIELDS, ...STATUS_FIELDS].filter(f => isCustom(f.key)).length;
+
+  // Background tint — a color wash over the image. Strength 0 means off, so
+  // picking a color while it sits at 0 would look like nothing happened; give
+  // it a visible starting strength in that case (both keys in one commit, or
+  // the second write would read a stale colors ref and drop the first).
+  const tintColor = colors.bgTint || DEFAULT_BG_TINT;
+  const tintOpacity = Math.min(Math.max(Number(colors.bgTintOpacity) || 0, 0), MAX_BG_TINT_OPACITY);
+  const handleTintColor = (hex) => {
+    if (tintOpacity > 0) setColor('bgTint', hex);
+    else setColorValues({ bgTint: hex, bgTintOpacity: 0.3 });
+  };
+
   return (
     <div className="dashboard fade-in settings-page">
+      <div className="settings-shell">
 
-      <div className="settings-grid">
-        <div className="settings-col">
-
-      {/* Account stats — always shown */}
-      <AccountStatsCard userId={user?.id} tasksCompleted={userLevel?.tasks_completed} />
-
-      {/* Profile preview */}
-      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 8 }}>
-        {/* Clickable avatar */}
-        <div
-          className="avatar-upload-zone"
-          onClick={() => avatarRef.current?.click()}
-          title="Click to change photo"
-        >
-          <Avatar
-            src={avatarPreview}
-            color={form.color}
-            initials={initials || '?'}
-            size={64}
-          />
-          <div className="avatar-upload-overlay">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-              <circle cx="12" cy="13" r="4"/>
-            </svg>
-          </div>
-          {avatarPreview && (
-            <button className="avatar-remove-btn" onClick={removeAvatar} title="Remove photo">
-              ✕
-            </button>
-          )}
-        </div>
-        <input
-          ref={avatarRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          onChange={handleAvatarChange}
-          style={{ display: 'none' }}
-        />
-
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>{form.first_name} {form.last_name}</div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>{profile?.email}</div>
-          {avatarPreview ? (
-            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
-              {avatarFile ? 'New photo selected — save to apply' : 'Profile photo set'}
-            </div>
-          ) : (
-            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
-              Click the avatar to add a photo
-            </div>
-          )}
-          {avatarError && (
-            <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4 }}>⚠ {avatarError}</div>
-          )}
-        </div>
-      </div>
-
-      {/* Profile form */}
-      <div className="card">
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 24 }}>Profile Information</h2>
-        <form onSubmit={handleProfileSave} className="form-grid">
-          <div className="form-grid form-grid-2">
-            <div className="form-group">
-              <label className="label">First Name</label>
-              <input className="input" value={form.first_name} onChange={set('first_name')} required />
-            </div>
-            <div className="form-group">
-              <label className="label">Last Name</label>
-              <input className="input" value={form.last_name} onChange={set('last_name')} required />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="label">
-              Start Date
-              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}> — e.g. your hire date; sets your tenure badges</span>
-            </label>
-            <input type="date" className="input" value={form.start_date} onChange={set('start_date')} max={todayStr} />
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
-              {form.start_date
-                ? <>Day <strong style={{ color: 'var(--text)' }}>{daysSince(form.start_date) + 1}</strong> — {daysSince(form.start_date).toLocaleString()} day{daysSince(form.start_date) !== 1 ? 's' : ''} as a member.</>
-                : <>No start date set — using your account creation date ({daysSince(user?.created_at).toLocaleString()} days).</>}
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="label">Profile Photo <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>— PNG, JPG, WebP or GIF, max 4 MB</span></label>
-            <div
-              className="avatar-upload-full"
-              onClick={() => avatarRef.current?.click()}
+        {/* ── Section nav ───────────────────────────────────── */}
+        <nav className="settings-nav" aria-label="Settings sections">
+          {SECTIONS.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              className={`settings-nav-item ${section === s.id ? 'settings-nav-item-active' : ''}`}
+              onClick={() => goTo(s.id)}
+              aria-current={section === s.id ? 'page' : undefined}
             >
-              {avatarPreview ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <Avatar src={avatarPreview} color={form.color} initials={initials || '?'} size={44} />
-                  <div>
-                    <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>
-                      {avatarFile ? avatarFile.name : 'Current photo'}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>Click to replace</div>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    style={{ marginLeft: 'auto', flexShrink: 0 }}
-                    onClick={removeAvatar}
+              <span className="settings-nav-icon"><Icon d={s.icon} /></span>
+              <span className="settings-nav-label">{s.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        {/* ── Active section ────────────────────────────────── */}
+        <div className="settings-panel">
+          <header className="settings-panel-head">
+            <h1 className="settings-panel-title">{activeSection.label}</h1>
+            <p className="settings-panel-sub">{activeSection.blurb}</p>
+          </header>
+
+          {/* ─────────────────────────────── Profile ────────── */}
+          {section === 'profile' && (
+            <>
+              <div className="card">
+                <div className="settings-identity">
+                  <div
+                    className="avatar-upload-zone"
+                    onClick={() => avatarRef.current?.click()}
+                    title="Click to change photo"
                   >
-                    Remove
+                    <Avatar src={avatarPreview} color={form.color} initials={initials || '?'} size={64} />
+                    <div className="avatar-upload-overlay">
+                      <Icon d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z M16 13a4 4 0 11-8 0 4 4 0 018 0z" size={18} />
+                    </div>
+                    {avatarPreview && (
+                      <button className="avatar-remove-btn" onClick={removeAvatar} title="Remove photo">✕</button>
+                    )}
+                  </div>
+                  <input
+                    ref={avatarRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    onChange={handleAvatarChange}
+                    style={{ display: 'none' }}
+                  />
+
+                  <div className="settings-identity-text">
+                    <div className="settings-identity-name">{form.first_name} {form.last_name}</div>
+                    <div className="settings-identity-email">{profile?.email}</div>
+                    <div className="settings-identity-hint">
+                      {avatarPreview
+                        ? (avatarFile ? 'New photo selected — save below to apply' : 'Click the photo to replace it, ✕ to remove')
+                        : 'Click the circle to add a photo — PNG, JPG, WebP or GIF, max 4 MB'}
+                    </div>
+                    {avatarError && <div className="settings-identity-err">⚠ {avatarError}</div>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="card">
+                <h2 className="settings-card-title">Details</h2>
+                <form onSubmit={handleProfileSave} className="form-grid">
+                  <div className="form-grid form-grid-2">
+                    <div className="form-group">
+                      <label className="label">First Name</label>
+                      <input className="input" value={form.first_name} onChange={set('first_name')} required />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Last Name</label>
+                      <input className="input" value={form.last_name} onChange={set('last_name')} required />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="label">
+                      Start Date
+                      <span className="label-note"> — e.g. your hire date; sets your tenure badges</span>
+                    </label>
+                    <input type="date" className="input" value={form.start_date} onChange={set('start_date')} max={todayStr} />
+                    <div className="form-hint">
+                      {form.start_date
+                        ? <>Day <strong>{daysSince(form.start_date) + 1}</strong> — {daysSince(form.start_date).toLocaleString()} day{daysSince(form.start_date) !== 1 ? 's' : ''} as a member.</>
+                        : <>No start date set — using your account creation date ({daysSince(user?.created_at).toLocaleString()} days).</>}
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="label">Fallback / Chart Color</label>
+                    <p className="form-hint form-hint-top">Shown when no photo is set, and used on the activity chart.</p>
+                    <div className="color-picker-row">
+                      {PRESET_COLORS.map(c => (
+                        <button key={c} type="button"
+                          className={`color-swatch ${form.color === c ? 'color-swatch-active' : ''}`}
+                          style={{ background: c }}
+                          onClick={() => setForm(f => ({ ...f, color: c }))}
+                        />
+                      ))}
+                      <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
+                        className="color-custom-input" title="Custom color" />
+                    </div>
+                  </div>
+
+                  {msg   && <div className="success-msg">✓ {msg}</div>}
+                  {error && <div className="error-msg">⚠ {error}</div>}
+
+                  <button type="submit" className="btn btn-primary settings-submit" disabled={saving}>
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </form>
+              </div>
+            </>
+          )}
+
+          {/* ─────────────────────────────── Account ────────── */}
+          {section === 'account' && (
+            <>
+              <AccountStatsCard userId={user?.id} tasksCompleted={userLevel?.tasks_completed} />
+
+              <div className="card">
+                <h2 className="settings-card-title">Sign-in</h2>
+                <SettingRow label="Email" desc="The address you sign in with.">
+                  <span className="settings-row-value">{profile?.email}</span>
+                </SettingRow>
+              </div>
+
+              <div className="card">
+                <h2 className="settings-card-title">Change Password</h2>
+                <form onSubmit={handlePasswordChange} className="form-grid">
+                  <div className="form-grid form-grid-2">
+                    <div className="form-group">
+                      <label className="label">New Password</label>
+                      <input type="password" className="input" placeholder="Min. 6 characters" value={pwForm.next} onChange={setPw('next')} required />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Confirm New Password</label>
+                      <input type="password" className="input" placeholder="••••••••" value={pwForm.confirm} onChange={setPw('confirm')} required />
+                    </div>
+                  </div>
+
+                  {pwMsg   && <div className="success-msg">✓ {pwMsg}</div>}
+                  {pwError && <div className="error-msg">⚠ {pwError}</div>}
+
+                  <button type="submit" className="btn btn-primary settings-submit" disabled={pwSaving}>
+                    {pwSaving ? 'Updating...' : 'Update Password'}
+                  </button>
+                </form>
+              </div>
+            </>
+          )}
+
+          {/* ─────────────────────────────── Teams ──────────── */}
+          {section === 'teams' && <TeamSettings />}
+
+          {/* ────────────────────────── Subtask presets ────── */}
+          {section === 'presets' && <SubtaskPresetsCard />}
+
+          {/* ──────────────────────────── Appearance ────────── */}
+          {section === 'appearance' && (
+            <>
+              <div className="card">
+                <div className="settings-card-head">
+                  <h2 className="settings-card-title">Colors</h2>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={resetAll} disabled={!customCount}>
+                    {customCount ? `Reset all (${customCount})` : 'Reset all'}
                   </button>
                 </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)' }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-                    <circle cx="12" cy="13" r="4"/>
-                  </svg>
-                  <span style={{ fontSize: 13 }}>Click to upload a profile photo</span>
-                </div>
-              )}
-            </div>
-            {avatarError && <div className="error-msg" style={{ marginTop: 4 }}>⚠ {avatarError}</div>}
-          </div>
-
-          <div className="form-group">
-            <label className="label">Fallback / Chart Color</label>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
-              Shown when no photo is set, and used on the activity chart
-            </p>
-            <div className="color-picker-row">
-              {PRESET_COLORS.map(c => (
-                <button key={c} type="button"
-                  className={`color-swatch ${form.color === c ? 'color-swatch-active' : ''}`}
-                  style={{ background: c }}
-                  onClick={() => setForm(f => ({ ...f, color: c }))}
-                />
-              ))}
-              <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
-                className="color-custom-input" title="Custom color" />
-            </div>
-          </div>
-
-          {msg   && <div style={{ color: 'var(--success)', fontSize: 13 }}>✓ {msg}</div>}
-          {error && <div className="error-msg">⚠ {error}</div>}
-
-          <button type="submit" className="btn btn-primary" disabled={saving} style={{ alignSelf: 'flex-start' }}>
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
-        </form>
-      </div>
-
-      {/* Password form */}
-      <div className="card">
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 24 }}>Change Password</h2>
-        <form onSubmit={handlePasswordChange} className="form-grid">
-          <div className="form-group">
-            <label className="label">New Password</label>
-            <input type="password" className="input" placeholder="Min. 6 characters" value={pwForm.next} onChange={setPw('next')} required />
-          </div>
-          <div className="form-group">
-            <label className="label">Confirm New Password</label>
-            <input type="password" className="input" placeholder="••••••••" value={pwForm.confirm} onChange={setPw('confirm')} required />
-          </div>
-
-          {pwMsg   && <div style={{ color: 'var(--success)', fontSize: 13 }}>✓ {pwMsg}</div>}
-          {pwError && <div className="error-msg">⚠ {pwError}</div>}
-
-          <button type="submit" className="btn btn-primary" disabled={pwSaving} style={{ alignSelf: 'flex-start' }}>
-            {pwSaving ? 'Updating...' : 'Update Password'}
-          </button>
-        </form>
-      </div>
-
-      {/* Gamification opt-in/out */}
-      <div className="card">
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Levels &amp; Badges</h2>
-        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-          Earn XP, level up, and unlock rank badges by completing tasks.
-        </p>
-        <div className="theme-color-row" style={{ borderBottom: 'none', paddingLeft: 0, paddingRight: 0 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Enable XP &amp; levels</div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>
-              {userGamificationEnabled
-                ? 'Turning this off pauses your XP and hides levels & badges.'
-                : "You'll pick up right where you left off."}
-            </div>
-          </div>
-          <button
-            type="button"
-            className={`nc-toggle ${userGamificationEnabled ? 'nc-toggle-on' : ''}`}
-            onClick={handleToggleGamification}
-            disabled={savingGamification}
-            role="switch"
-            aria-checked={!!userGamificationEnabled}
-          >
-            <span className="nc-toggle-thumb" />
-          </button>
-        </div>
-      </div>
-        </div>{/* /left column */}
-
-        {/* Right column — appearance (theme editor + backgrounds/themes side by side) */}
-        <div className="settings-theme-area">
-          <div className="card">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
-              <h2 style={{ fontSize: 16, fontWeight: 700 }}>Theme & Colors</h2>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={resetAll}>Reset all</button>
-            </div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>
-              Personalize the interface. Changes apply instantly and sync across your devices. The secondary color also drives the activity chart.
-            </p>
-
-            <div className="theme-color-grid">
-              {THEME_FIELDS.map(f => (
-                <ColorRow key={f.key} field={f} value={getColor(f.key)} custom={isCustom(f.key)}
-                  onChange={(v) => setColor(f.key, v)} onReset={() => resetColor(f.key)} />
-              ))}
-            </div>
-
-            <div className="label" style={{ marginTop: 24, marginBottom: 8 }}>Status colors</div>
-            <div className="theme-color-grid">
-              {STATUS_FIELDS.map(f => (
-                <ColorRow key={f.key} field={f} value={getColor(f.key)} custom={isCustom(f.key)}
-                  onChange={(v) => setColor(f.key, v)} onReset={() => resetColor(f.key)} />
-              ))}
-            </div>
-
-            <div className="label" style={{ marginTop: 24, marginBottom: 8 }}>Logo</div>
-            <div className="theme-logo-seg">
-              {[{ v: 'auto', label: 'Auto' }, { v: 'white', label: 'White' }, { v: 'black', label: 'Black' }].map(o => (
-                <button
-                  key={o.v}
-                  type="button"
-                  className={`theme-logo-btn ${logoChoice === o.v ? 'theme-logo-btn-active' : ''}`}
-                  onClick={() => (o.v === 'auto' ? resetColor('logo') : setColor('logo', o.v))}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="label" style={{ marginTop: 24, marginBottom: 8 }}>Accessibility</div>
-            <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 8 }}>Text size</div>
-            <div className="theme-logo-seg" style={{ flexWrap: 'wrap' }}>
-              {FONT_SCALES.map(o => (
-                <button
-                  key={o.key}
-                  type="button"
-                  className={`theme-logo-btn ${(colors.fontScale || 1) === o.key ? 'theme-logo-btn-active' : ''}`}
-                  onClick={() => setColor('fontScale', o.key)}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="theme-color-row" style={{ borderBottom: 'none', paddingLeft: 0, paddingRight: 0, marginTop: 6 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Bold text</div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>Heavier body text for readability</div>
-              </div>
-              <button
-                type="button"
-                className={`nc-toggle ${colors.bold ? 'nc-toggle-on' : ''}`}
-                onClick={() => setColor('bold', !colors.bold)}
-                role="switch"
-                aria-checked={!!colors.bold}
-              >
-                <span className="nc-toggle-thumb" />
-              </button>
-            </div>
-          </div>
-
-          <div className="settings-col">
-          {/* Background images */}
-          <div className="card">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
-              <h2 style={{ fontSize: 16, fontWeight: 700 }}>Background</h2>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                disabled={bgBusy || backgrounds.length >= maxBackgrounds}
-                onClick={() => bgInputRef.current?.click()}
-              >
-                {bgBusy ? 'Uploading…' : 'Upload image'}
-              </button>
-            </div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
-              Use an image as the app background — synced to your account. {backgrounds.length}/{maxBackgrounds} saved.
-            </p>
-            <input ref={bgInputRef} type="file" accept="image/*" onChange={handleBgUpload} style={{ display: 'none' }} />
-            {bgError && <div className="error-msg" style={{ marginBottom: 10 }}>⚠ {bgError}</div>}
-            <div className="bg-grid">
-              <button
-                type="button"
-                className={`bg-tile bg-tile-none ${!colors.background ? 'bg-tile-active' : ''}`}
-                onClick={() => setBackground(null)}
-              >
-                None
-              </button>
-              {backgrounds.map(bg => (
-                <div
-                  key={bg.id}
-                  className={`bg-tile ${colors.background === bg.url ? 'bg-tile-active' : ''}`}
-                  style={{ backgroundImage: `url("${bg.url}")` }}
-                  onClick={() => setBackground(bg.url)}
-                  title="Use as background"
-                >
-                  <button className="bg-tile-del" onClick={(e) => { e.stopPropagation(); requestDeleteBg(bg); }} title="Delete background">✕</button>
-                </div>
-              ))}
-            </div>
-
-            {colors.background && (
-              <div style={{ marginTop: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 8 }}>
-                  <span>Glass opacity</span>
-                  <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-dim)' }}>{Math.round((colors.glassOpacity ?? 0.55) * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.2" max="0.95" step="0.05"
-                  value={colors.glassOpacity ?? 0.55}
-                  onChange={(e) => setColor('glassOpacity', Number(e.target.value))}
-                  className="glass-opacity-range"
-                />
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, color: 'var(--text-muted)', margin: '14px 0 8px' }}>
-                  <span>Glass blur</span>
-                  <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-dim)' }}>{colors.glassBlur ?? 14}px</span>
-                </div>
-                <input
-                  type="range"
-                  min="0" max="30" step="1"
-                  value={colors.glassBlur ?? 14}
-                  onChange={(e) => setColor('glassBlur', Number(e.target.value))}
-                  className="glass-opacity-range"
-                />
-                <p style={{ fontSize: 11.5, color: 'var(--text-dim)', marginTop: 6 }}>
-                  Opacity &amp; blur of the frosted panels over your background.
+                <p className="settings-card-sub">
+                  Changes apply instantly and sync across your devices. The secondary color also drives the activity chart.
                 </p>
-              </div>
-            )}
-          </div>
 
-          {/* Saved themes */}
-          <div className="card">
-            <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Saved Themes</h2>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
-              Save your current colors, background &amp; text settings as a named theme.
-            </p>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-              <input className="input" placeholder="Theme name…" value={themeName} onChange={e => setThemeName(e.target.value)} />
-              <button type="button" className="btn btn-primary btn-sm" disabled={!themeName.trim()} onClick={handleSaveTheme}>Save</button>
-            </div>
-            {savedThemes.length === 0 ? (
-              <p style={{ fontSize: 12, color: 'var(--text-dim)' }}>No saved themes yet.</p>
-            ) : (
-              <div className="saved-theme-list">
-                {savedThemes.map(t => (
-                  <div key={t.id} className="saved-theme-row">
-                    <div className="saved-theme-swatches">
-                      {t.colors?.background
-                        ? <span className="saved-theme-img" style={{ backgroundImage: `url("${t.colors.background}")` }} />
-                        : null}
-                      {['bg', 'accent', 'text'].map(k => (
-                        <span key={k} style={{ background: t.colors?.[k] || 'var(--bg-4)' }} />
+                <Group title="Interface" count={THEME_FIELDS.length}>
+                  <div className="theme-color-grid">
+                    {THEME_FIELDS.map(f => (
+                      <ColorRow key={f.key} field={f} value={getColor(f.key)} custom={isCustom(f.key)}
+                        onChange={(v) => setColor(f.key, v)} onReset={() => resetColor(f.key)} />
+                    ))}
+                  </div>
+                </Group>
+
+                <Group title="Status colors" count={STATUS_FIELDS.length} defaultOpen={false}>
+                  <div className="theme-color-grid">
+                    {STATUS_FIELDS.map(f => (
+                      <ColorRow key={f.key} field={f} value={getColor(f.key)} custom={isCustom(f.key)}
+                        onChange={(v) => setColor(f.key, v)} onReset={() => resetColor(f.key)} />
+                    ))}
+                  </div>
+                </Group>
+
+                <Group title="Logo" defaultOpen={false}>
+                  <SettingRow label="Logo tint" desc="Auto picks white or black to suit your theme.">
+                    <div className="theme-logo-seg">
+                      {[{ v: 'auto', label: 'Auto' }, { v: 'white', label: 'White' }, { v: 'black', label: 'Black' }].map(o => (
+                        <button
+                          key={o.v}
+                          type="button"
+                          className={`theme-logo-btn ${logoChoice === o.v ? 'theme-logo-btn-active' : ''}`}
+                          onClick={() => (o.v === 'auto' ? resetColor('logo') : setColor('logo', o.v))}
+                        >
+                          {o.label}
+                        </button>
                       ))}
                     </div>
-                    <span className="saved-theme-name">{t.name}</span>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => applyTheme(t)}>Apply</button>
-                    <button type="button" className="theme-color-reset" onClick={() => deleteTheme(t.id)}>Delete</button>
-                  </div>
-                ))}
+                  </SettingRow>
+                </Group>
               </div>
-            )}
-          </div>
-          </div>{/* /backgrounds + themes column */}
-        </div>{/* /right appearance area */}
 
-      </div>{/* /settings-grid */}
+              <div className="settings-two-col">
+                {/* Background images */}
+                <div className="card">
+                  <div className="settings-card-head">
+                    <h2 className="settings-card-title">Background</h2>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={bgBusy || backgrounds.length >= maxBackgrounds}
+                      onClick={() => bgInputRef.current?.click()}
+                    >
+                      {bgBusy ? 'Uploading…' : 'Upload image'}
+                    </button>
+                  </div>
+                  <p className="settings-card-sub">
+                    Use an image as the app background — synced to your account. {backgrounds.length}/{maxBackgrounds} saved.
+                  </p>
+                  <input ref={bgInputRef} type="file" accept="image/*" onChange={handleBgUpload} style={{ display: 'none' }} />
+                  {bgError && <div className="error-msg settings-inline-err">⚠ {bgError}</div>}
+                  <div className="bg-grid">
+                    <button
+                      type="button"
+                      className={`bg-tile bg-tile-none ${!colors.background ? 'bg-tile-active' : ''}`}
+                      onClick={() => setBackground(null)}
+                    >
+                      None
+                    </button>
+                    {backgrounds.map(bg => (
+                      <div
+                        key={bg.id}
+                        className={`bg-tile ${colors.background === bg.url ? 'bg-tile-active' : ''}`}
+                        style={{ backgroundImage: `url("${bg.url}")` }}
+                        onClick={() => setBackground(bg.url)}
+                        title="Use as background"
+                      >
+                        <button className="bg-tile-del" onClick={(e) => { e.stopPropagation(); requestDeleteBg(bg); }} title="Delete background">✕</button>
+                      </div>
+                    ))}
+                  </div>
 
-      {/* Ranks & Badges — full width so more fit per row */}
-      {userGamificationEnabled && (
-        <div className="card settings-ranks-card">
-          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Ranks &amp; Badges</h2>
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-            Unlocked by leveling up, by tasks you've completed, and by how long you've been a member. Click an unlocked badge to show or hide it in the top bar.
-          </p>
-          <RankBadges
-            level={userLevel?.level}
-            createdAt={effectiveStart}
-            tasksDone={userLevel?.tasks_completed}
-            specialFlags={specialFlags}
-            selectable
-            selected={effectiveShown}
-            onToggle={toggleBadge}
-          />
+                  {colors.background && (
+                    <div className="settings-sliders">
+                      <div className="settings-slider-head">
+                        <span>Glass opacity</span>
+                        <span className="settings-slider-value">{Math.round((colors.glassOpacity ?? 0.55) * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.2" max="0.95" step="0.05"
+                        value={colors.glassOpacity ?? 0.55}
+                        onChange={(e) => setColor('glassOpacity', Number(e.target.value))}
+                        className="glass-opacity-range"
+                      />
+
+                      <div className="settings-slider-head">
+                        <span>Glass blur</span>
+                        <span className="settings-slider-value">{colors.glassBlur ?? 14}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0" max="30" step="1"
+                        value={colors.glassBlur ?? 14}
+                        onChange={(e) => setColor('glassBlur', Number(e.target.value))}
+                        className="glass-opacity-range"
+                      />
+                      <p className="settings-card-sub settings-card-sub-tight">
+                        Opacity &amp; blur of the frosted panels over your background.
+                      </p>
+
+                      <div className="settings-tint">
+                        <div className="settings-slider-head">
+                          <span>Tint</span>
+                          <span className="settings-slider-value">
+                            {tintOpacity > 0 ? `${tintColor.toUpperCase()} · ${Math.round(tintOpacity * 100)}%` : 'Off'}
+                          </span>
+                        </div>
+                        <div className="settings-tint-row">
+                          <input
+                            type="color"
+                            className="theme-color-input"
+                            value={tintColor}
+                            onChange={(e) => handleTintColor(e.target.value)}
+                            title="Tint color"
+                          />
+                          <input
+                            type="range"
+                            min="0" max={MAX_BG_TINT_OPACITY} step="0.05"
+                            value={tintOpacity}
+                            onChange={(e) => setColor('bgTintOpacity', Number(e.target.value))}
+                            className="glass-opacity-range"
+                            aria-label="Tint strength"
+                          />
+                        </div>
+                        <p className="settings-card-sub settings-card-sub-tight">
+                          Washes a color over the image — darken a busy photo so text stays readable. Drag to 0% to turn it off.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Saved themes */}
+                <div className="card">
+                  <h2 className="settings-card-title">Saved Themes</h2>
+                  <p className="settings-card-sub">
+                    Save your current colors, background &amp; text settings as a named theme.
+                  </p>
+                  <div className="settings-inline-form">
+                    <input className="input" placeholder="Theme name…" value={themeName} onChange={e => setThemeName(e.target.value)} />
+                    <button type="button" className="btn btn-primary btn-sm" disabled={!themeName.trim()} onClick={handleSaveTheme}>Save</button>
+                  </div>
+                  {savedThemes.length === 0 ? (
+                    <p className="settings-empty">No saved themes yet.</p>
+                  ) : (
+                    <div className="saved-theme-list">
+                      {savedThemes.map(t => (
+                        <div key={t.id} className="saved-theme-row">
+                          <div className="saved-theme-swatches">
+                            {t.colors?.background
+                              ? <span className="saved-theme-img" style={{ backgroundImage: `url("${t.colors.background}")` }} />
+                              : null}
+                            {['bg', 'accent', 'text'].map(k => (
+                              <span key={k} style={{ background: t.colors?.[k] || 'var(--bg-4)' }} />
+                            ))}
+                          </div>
+                          <span className="saved-theme-name">{t.name}</span>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => applyTheme(t)}>Apply</button>
+                          <button type="button" className="theme-color-reset" onClick={() => deleteTheme(t.id)}>Delete</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ─────────────────────────── Accessibility ──────── */}
+          {section === 'accessibility' && (
+            <div className="card">
+              <h2 className="settings-card-title">Text</h2>
+              <p className="settings-card-sub">Applies everywhere in the app and syncs across your devices.</p>
+
+              <SettingRow label="Text size" desc="Scales every label, heading, and body line.">
+                <div className="theme-logo-seg theme-logo-seg-wrap">
+                  {FONT_SCALES.map(o => (
+                    <button
+                      key={o.key}
+                      type="button"
+                      className={`theme-logo-btn ${(colors.fontScale || 1) === o.key ? 'theme-logo-btn-active' : ''}`}
+                      onClick={() => setColor('fontScale', o.key)}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </SettingRow>
+
+              <SettingRow label="Bold text" desc="Heavier body text for readability.">
+                <Toggle on={colors.bold} onClick={() => setColor('bold', !colors.bold)} label="Bold text" />
+              </SettingRow>
+            </div>
+          )}
+
+          {/* ──────────────────────────── Achievements ──────── */}
+          {section === 'achievements' && (
+            <>
+              <div className="card">
+                <h2 className="settings-card-title">Levels &amp; Badges</h2>
+                <p className="settings-card-sub">Earn XP, level up, and unlock rank badges by completing tasks.</p>
+                <SettingRow
+                  label="Enable XP & levels"
+                  desc={userGamificationEnabled
+                    ? 'Turning this off pauses your XP and hides levels & badges.'
+                    : "You'll pick up right where you left off."}
+                >
+                  <Toggle
+                    on={userGamificationEnabled}
+                    onClick={handleToggleGamification}
+                    disabled={savingGamification}
+                    label="Enable XP and levels"
+                  />
+                </SettingRow>
+              </div>
+
+              {userGamificationEnabled ? (
+                <div className="card">
+                  <h2 className="settings-card-title">Ranks &amp; Badges</h2>
+                  <p className="settings-card-sub">
+                    Unlocked by leveling up, by tasks you've completed, and by how long you've been a member.
+                    Click an unlocked badge to show or hide it in the top bar.
+                  </p>
+                  <RankBadges
+                    level={userLevel?.level}
+                    createdAt={effectiveStart}
+                    tasksDone={userLevel?.tasks_completed}
+                    specialFlags={specialFlags}
+                    selectable
+                    selected={effectiveShown}
+                    onToggle={toggleBadge}
+                  />
+                </div>
+              ) : (
+                <div className="card settings-empty-card">
+                  Turn on XP &amp; levels above to see your ranks and badges.
+                </div>
+              )}
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {confirmDeleteBg && (
         <ModalPortal>
         <div className="modal-overlay" onClick={() => setConfirmDeleteBg(null)}>
           <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><h2 style={{ fontSize: 16, fontWeight: 700 }}>Delete this background?</h2></div>
+            <div className="modal-header"><h2 className="settings-card-title">Delete this background?</h2></div>
             <div className="modal-body">
               <p style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.6 }}>
                 It's used by {confirmDeleteBg.themes.length} saved theme{confirmDeleteBg.themes.length !== 1 ? 's' : ''}:{' '}

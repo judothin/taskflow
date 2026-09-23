@@ -9,6 +9,7 @@ import { useHeaderActions } from '../context/HeaderActionsContext';
 import { useStreak } from '../context/StreakContext';
 import { useSpecialBadges } from '../context/SpecialBadgesContext';
 import StreakFlame from './StreakFlame';
+import useIsPhone from '../lib/useIsPhone';
 import RankBadges from './PetBadges';
 import UserXpBar from './UserXpBar';
 import { DashboardClock } from './dashboardWidgets';
@@ -19,7 +20,14 @@ import './TopBar.css';
 const SEGMENT_TITLES = Object.values(NAV_ITEMS).reduce((m, i) => {
   m[i.to.replace(/^\//, '')] = i.label;
   return m;
-}, { tasks: 'Tasks' });
+}, {
+  tasks: 'Tasks',
+  // Companion routes — not in the nav registry (they're dock-only), so they
+  // need their titles spelled out here or they'd render as raw slugs.
+  focus: 'Current Focus',
+  stats: 'Stats',
+  quicklog: 'Quick Log',
+});
 
 function routeTitle(pathname) {
   const seg = pathname.split('/').filter(Boolean)[0] || 'dashboard';
@@ -34,6 +42,7 @@ export default function TopBar() {
   const { userLevel, gamificationEnabled } = usePets();
   const { display } = useTopBar();
   const { pathname } = useLocation();
+  const isPhone = useIsPhone();
   const headerActions = useHeaderActions();
   const { days: streakDays, paused: streakPaused, teamId: streakTeamId } = useStreak();
   const { specialFlags } = useSpecialBadges();
@@ -46,6 +55,11 @@ export default function TopBar() {
     window.addEventListener('badges-changed', h);
     return () => window.removeEventListener('badges-changed', h);
   }, [user?.id]);
+
+  // On a phone the task detail screen carries its own back button, status and
+  // title — the breadcrumb above it would be a third stacked header saying
+  // less than either.
+  if (isPhone && /^\/tasks\/[^/]+$/.test(pathname)) return null;
 
   return (
     <div className="app-topbar">

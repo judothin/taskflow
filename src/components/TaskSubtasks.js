@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { asSubtasks, makeSubtask, sortSubtasks, subtaskProgress } from '../lib/subtasks';
 import useFlipRows from '../lib/useFlipRows';
+import useIsPhone from '../lib/useIsPhone';
 import './Subtasks.css';
 
 // Read + quick-edit checklist shown on a TaskCard. Collapsed by default to a
@@ -9,6 +10,9 @@ import './Subtasks.css';
 // new subtasks added inline. Every change persists the whole `subtasks` array
 // back to the task (same pattern as FeedbackContent).
 export default function TaskSubtasks({ taskId, subtasks, onChanged, defaultExpanded = false }) {
+  // Ticking a box is the companion's whole point, so that stays on a phone.
+  // Authoring new subtasks is editing, so the add affordance doesn't.
+  const canAdd = !useIsPhone();
   const [list, setList] = useState(() => sortSubtasks(asSubtasks(subtasks)));
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [adding, setAdding] = useState(false);
@@ -67,6 +71,7 @@ export default function TaskSubtasks({ taskId, subtasks, onChanged, defaultExpan
 
   // No subtasks yet → just a subtle add affordance (or the input if adding).
   if (total === 0) {
+    if (!canAdd) return null;
     return (
       <div className="st-card st-card-empty" onClick={stop}>
         {adding ? addRow : (
@@ -111,7 +116,7 @@ export default function TaskSubtasks({ taskId, subtasks, onChanged, defaultExpan
               <span className="st-card-item-label">{s.text || '(untitled)'}</span>
             </label>
           ))}
-          {adding ? addRow : (
+          {!canAdd ? null : adding ? addRow : (
             <button type="button" className="st-card-add" onClick={startAdd}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />

@@ -150,6 +150,24 @@ body {
   filter: blur(var(--glass-blur, 14px)) saturate(1.4);
 }
 
+/* User-chosen tint wash over the background image. It's its own fixed layer
+   rather than part of #tf-bg-layer for two reasons: that layer's
+   `saturate(1.4)` would skew the colour away from the one actually picked,
+   and keeping it separate means changing the tint only rewrites a CSS
+   variable — it never touches the image layer, whose multi-MB data URI would
+   otherwise have to re-decode and re-blur on every pointer move of the picker.
+   `::after` (not `::before`) so it lands AFTER #tf-bg-layer in DOM order: both
+   sit at z-index -1, so the later one paints on top — tint over image, both
+   still behind the app's content. */
+body.has-bg-image::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--bg-tint, transparent);
+}
+
 /* Modals — and the team switcher popover — stay solid (they float over other
    content where legibility matters more than the frosted-glass look, and a
    translucent surface at a low user-chosen glass opacity would let text

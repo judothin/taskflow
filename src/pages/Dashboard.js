@@ -25,6 +25,7 @@ import {
 } from '../components/dashboardWidgets';
 import {
   WIDGETS, SIZES, DEFAULT_LAYOUT, loadPrefsCache, savePrefsCache, normalizePrefs, sanitizeLayout, spanFor,
+  COLUMN_CHOICES, MAX_VISIBLE_CARDS, columnsFor, visibleCountFor,
 } from '../lib/dashboardLayout';
 import { fetchUserPrefs, saveUserPrefs, saveUserPrefsDebounced } from '../lib/userPrefs';
 import '../components/TaskCard.css';
@@ -159,6 +160,16 @@ export default function Dashboard() {
   const toggleDisplay = (key) => setDisplayPref(prev => ({ ...prev, [key]: !prev[key] }));
 
   const changeSize = (type, size) => persist(prev => prev.map(b => b.type === type ? { ...b, size } : b));
+
+  // A null value clears the option back to "auto" rather than storing a
+  // number, so a widget the user hasn't pinned keeps tracking its own width.
+  const changeOpt = (type, key, value) => persist(prev => prev.map(b => {
+    if (b.type !== type) return b;
+    const opts = { ...(b.opts || {}) };
+    if (value == null) delete opts[key];
+    else opts[key] = value;
+    return { ...b, opts };
+  }));
   const removeBlock = (type) => persist(prev => prev.filter(b => b.type !== type));
   const addBlock = (type) => persist(prev =>
     prev.some(b => b.type === type) ? prev : [...prev, { type, size: WIDGETS[type].defaultSize || 'full' }]);
@@ -279,11 +290,13 @@ export default function Dashboard() {
 
   const inProgress = useMemo(() => tasks.filter(t => t.status === 'in_progress'), [tasks]);
 
-  // How many focus slots to show scales with the widget's own width — a
-  // widget spanning all 12 grid columns (full) shows 3, half that width
-  // shows roughly half as many, etc. (4 grid columns ≈ 1 slot).
-  const focusSpan = spanFor(layout.find(b => b.type === 'focus')?.size);
-  const focusVisibleCount = Math.max(1, Math.round(focusSpan / 4));
+  // Columns and card count are separate settings: how many cards sit side by
+  // side vs. how many the widget shows at all. Left alone, both fall back to
+  // scaling with the widget's own width (a full-width widget gets 3), which
+  // is how this behaved before either became customizable.
+  const focusBlock = layout.find(b => b.type === 'focus');
+  const focusColumns = columnsFor(focusBlock);
+  const focusVisibleCount = visibleCountFor(focusBlock);
 
   const focusTasks = useMemo(() => {
     const seen = new Set();
@@ -322,8 +335,8 @@ export default function Dashboard() {
   const widgetCtx = { tasks, completedTasks, users, profile };
 
   // ── Block content (normal mode) ───────────────────────────
-  const renderContent = (type) => {
-    switch (type) {
+  const renderContent = (block) => {
+    switch (block.type) {
       case 'focus':
         return (
           <section className="dashboard-section">
@@ -345,7 +358,7 @@ export default function Dashboard() {
               )}
             </h2>
             {displayFocus.length > 0 ? (
-              <div className="tasks-featured-grid" style={{ gridTemplateColumns: `repeat(${focusVisibleCount}, 1fr)` }}>
+              <div className="tasks-featured-grid" style={{ gridTemplateColumns: `repeat(${focusColumns}, minmax(0, 1fr))` }}>
                 {displayFocus.map((task, i) => {
                   const isCurrent = task.status === 'in_progress';
                   const upNextNum = displayFocus.slice(0, i + 1).filter(t => t.status !== 'in_progress').length;
@@ -366,8 +379,9 @@ export default function Dashboard() {
               </div>
             ) : (
               // First-ever load with no cache yet — brief placeholder.
-              <div className="tasks-featured-grid" style={{ gridTemplateColumns: `repeat(${focusVisibleCount}, 1fr)` }}>
-                {Array.from({ length: focusVisibleCount }).map((_, i) => (
+              <div className="tasks-featured-grid" style={{ gridTemplateColumns: `repeat(${focusColumns}, minmax(0, 1fr))` }}>
+                {/* One tidy row of placeholders, however many cards are due. */}
+                {Array.from({ length: Math.min(focusVisibleCount, focusColumns) }).map((_, i) => (
                   <div key={i} className="task-skeleton loading-pulse" />
                 ))}
               </div>
@@ -376,7 +390,7 @@ export default function Dashboard() {
         );
 
       case 'allTasks':
-        return <ActiveTasksList />;
+        return <ActiveTasksList columns={columnsFor(block)} />;
 
       case 'activityChart':  return <ActivityChartWidget {...widgetCtx} />;
       case 'completedToday': return <CompletedTodayWidget {...widgetCtx} />;
@@ -416,6 +430,48 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
+          {meta.cards && (
+            <div className="dash-opt">
+              <span className="dash-opt-label">Columns</span>
+              <div className="dash-size-seg">
+                {COLUMN_CHOICES.map(c => (
+                  <button key={c.label}
+                    className={`dash-size-btn ${(block.opts?.columns ?? null) === c.value ? 'dash-size-active' : ''}`}
+                    onClick={() => changeOpt(block.type, 'columns', c.value)}
+                    title={c.value ? `${c.value} card${c.value === 1 ? '' : 's'} per row` : 'Scale with the widget’s width'}>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {meta.countable && (
+            <div className="dash-opt">
+              <span className="dash-opt-label">Cards shown</span>
+              <div className="dash-step">
+                <button
+                  className="dash-step-btn"
+                  onClick={() => changeOpt(block.type, 'visible', Math.max(1, visibleCountFor(block) - 1))}
+                  disabled={visibleCountFor(block) <= 1}
+                  title="Show one fewer" aria-label="Show one fewer card"
+                >&minus;</button>
+                <span className="dash-step-value">{visibleCountFor(block)}</span>
+                <button
+                  className="dash-step-btn"
+                  onClick={() => changeOpt(block.type, 'visible', Math.min(MAX_VISIBLE_CARDS, visibleCountFor(block) + 1))}
+                  disabled={visibleCountFor(block) >= MAX_VISIBLE_CARDS}
+                  title="Show one more" aria-label="Show one more card"
+                >+</button>
+              </div>
+              {block.opts?.visible != null && (
+                <button className="dash-opt-auto" onClick={() => changeOpt(block.type, 'visible', null)} title="Scale with the widget’s width">
+                  Auto
+                </button>
+              )}
+            </div>
+          )}
+
           {!meta.locked && (
             <button className="dash-remove" onClick={() => removeBlock(block.type)} title="Remove widget" aria-label="Remove widget">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -454,8 +510,8 @@ export default function Dashboard() {
     const inner = editing
       ? renderPlaceholder(block)
       : (SELF_CONTAINED.has(block.type)
-          ? renderContent(block.type)
-          : <div className="dash-card">{renderContent(block.type)}</div>);
+          ? renderContent(block)
+          : <div className="dash-card">{renderContent(block)}</div>);
 
     return (
       <div key={block.type} className={`dash-cell ${editing ? 'dash-cell-edit' : ''}`} style={style} {...dragProps}>

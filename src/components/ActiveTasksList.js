@@ -3,6 +3,10 @@ import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import TaskCard from './TaskCard';
+import useIsPhone from '../lib/useIsPhone';
+import { searchRank } from '../lib/fuzzySearch';
+import MobileTaskList from './MobileTaskList';
+import ModalPortal from './ModalPortal';
 import TaskForm from './TaskForm';
 import BulkActionBar from './BulkActionBar';
 import useBulkSelect from '../lib/useBulkSelect';
@@ -22,8 +26,14 @@ const ROI_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 // dedicated Active Tasks page. It fetches its own data and re-reads on the
 // app's `tasks-changed` / `queue-changed` events (fired by TaskForm/TaskCard),
 // so it stays in sync no matter where a task is created or edited.
-export default function ActiveTasksList({ initialStatus = 'all', showTitle = true, showNewTask = false }) {
+// `columns` is the dashboard widget's column setting; the standalone page
+// passes nothing and keeps the stylesheet's own responsive column count.
+export default function ActiveTasksList({ initialStatus = 'all', showTitle = true, showNewTask = false, columns = null }) {
   const { activeTeamId } = useTeam();
+  // Creating and bulk-editing tasks are desktop jobs — the companion reads.
+  const isPhone = useIsPhone();
+  const [filterOpen, setFilterOpen] = useState(false);
+  const gridStyle = columns ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined;
   const [tasks, setTasks] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
   const [users, setUsers] = useState([]);
@@ -71,18 +81,29 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
 
   const isCritical = (t) => t.status === 'critical' || t.roi === 'critical';
   const baseList = statusFilter === 'completed' ? completedTasks : tasks;
-  const filtered = baseList
-    .filter(t => {
-      if (statusFilter === 'critical') { if (!isCritical(t)) return false; }
-      else if (statusFilter !== 'all' && statusFilter !== 'completed' && t.status !== statusFilter) return false;
-      if (roiFilter !== 'all' && t.roi !== roiFilter) return false;
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return t.page?.toLowerCase().includes(q) ||
-             t.feedback?.toLowerCase().includes(q) ||
-             t.noticed_by?.toLowerCase().includes(q);
-    })
-    .sort((a, b) => {
+  // Status and ROI first (cheap, exact), then the text search — which is
+  // forgiving and ranked, so "mini gallery" finds "mini inpo gal".
+  // See lib/fuzzySearch.js.
+  const narrowed = baseList.filter(t => {
+    if (statusFilter === 'critical') { if (!isCritical(t)) return false; }
+    else if (statusFilter !== 'all' && statusFilter !== 'completed' && t.status !== statusFilter) return false;
+    if (roiFilter !== 'all' && t.roi !== roiFilter) return false;
+    return true;
+  });
+
+  const ranked = searchRank(narrowed, search, t => [
+    { text: t.page, weight: 3 },
+    { text: t.feedback, weight: 1 },
+    { text: t.noticed_by, weight: 1 },
+  ]);
+
+  // While searching, best-match order is the useful one — re-sorting by date
+  // or ROI would bury the thing you typed the words for. An explicitly chosen
+  // sort still wins, since that's a deliberate instruction.
+  const searching = !!search.trim();
+  const filtered = (searching && sortBy === 'default')
+    ? ranked
+    : ranked.sort((a, b) => {
       if (sortBy === 'date_desc') return new Date(b.date_received) - new Date(a.date_received);
       if (sortBy === 'date_asc')  return new Date(a.date_received) - new Date(b.date_received);
       if (sortBy === 'roi')       return (ROI_ORDER[a.roi] ?? 4) - (ROI_ORDER[b.roi] ?? 4);
@@ -92,6 +113,15 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
       if (aCrit !== bCrit) return aCrit - bCrit;
       return new Date(b.date_received) - new Date(a.date_received);
     });
+
+  // Counts for the mobile filter picker — cheap (these lists are already in
+  // memory) and they turn the sheet into a summary as well as a control.
+  const statusCount = (key) => {
+    if (key === 'all') return tasks.length;
+    if (key === 'completed') return completedTasks.length;
+    if (key === 'critical') return tasks.filter(isCritical).length;
+    return tasks.filter(t => t.status === key).length;
+  };
 
   const activeFilter = STATUS_FILTERS.find(s => s.key === statusFilter);
   const listTitle = statusFilter === 'all' ? 'All Active Tasks' : `${activeFilter?.label} Tasks`;
@@ -104,23 +134,30 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
           ? <h2 className="section-title" style={{ margin: 0 }}>{listTitle}</h2>
           : <span />}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {showNewTask && (
+          {showNewTask && !isPhone && (
             <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
               New Task
             </button>
           )}
+          {/* Select mode only feeds the bulk-edit bar, which is desktop-only. */}
+          {!isPhone && (
           <button className={`btn btn-sm ${selectMode ? 'btn-primary' : 'btn-secondary'}`} onClick={toggleSelectMode}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
             </svg>
             {selectMode ? 'Done' : 'Select'}
           </button>
-          {selectMode && filtered.length > 0 && (
+          )}
+          {!isPhone && selectMode && filtered.length > 0 && (
             <button className="btn btn-secondary btn-sm" onClick={() => toggleAll(filtered.map(t => t.id))}>
               {filtered.every(t => selectedIds.has(t.id)) ? 'Clear all' : 'Select all'}
             </button>
           )}
+          {/* Phone keeps only the status chips below — search lives in the
+              header, and two more dropdowns here is exactly the clutter the
+              companion is meant to avoid. */}
+          {!isPhone && (
           <div style={{ position: 'relative' }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
               style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)', pointerEvents: 'none' }}>
@@ -128,6 +165,8 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
             </svg>
             <input className="input" placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 32, width: 170 }} />
           </div>
+          )}
+          {!isPhone && (<>
           <select className="input" style={{ width: 'auto' }} value={roiFilter} onChange={e => setRoiFilter(e.target.value)}>
             <option value="all">All ROI</option>
             <option value="critical">Critical</option>
@@ -142,9 +181,32 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
             <option value="roi">By ROI</option>
             <option value="status">By Status</option>
           </select>
+          </>)}
         </div>
       </div>
 
+      {/* A phone can't show six chips without a scroller that hides half of
+          them off-screen (and gives no hint which one is active once you've
+          scrolled). One button naming the current filter is both smaller and
+          more legible; the full set opens as a sheet. */}
+      {isPhone ? (
+        <button
+          type="button"
+          className="mfilter-trigger"
+          onClick={() => setFilterOpen(true)}
+          aria-haspopup="dialog"
+        >
+          <span
+            className="mfilter-dot"
+            style={{ background: activeFilter ? activeFilter.color : 'var(--text-dim)' }}
+          />
+          <span className="mfilter-label">{activeFilter ? activeFilter.label : 'All tasks'}</span>
+          <span className="mfilter-count">{filtered.length}</span>
+          <svg className="mfilter-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+      ) : (
       <div className="task-filter-row">
         <button className={`task-filter-btn ${statusFilter === 'all' ? 'task-filter-btn-active' : ''}`} onClick={() => setStatusFilter('all')}>All</button>
         {STATUS_FILTERS.map(s => {
@@ -160,17 +222,56 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
           );
         })}
       </div>
+      )}
+
+      {filterOpen && (
+        <ModalPortal>
+          <div className="msheet-overlay" onClick={() => setFilterOpen(false)}>
+            <div className="msheet" onClick={e => e.stopPropagation()} role="dialog" aria-label="Filter tasks">
+              <span className="msheet-grabber" aria-hidden="true" />
+              <h2 className="msheet-title">Show</h2>
+              <div className="mfilter-options">
+                {[{ key: 'all', label: 'All tasks', color: 'var(--text-dim)' }, ...STATUS_FILTERS].map(opt => {
+                  const on = statusFilter === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      className={`mfilter-option ${on ? 'mfilter-option-on' : ''}`}
+                      onClick={() => { setStatusFilter(opt.key); setFilterOpen(false); }}
+                      aria-pressed={on}
+                    >
+                      <span className="mfilter-dot" style={{ background: opt.color }} />
+                      <span className="mfilter-option-label">{opt.label}</span>
+                      <span className="mfilter-option-count">{statusCount(opt.key)}</span>
+                      {on && (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
 
       {loading ? (
-        <div className="loading-grid">{[1,2,3].map(i => <div key={i} className="task-skeleton loading-pulse" />)}</div>
+        <div className="loading-grid" style={gridStyle}>
+          {Array.from({ length: columns || 3 }).map((_, i) => <div key={i} className="task-skeleton loading-pulse" />)}
+        </div>
       ) : filtered.length === 0 ? (
         <div className="empty-state">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2" /></svg>
           <h3>{hasFilters ? 'No tasks match your filters' : 'No active tasks'}</h3>
           <p>{hasFilters ? 'Try adjusting your search or filters' : 'Create your first task to get started'}</p>
         </div>
+      ) : isPhone ? (
+        <MobileTaskList tasks={filtered} users={users} onChanged={fetchData} />
       ) : (
-        <div className="tasks-grid">
+        <div className="tasks-grid" style={gridStyle}>
           {filtered.map(task => (
             <TaskCard key={task.id} task={task} onEdit={setEditTask} onDeleted={fetchData} users={users} projects={projects}
               selectMode={selectMode} selected={selectedIds.has(task.id)} onToggleSelect={toggle} />

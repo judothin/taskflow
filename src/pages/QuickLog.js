@@ -10,7 +10,9 @@ import FeedbackEditor from '../components/FeedbackEditor';
 import ModalPortal from '../components/ModalPortal';
 import './QuickLog.css';
 
-export default function QuickLogModal({ onClose }) {
+// The form itself, with no chrome around it — used both by the modal below
+// and by the standalone /quicklog page the mobile companion docks to.
+export function QuickLogForm({ onLogged }) {
   const { user } = useAuth();
   const { activeTeamId } = useTeam();
   const [users, setUsers]             = useState([]);
@@ -21,10 +23,6 @@ export default function QuickLogModal({ onClose }) {
   const [error, setError]             = useState('');
   const [successCount, setSuccessCount] = useState(0);
   const [editorKey, setEditorKey]     = useState(0);
-
-  const mouseDownRef = useRef(false);
-  const handleOverlayMD = useCallback(e => { mouseDownRef.current = e.target === e.currentTarget; }, []);
-  const handleOverlayMU = useCallback(e => { if (mouseDownRef.current && e.target === e.currentTarget) onClose(); }, [onClose]);
 
   useEffect(() => {
     if (!activeTeamId) return;
@@ -79,37 +77,12 @@ export default function QuickLogModal({ onClose }) {
     bumpTeamStreak(activeTeamId);
     window.dispatchEvent(new CustomEvent('tasks-changed'));
     setSuccessCount(c => c + 1);
+    onLogged?.();
     reset();
   };
 
   return (
-    <ModalPortal>
-    <div className="modal-overlay" onMouseDown={handleOverlayMD} onMouseUp={handleOverlayMU}>
-      <div className="modal quicklog-modal">
-
-        {/* Header */}
-        <div className="modal-header">
-          <div className="quicklog-header">
-            <div className="quicklog-header-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
-                <polyline points="22 4 12 14.01 9 11.01"/>
-              </svg>
-            </div>
-            <div>
-              <h2 className="quicklog-title">Log Completed Task</h2>
-              <p className="quicklog-sub">Record something finished that wasn't already tracked.</p>
-            </div>
-          </div>
-          <button className="btn btn-secondary" onClick={onClose} aria-label="Close" style={{ padding: '7px 10px' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-
-        <div className="modal-body">
-
+    <>
           {/* Success flash */}
           {successCount > 0 && (
             <div className="quicklog-success">
@@ -180,9 +153,44 @@ export default function QuickLogModal({ onClose }) {
             </button>
 
           </form>
+    </>
+  );
+}
+
+export default function QuickLogModal({ onClose }) {
+  const mouseDownRef = useRef(false);
+  const handleOverlayMD = useCallback(e => { mouseDownRef.current = e.target === e.currentTarget; }, []);
+  const handleOverlayMU = useCallback(e => { if (mouseDownRef.current && e.target === e.currentTarget) onClose(); }, [onClose]);
+
+  return (
+    <ModalPortal>
+      <div className="modal-overlay" onMouseDown={handleOverlayMD} onMouseUp={handleOverlayMU}>
+        <div className="modal quicklog-modal">
+          <div className="modal-header">
+            <div className="quicklog-header">
+              <div className="quicklog-header-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+              </div>
+              <div>
+                <h2 className="quicklog-title">Log Completed Task</h2>
+                <p className="quicklog-sub">Record something finished that wasn't already tracked.</p>
+              </div>
+            </div>
+            <button className="btn btn-secondary" onClick={onClose} aria-label="Close" style={{ padding: '7px 10px' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          <div className="modal-body">
+            <QuickLogForm />
+          </div>
         </div>
       </div>
-    </div>
     </ModalPortal>
   );
 }

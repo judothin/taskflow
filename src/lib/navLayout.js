@@ -29,6 +29,10 @@ export const NAV_ITEMS = {
     to: '/files', label: 'Files',
     icon: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
   },
+  context: {
+    to: '/context', label: 'Context',
+    icon: 'M4 19.5A2.5 2.5 0 016.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z',
+  },
   pomodoro: {
     to: '/pomodoro', label: 'Pomodoro',
     icon: 'M12 8v4l3 2 M12 2a10 10 0 100 20 10 10 0 000-20z M9 2h6',
@@ -36,10 +40,6 @@ export const NAV_ITEMS = {
   submissions: {
     to: '/submissions', label: 'Submissions',
     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 M12 12v4 M10 14h4',
-  },
-  teams: {
-    to: '/teams', label: 'Teams',
-    icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75 M9 11a4 4 0 100-8 4 4 0 000 8z',
   },
   settings: {
     to: '/settings', label: 'Settings',

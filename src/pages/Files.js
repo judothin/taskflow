@@ -4,6 +4,7 @@ import { useTeam } from '../context/TeamContext';
 import { InlineClock } from '../components/dashboardWidgets';
 import ModalPortal from '../components/ModalPortal';
 import './Help.css';
+import { searchRank } from '../lib/fuzzySearch';
 import './Files.css';
 
 const TYPE_META = {
@@ -67,17 +68,14 @@ export default function Files() {
 
   useEffect(() => { loadEntries(); }, [loadEntries]);
 
-  const filtered = search.trim()
-    ? entries.filter(e => {
-        const q = search.toLowerCase();
-        return (
-          e.name?.toLowerCase().includes(q) ||
-          e.path?.toLowerCase().includes(q) ||
-          e.section?.toLowerCase().includes(q) ||
-          e.description?.toLowerCase().includes(q)
-        );
-      })
-    : entries;
+  // Ranked, forgiving match — "mini gallery" finds "mini inpo gal".
+  // See lib/fuzzySearch.js.
+  const filtered = searchRank(entries, search, e => [
+    { text: e.name, weight: 3 },
+    { text: e.path, weight: 2 },
+    { text: e.section, weight: 1.5 },
+    { text: e.description, weight: 1 },
+  ]);
 
   const sections = filtered.reduce((acc, e) => {
     const key = e.section?.trim() || 'Uncategorized';

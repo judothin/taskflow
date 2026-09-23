@@ -4,12 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
-import { awardTaskCompletedXp } from '../lib/xp';
-import { bumpTeamStreak } from '../lib/streak';
+import { completeTask } from '../lib/completeTask';
 import Avatar from './Avatar';
 import FeedbackContent from './FeedbackContent';
 import TaskSubtasks from './TaskSubtasks';
 import AnimatedPopover from './AnimatedPopover';
+import useIsPhone from '../lib/useIsPhone';
 import DatePicker from './DatePicker';
 import ModalPortal from './ModalPortal';
 
@@ -46,6 +46,11 @@ const STATUS_OPTIONS = ['open', 'in_progress', 'on_hold', 'completed'];
 
 export default function TaskCard({ task, onEdit, onDeleted, featured = false, users = [], projects = [], selectMode = false, selected = false, onToggleSelect }) {
   const navigate = useNavigate();
+  // Companion mode: on a phone the card is for reading and ticking off, not
+  // editing. Every inline editor below (ROI, status, project, assignee, page
+  // rename) and the destructive/queue actions are hidden — what's left is the
+  // Open button and Quick Complete. Editing happens on the desktop app.
+  const readOnly = useIsPhone();
   const { user } = useAuth();
   const { activeTeamId } = useTeam();
   const [imgOpen, setImgOpen]             = useState(false);
@@ -68,7 +73,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
   const cancelPageRef                     = useRef(false);
 
   const status          = STATUS_MAP[task.status] || STATUS_MAP.open;
-  const canQueue        = task.status !== 'in_progress' && task.status !== 'completed';
+  const canQueue        = !readOnly && task.status !== 'in_progress' && task.status !== 'completed';
   const canComplete     = task.status !== 'completed';
   const linkedProject   = projects.find(p => p.id === task.project_id) || null;
   const assignee        = users.find(u => u.id === task.assignee_id) || null;
@@ -210,36 +215,14 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
   const handleComplete = async () => {
     if (!completedBy.length) return;
     setCompleting(true);
-    await supabase.from('tasks').update({
-      status: 'completed',
-      completed_by: completedBy.join(', '),
-      date_completed: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq('id', task.id);
-
-    awardTaskCompletedXp(user?.id, task.complexity, { roi: task.roi, status: task.status, wasQueued: isQueued || task.status === 'in_progress' });
-    bumpTeamStreak(activeTeamId);
-
-    await supabase.from('queue').delete().eq('task_id', task.id);
-
-    if (task.status === 'in_progress') {
-      const { data: nextItems } = await supabase
-        .from('queue').select('id, task_id').eq('team_id', activeTeamId).order('position').limit(1);
-      if (nextItems && nextItems.length > 0) {
-        const next = nextItems[0];
-        await Promise.all([
-          supabase.from('tasks').update({ status: 'in_progress', updated_at: new Date().toISOString() }).eq('id', next.task_id),
-          supabase.from('queue').delete().eq('id', next.id),
-        ]);
-      }
-      window.dispatchEvent(new CustomEvent('queue-changed'));
-    }
-
+    // Shared with the mobile companion's row — see lib/completeTask.js for
+    // why the whole sequence lives in one place.
+    await completeTask({
+      task, completedBy, userId: user?.id, teamId: activeTeamId, wasQueued: isQueued,
+    });
     setCompleting(false);
     setConfirmComplete(false);
     setCompletedBy([]);
-    // Let any mounted view (e.g. the dashboard activity chart) update live.
-    window.dispatchEvent(new CustomEvent('tasks-changed'));
     onDeleted?.();
   };
 
@@ -268,12 +251,19 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
         )}
 
         {/* ── Main content ── */}
-        <div className={`task-card-content ${selectMode ? '' : 'task-card-content-clickable'}`} onClick={selectMode ? undefined : () => navigate(`/tasks/${task.id}`)}>
+        {/* Deliberately not clickable: the body is full of inline controls
+            (status, ROI, assignee, subtask boxes, the page link), so making
+            the whole thing a navigation target meant stray clicks kept
+            opening the task. Use the Open button in the action bar. */}
+        <div className="task-card-content">
 
           {/* Badges */}
           <div className="task-card-badges">
-            {/* ROI — click to change inline */}
+            {/* ROI — click to change inline (desktop only) */}
             <span className="badge-edit-wrap" ref={roiRef}>
+              {readOnly ? (
+                <span className={`badge ${ROI_MAP[task.roi] || ''}`}>{task.roi}</span>
+              ) : (
               <button
                 className={`badge ${ROI_MAP[task.roi] || ''} badge-editable`}
                 onClick={(e) => { e.stopPropagation(); setRoiEdit(v => !v); setStatusEdit(false); }}
@@ -281,6 +271,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
               >
                 {task.roi}
               </button>
+              )}
               <AnimatedPopover open={roiEdit} className="card-edit-popover" onClick={(e) => e.stopPropagation()}>
                 {ROI_OPTIONS.map(r => (
                   <button key={r} className={`card-edit-option ${r === task.roi ? 'card-edit-option-active' : ''}`} onClick={() => chooseRoi(r)}>
@@ -292,8 +283,11 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
 
             <span className="badge badge-complexity">{task.complexity}</span>
 
-            {/* Status — click to change inline */}
+            {/* Status — click to change inline (desktop only) */}
             <span className="badge-edit-wrap" ref={statusRef}>
+              {readOnly ? (
+                <span className={`badge ${status.cls}`}>{status.label}</span>
+              ) : (
               <button
                 className={`badge ${status.cls} badge-editable`}
                 onClick={(e) => { e.stopPropagation(); setStatusEdit(v => !v); setRoiEdit(false); }}
@@ -301,6 +295,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
               >
                 {status.label}
               </button>
+              )}
               <AnimatedPopover open={statusEdit} className="card-edit-popover" onClick={(e) => e.stopPropagation()}>
                 {STATUS_OPTIONS.map(s => (
                   <button key={s} className={`card-edit-option ${s === task.status ? 'card-edit-option-active' : ''}`} onClick={() => chooseStatus(s)}>
@@ -337,9 +332,18 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
               </a>
             ))}
             {/* Project — click to change inline (dropdown anchored here) */}
-            {projects.length > 0 && (
+            {/* Read-only shows the chip only when there IS a project — an
+                "assign" affordance that can't be used is just noise. */}
+            {projects.length > 0 && (!readOnly || linkedProject) && (
               <span className="badge-edit-wrap" ref={projectPopoverRef}>
-                {linkedProject ? (
+                {readOnly ? (
+                  <span className="badge badge-project">
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z"/>
+                    </svg>
+                    <span className="badge-project-text">{linkedProject.title}</span>
+                  </span>
+                ) : linkedProject ? (
                   <button
                     className="badge badge-project badge-editable"
                     title={`Project: ${linkedProject.title} — click to change`}
@@ -392,9 +396,19 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
             )}
 
             {/* Assignee — click to change inline (optional team member) */}
-            {users.length > 0 && (
+            {users.length > 0 && (!readOnly || assignee) && (
               <span className="badge-edit-wrap" ref={assigneePopoverRef}>
-                {assignee ? (
+                {readOnly ? (
+                  <span className="badge badge-assignee">
+                    <Avatar
+                      src={assignee.avatar_url}
+                      color={assignee.color || '#6366f1'}
+                      initials={`${assignee.first_name[0]}${assignee.last_name[0]}`}
+                      size={14}
+                    />
+                    <span className="badge-project-text">{assignee.first_name} {assignee.last_name}</span>
+                  </span>
+                ) : assignee ? (
                   <button
                     className="badge badge-assignee badge-editable"
                     title={`Assigned to ${assignee.first_name} ${assignee.last_name} — click to change`}
@@ -499,6 +513,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
                     {task.page}
                   </>
                 )}
+                {!readOnly && (
                 <button
                   className="task-page-edit-btn"
                   title="Edit page"
@@ -509,6 +524,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
                     <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
                   </svg>
                 </button>
+                )}
               </>
             )}
           </div>
@@ -534,13 +550,21 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
                 </span>
               )}
             </span>
-            <DatePicker
-              variant="badge"
-              value={task.due_date}
-              completed={task.status === 'completed'}
-              placeholder="Due date"
-              onChange={handleSetDueDate}
-            />
+            {readOnly ? (
+              task.due_date && (
+                <span className="badge badge-due-readonly">
+                  Due {format(new Date(task.due_date), 'MMM d')}
+                </span>
+              )
+            ) : (
+              <DatePicker
+                variant="badge"
+                value={task.due_date}
+                completed={task.status === 'completed'}
+                placeholder="Due date"
+                onChange={handleSetDueDate}
+              />
+            )}
           </div>
         </div>
 
@@ -603,7 +627,21 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
               </div>
           </AnimatedPopover>
 
+          {/* Open full view */}
+          <button
+            className="task-action-btn"
+            data-tooltip="Open"
+            onClick={() => navigate(`/tasks/${task.id}`)}
+            aria-label="Open task"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 3h6v6" /><path d="M10 14L21 3" />
+              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+            </svg>
+          </button>
+
           {/* Edit */}
+          {!readOnly && (
           <button
             className="task-action-btn"
             data-tooltip="Edit"
@@ -614,8 +652,9 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
               <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
             </svg>
           </button>
+          )}
 
-          {/* Quick Complete */}
+          {/* Quick Complete — the one write the companion keeps */}
           {canComplete && (
             <button
               className={`task-action-btn ${confirmComplete ? 'task-action-btn-active' : ''}`}
@@ -651,7 +690,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
           )}
 
           {/* Delete */}
-          {!confirmDelete ? (
+          {!readOnly && (!confirmDelete ? (
             <button
               className="task-action-btn task-action-btn-danger"
               data-tooltip="Delete"
@@ -685,7 +724,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
                 </svg>
               </button>
             </>
-          )}
+          ))}
 
         </div>
         )}

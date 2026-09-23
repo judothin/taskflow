@@ -12,6 +12,8 @@ import AssigneeSelect from '../components/AssigneeSelect';
 import DatePicker from '../components/DatePicker';
 import FeedbackEditor from '../components/FeedbackEditor';
 import SubtaskEditor from '../components/SubtaskEditor';
+import useIsPhone from '../lib/useIsPhone';
+import MobileTaskDetail from '../components/MobileTaskDetail';
 import { asSubtasks } from '../lib/subtasks';
 import TaskAttachments from '../components/TaskAttachments';
 import ModalPortal from '../components/ModalPortal';
@@ -36,6 +38,8 @@ const ROI_MAP = {
 export default function TaskDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  // Companion mode — the phone build views tasks, it doesn't edit them.
+  const readOnly = useIsPhone();
   const { user } = useAuth();
   const { activeTeamId } = useTeam();
   const fileRef = useRef();
@@ -137,6 +141,12 @@ export default function TaskDetail() {
 
   if (loading || !form) {
     return <div className="detail-loading">Loading...</div>;
+  }
+
+  // Phones get a purpose-built reading screen rather than this edit form —
+  // see MobileTaskDetail for why disabling the form wasn't good enough.
+  if (readOnly) {
+    return <MobileTaskDetail task={task} users={users} onChanged={fetchTask} />;
   }
 
   const status = STATUS_MAP[form.status] || STATUS_MAP.open;

@@ -27,32 +27,166 @@
 }
 
 /* ── Settings layout ─────────────────────────────────────── */
-.settings-page { max-width: 1320px; }
-.settings-grid {
+/* No max-width: every other page fills the content area, and capping this
+   one left a wide empty gutter on the right of large displays. */
+.settings-shell {
   display: grid;
-  grid-template-columns: 340px 1fr;   /* profile | appearance */
-  gap: 16px;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 28px;
   align-items: start;
 }
-.settings-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
-/* Theme editor + (background / saved themes) side by side */
-.settings-theme-area {
+/* Section rail — sticks while the panel scrolls */
+.settings-nav {
+  position: sticky;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.settings-nav-item:hover { color: var(--text); background: var(--bg-3); }
+.settings-nav-item-active {
+  color: var(--text);
+  background: var(--bg-3);
+  border-color: var(--border);
+}
+.settings-nav-icon { display: flex; flex-shrink: 0; color: var(--text-dim); }
+.settings-nav-item-active .settings-nav-icon { color: var(--accent); }
+.settings-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Panel */
+.settings-panel { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.settings-panel-head { margin-bottom: 2px; }
+.settings-panel-title { font-size: 24px; font-weight: 700; letter-spacing: -0.4px; color: var(--text); }
+.settings-panel-sub { font-size: 13.5px; color: var(--text-muted); margin-top: 4px; }
+
+/* Cards inside a panel */
+.settings-card-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.settings-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.settings-card-sub { font-size: 12.5px; color: var(--text-muted); margin: 6px 0 16px; line-height: 1.5; }
+.settings-card-sub-tight { margin: 8px 0 0; }
+.settings-card-title + .form-grid,
+.settings-card-title + .settings-row { margin-top: 18px; }
+
+/* Cards that pair up within one panel. auto-fit rather than a fixed 1fr 1fr
+   so they widen to fill the panel on a large display and drop to a single
+   column when it's narrow — no breakpoint needed. */
+.settings-two-col {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: 16px;
   align-items: start;
   min-width: 0;
 }
 
-/* Ranks & badges span the full settings width so many fit per row */
-.settings-ranks-card { margin-top: 16px; }
-
-@media (max-width: 1100px) {
-  .settings-theme-area { grid-template-columns: 1fr; }
+/* Label + description on the left, control on the right */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }
-@media (max-width: 900px) {
-  .settings-grid { grid-template-columns: 1fr; }
+.settings-row:last-child { border-bottom: none; padding-bottom: 0; }
+.settings-row-text { flex: 1; min-width: 180px; }
+.theme-color-row .settings-row-text { min-width: 0; }
+.settings-row-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.settings-row-desc { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; line-height: 1.45; }
+.settings-row-value { font-size: 13px; color: var(--text-muted); font-family: var(--mono); }
+
+/* Collapsible group inside a card */
+.settings-group { border-top: 1px solid var(--border); }
+.settings-group:first-of-type { border-top: none; }
+.settings-group-summary {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 0; cursor: pointer; list-style: none;
+}
+.settings-group-summary::-webkit-details-marker { display: none; }
+.settings-group-title {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.settings-group-summary:hover .settings-group-title { color: var(--text); }
+.settings-group-count {
+  font-size: 10.5px; font-family: var(--mono); color: var(--text-dim);
+  background: var(--bg-3); border-radius: 8px; padding: 1px 6px;
+}
+.settings-group-chevron { color: var(--text-dim); flex-shrink: 0; transition: transform 0.15s ease; }
+.settings-group[open] > .settings-group-summary .settings-group-chevron { transform: rotate(90deg); }
+.settings-group-body { padding-bottom: 10px; }
+
+/* Profile identity header */
+.settings-identity { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.settings-identity-text { min-width: 0; }
+.settings-identity-name { font-size: 18px; font-weight: 700; color: var(--text); }
+.settings-identity-email { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.settings-identity-hint { font-size: 12px; color: var(--text-dim); margin-top: 5px; }
+.settings-identity-err { font-size: 12px; color: var(--danger); margin-top: 5px; }
+
+/* Panel odds and ends */
+.settings-submit { align-self: flex-start; }
+.settings-inline-form { display: flex; gap: 8px; margin-bottom: 14px; }
+.settings-inline-err { margin-bottom: 10px; }
+.settings-sliders { margin-top: 18px; }
+.settings-slider-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px;
+}
+.settings-sliders .glass-opacity-range + .settings-slider-head { margin-top: 14px; }
+.settings-slider-value { font-family: var(--mono); color: var(--text-dim); }
+
+/* Background tint — swatch and strength slider on one line */
+.settings-tint { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.settings-tint-row { display: flex; align-items: center; gap: 12px; }
+.settings-tint-row .glass-opacity-range { flex: 1; min-width: 0; }
+.settings-empty { font-size: 12px; color: var(--text-dim); }
+.settings-empty-card { font-size: 13px; color: var(--text-muted); text-align: center; padding: 28px 16px; }
+
+/* Shared form bits used by the settings panels */
+.label-note {
+  font-weight: 400; text-transform: none; letter-spacing: 0;
+  color: var(--text-dim); font-size: 11px;
+}
+.form-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
+.form-hint-top { margin: 0 0 10px; }
+.form-hint strong { color: var(--text); }
+.success-msg { color: var(--success); font-size: 13px; }
+
+@media (max-width: 820px) {
+  .settings-shell { grid-template-columns: 1fr; gap: 18px; }
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .settings-nav::-webkit-scrollbar { display: none; }
+  .settings-nav-item { width: auto; flex-shrink: 0; padding: 8px 14px; }
+  .settings-panel-title { font-size: 21px; }
 }
 
 /* Glass opacity slider */
@@ -850,6 +984,41 @@
 .dash-size-btn:hover { color: var(--text); background: var(--bg-3); }
 .dash-size-active, .dash-size-active:hover { background: var(--accent); color: #fff; }
 
+/* Per-widget display options (columns / cards shown), beside the width
+   control in the edit-mode placeholder. .dash-ph-controls already wraps, so
+   these fall onto their own line in a narrow widget. */
+.dash-opt { display: inline-flex; align-items: center; gap: 6px; }
+.dash-opt-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+
+.dash-step {
+  display: inline-flex; align-items: center;
+  background: var(--bg-4); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.dash-step-btn {
+  padding: 4px 9px; font-size: 13px; line-height: 1; font-weight: 700;
+  font-family: var(--font); background: none; border: none;
+  color: var(--text-muted); cursor: pointer; transition: color 0.12s ease, background 0.12s ease;
+}
+.dash-step-btn:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
+.dash-step-btn:disabled { opacity: 0.4; cursor: default; }
+.dash-step-value {
+  min-width: 20px; text-align: center;
+  font-size: 11px; font-weight: 700; font-family: var(--mono);
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+
+.dash-opt-auto {
+  background: none; border: 1px solid var(--border);
+  color: var(--text-muted); font-size: 10px; font-weight: 700;
+  font-family: var(--font); padding: 3px 8px; border-radius: 999px;
+  cursor: pointer; transition: color 0.12s ease, border-color 0.12s ease;
+}
+.dash-opt-auto:hover { color: var(--text); border-color: var(--border-light); }
+
 .dash-remove {
   display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; border-radius: var(--radius);
@@ -925,11 +1094,12 @@
 
 @media (max-width: 768px) {
   .stats-grid          { grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  /* !important: the desktop column count is set inline (scales with the
-     widget's drag-resized width), which would otherwise beat this rule. */
+  /* !important: the desktop column count is set inline (the widget's own
+     Columns setting, or its drag-resized width), which would otherwise beat
+     this rule. A 3-across dashboard widget must still collapse on a phone. */
   .tasks-featured-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-  .tasks-grid          { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .loading-grid        { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tasks-grid          { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .loading-grid        { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .page-title { font-size: 22px; }
   .dashboard  { gap: 16px; }
   .stat-card  { padding: 14px 10px; }
@@ -942,8 +1112,8 @@
 /* Phones: one task card per row — two columns of these dense cards are
    unreadable and overflow the viewport on narrow screens. */
 @media (max-width: 600px) {
-  .tasks-grid          { grid-template-columns: minmax(0, 1fr); }
-  .loading-grid        { grid-template-columns: minmax(0, 1fr); }
+  .tasks-grid          { grid-template-columns: minmax(0, 1fr) !important; }
+  .loading-grid        { grid-template-columns: minmax(0, 1fr) !important; }
   .tasks-featured-grid { grid-template-columns: minmax(0, 1fr) !important; }
 }
 

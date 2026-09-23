@@ -1,0 +1,98 @@
+/* ── Settings → Subtask Presets ───────────────────────────── */
+
+.preset-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-3);
+}
+
+.preset-item-list { display: flex; flex-direction: column; gap: 6px; }
+
+.preset-item-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s ease;
+}
+.preset-item-row:focus-within { border-color: var(--border-light); }
+
+.preset-item-num {
+  flex-shrink: 0;
+  width: 18px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.preset-item-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font);
+}
+.preset-item-input::placeholder { color: var(--text-dim); }
+
+.preset-item-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.preset-item-remove:hover { color: #f87171; background: rgba(239,68,68,0.1); }
+
+.preset-add-step { margin-top: 8px; }
+
+.preset-draft-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.preset-draft-hint { font-size: 12px; color: var(--text-dim); }
+
+/* Saved list */
+.preset-list { display: flex; flex-direction: column; }
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.preset-row:last-child { border-bottom: none; padding-bottom: 0; }
+
+.preset-row-main { flex: 1; min-width: 200px; }
+.preset-row-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.preset-row-steps {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  line-height: 1.5;
+  /* One line — the full checklist is in the editor, this is just a reminder
+     of what's in it. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.preset-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }

@@ -1,10 +1,14 @@
 // ============================================================
 // Dashboard layout model + widget registry + persistence
 // ------------------------------------------------------------
-// A layout is an ordered array of blocks: { type, size }.
+// A layout is an ordered array of blocks: { type, size, opts }.
 //  - `type` is a key into WIDGETS (one instance per type).
 //  - `size` is either a named preset key (see SIZES below) or a plain
 //    integer 1-12 grid-column span, from dragging the resize handle.
+//  - `opts` holds per-widget display settings, and only the keys the widget
+//    actually supports (see sanitizeOpts). An absent key means "auto", which
+//    is why nothing is written there by default — a widget left alone keeps
+//    deriving its layout from its own width.
 // Stats counts (top) and the Calendar (sidebar top) are rendered
 // separately and are always present + locked — they are NOT blocks.
 // ============================================================
@@ -28,12 +32,15 @@ export const WIDGETS = {
     desc: 'In-progress tasks and your up-next queue.',
     icon: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
     defaultSize: 'full',
+    cards: true,      // lays out task cards → column count is customizable
+    countable: true,  // ...and it shows a capped slice, so the cap is too
   },
   allTasks: {
     name: 'Active Tasks',
     desc: 'The full, filterable list of active tasks.',
     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2',
     defaultSize: 'full',
+    cards: true,
   },
   activityChart: {
     name: 'Activity Chart',
@@ -115,6 +122,60 @@ export const DEFAULT_LAYOUT = [
   { type: 'pet',       size: 'third' },
 ];
 
+// ── Per-widget display options ───────────────────────────────
+// Task cards get unreadable below roughly a quarter of the grid, so 4 is the
+// practical ceiling on columns. The visible-card cap is looser — it scrolls.
+export const MAX_COLUMNS = 4;
+export const MAX_VISIBLE_CARDS = 12;
+
+export const COLUMN_CHOICES = [
+  { value: null, label: 'Auto' },
+  { value: 1, label: '1' },
+  { value: 2, label: '2' },
+  { value: 3, label: '3' },
+  { value: 4, label: '4' },
+];
+
+const clampInt = (v, min, max) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(Math.max(min, Math.min(max, n)));
+};
+
+// Only keep options the widget actually understands, so a stored layout can't
+// carry settings for a widget that never had them (or no longer does).
+function sanitizeOpts(type, opts) {
+  const meta = WIDGETS[type] || {};
+  const out = {};
+  if (!opts || typeof opts !== 'object') return out;
+  if (meta.cards) {
+    const columns = clampInt(opts.columns, 1, MAX_COLUMNS);
+    if (columns) out.columns = columns;
+  }
+  if (meta.countable) {
+    const visible = clampInt(opts.visible, 1, MAX_VISIBLE_CARDS);
+    if (visible) out.visible = visible;
+  }
+  return out;
+}
+
+// The column count a widget falls back to when it has no explicit setting:
+// derived from its own width, since the grid is 12 columns and a task card
+// needs about 4 of them to stay readable. This is the behavior every card
+// widget had before columns became customizable.
+export function autoColumns(size) {
+  return Math.max(1, Math.min(MAX_COLUMNS, Math.round(spanFor(size) / 4)));
+}
+
+export function columnsFor(block) {
+  return block?.opts?.columns || autoColumns(block?.size);
+}
+
+// How many cards a capped widget shows at once. Defaults to one full row.
+export function visibleCountFor(block) {
+  return block?.opts?.visible || autoColumns(block?.size);
+}
+
 const KEY = (uid) => `tf-dashboard-layout-${uid || 'anon'}`;
 
 // `size` is either a named preset key ('quarter'/'third'/'half'/'twoThirds'/
@@ -134,6 +195,7 @@ export function sanitizeLayout(layout) {
     .map(b => ({
       type: b.type,
       size: isValidSize(b.size) ? b.size : (WIDGETS[b.type].defaultSize || 'full'),
+      opts: sanitizeOpts(b.type, b.opts),
     }));
 
   // Dedupe (one instance per type), keeping first occurrence.
@@ -143,7 +205,7 @@ export function sanitizeLayout(layout) {
   // Ensure locked widgets exist.
   Object.entries(WIDGETS).forEach(([type, meta]) => {
     if (meta.locked && !seen.has(type)) {
-      deduped.unshift({ type, size: meta.defaultSize || 'full' });
+      deduped.unshift({ type, size: meta.defaultSize || 'full', opts: {} });
       seen.add(type);
     }
   });
