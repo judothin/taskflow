@@ -39,13 +39,24 @@ export default function Focus() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Completing a task from a card fires this app-wide, and the queue panel
-  // fires the other — either way this list is now stale.
+  // Two separate refresh paths, and both are needed:
+  //   - the window events catch changes made in THIS tab (a card completing a
+  //     task, the queue panel reordering);
+  //   - the Postgres subscription catches changes made anywhere else, which is
+  //     the whole point on a phone sitting next to a desktop you're working on.
+  // Without the subscription the phone only updated when you navigated away
+  // and back, because a CustomEvent never leaves the tab that fired it.
   useEffect(() => {
     const handler = () => fetchData();
     window.addEventListener('tasks-changed', handler);
     window.addEventListener('queue-changed', handler);
+    const channel = supabase
+      .channel('focus-page')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, handler)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue' }, handler)
+      .subscribe();
     return () => {
+      supabase.removeChannel(channel);
       window.removeEventListener('tasks-changed', handler);
       window.removeEventListener('queue-changed', handler);
     };

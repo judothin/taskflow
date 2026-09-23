@@ -52,8 +52,9 @@ const PrivateRoute = ({ children }) => {
 
 const PublicRoute = ({ children }) => {
   const { user, loading } = useAuth();
+  const isPhone = useIsPhone();
   if (loading) return null;
-  return !user ? children : <Navigate to="/dashboard" />;
+  return !user ? children : <Navigate to={homePath(isPhone)} replace />;
 };
 
 // Signed-in users with zero teams get sent to /onboarding; everyone else
@@ -67,19 +68,21 @@ const RequireTeam = ({ children }) => {
 
 const OnboardingRoute = () => {
   const { teams, loading } = useTeam();
+  const isPhone = useIsPhone();
   if (loading) return null;
-  return teams.length === 0 ? <Onboarding /> : <Navigate to="/dashboard" replace />;
+  return teams.length === 0 ? <Onboarding /> : <Navigate to={homePath(isPhone)} replace />;
 };
 
 /**
- * On a tab's first load, always land on the dashboard.
+ * On a tab's first load, always land on the home page for this device.
  * sessionStorage persists across refresh within the same tab (so a refresh
  * keeps you where you are) but is empty in a newly opened tab (so closing and
- * reopening always starts at the dashboard).
+ * reopening always starts at home).
  */
 function TabFirstLoadRedirect() {
   const navigate = useNavigate();
   const location = useLocation();
+  const home = homePath(useIsPhone());
 
   useEffect(() => {
     const KEY = 'tf-tab-initialized';
@@ -90,20 +93,32 @@ function TabFirstLoadRedirect() {
     const exempt = ['/login', '/register', '/submit', '/onboarding'];
     if (exempt.includes(location.pathname) || location.pathname.startsWith('/submit/')) return;
 
-    if (location.pathname !== '/dashboard') {
-      navigate('/dashboard', { replace: true });
+    if (location.pathname !== home) {
+      navigate(home, { replace: true });
     }
   }, []); // run once per tab load
 
   return null;
 }
 
-// The landing page differs by device: a phone opens the companion's Focus
-// screen (what you're working on now), a desktop opens the full dashboard.
-// The widget grid is a poor first thing to meet on a phone.
+// Where "home" is, by device. A phone opens the companion's Focus screen
+// (what you're working on now); the dashboard's widget grid is a poor first
+// thing to meet on a phone, and on a phone it isn't reachable at all — see
+// DashboardRoute. Every redirect in this file goes through here so they can't
+// drift apart.
+const homePath = (isPhone) => (isPhone ? '/focus' : '/dashboard');
+
 function HomeRedirect() {
+  return <Navigate to={homePath(useIsPhone())} replace />;
+}
+
+// The dashboard itself is desktop-only: a phone asking for it lands on Focus
+// instead, so a stale bookmark, a deep link or a teammate's shared URL can't
+// drop someone into the widget grid on a 390px screen.
+function DashboardRoute() {
   const isPhone = useIsPhone();
-  return <Navigate to={isPhone ? '/focus' : '/dashboard'} replace />;
+  if (isPhone) return <Navigate to="/focus" replace />;
+  return <Dashboard />;
 }
 
 function AppRoutes() {
@@ -116,7 +131,7 @@ function AppRoutes() {
       <Route path="/onboarding" element={<PrivateRoute><OnboardingRoute /></PrivateRoute>} />
       <Route path="/" element={<PrivateRoute><RequireTeam><Layout /></RequireTeam></PrivateRoute>}>
         <Route index element={<HomeRedirect />} />
-        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="dashboard" element={<DashboardRoute />} />
         <Route path="active" element={<ActiveTasks />} />
         {/* Companion destinations — the phone dock's five tabs. They're
             ordinary pages, so they work at any width; the dock is just the
@@ -139,7 +154,7 @@ function AppRoutes() {
         <Route path="projects/:id" element={<ProjectDetail />} />
         <Route path="submissions" element={<Submissions />} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" />} />
+      <Route path="*" element={<HomeRedirect />} />
     </Routes>
   );
 }

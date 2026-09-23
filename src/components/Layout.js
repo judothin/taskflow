@@ -453,7 +453,10 @@ export default function Layout() {
             </button>
 
             <nav className="mobile-menu-nav">
-              {visibleNavLayout.map(({ id }) => {
+              {/* Dashboard is desktop-only (App.js sends a phone asking for it
+                  to Focus), so listing it here would just be a link that
+                  bounces somewhere else. */}
+              {visibleNavLayout.filter(({ id }) => id !== 'dashboard').map(({ id }) => {
                 const item = NAV_ITEMS[id];
                 return (
                   <NavLink

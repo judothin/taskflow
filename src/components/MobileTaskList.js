@@ -155,45 +155,51 @@ function MobileTaskRow({ task, users, onChanged }) {
           <span className="mtask-circle" />
         </button>
 
+        {/* Everything but the check circle is ONE target. The avatar and the
+            chevron sat outside the button before, which made the chevron — the
+            obvious thing to tap for a dropdown — a dead zone, so the first tap
+            did nothing and the second one (on the title) worked. */}
         <button
           type="button"
           className="mtask-main"
           onClick={onRowTap}
           aria-expanded={expandable ? open : undefined}
         >
-          <span className="mtask-title">{titleOf(task)}</span>
-          <span className="mtask-meta">
-            <span className="mtask-status">
-              <span className="mtask-dot" />
-              {meta.label}
-            </span>
-            {total > 0 && (
-              <span className="mtask-sub">{done}/{total}</span>
-            )}
-            {task.due_date && (
-              <span className={`mtask-due ${overdue ? 'mtask-due-over' : ''}`}>
-                {format(parseISO(task.due_date), 'MMM d')}
+          <span className="mtask-main-text">
+            <span className="mtask-title">{titleOf(task)}</span>
+            <span className="mtask-meta">
+              <span className="mtask-status">
+                <span className="mtask-dot" />
+                {meta.label}
               </span>
-            )}
+              {total > 0 && (
+                <span className="mtask-sub">{done}/{total}</span>
+              )}
+              {task.due_date && (
+                <span className={`mtask-due ${overdue ? 'mtask-due-over' : ''}`}>
+                  {format(parseISO(task.due_date), 'MMM d')}
+                </span>
+              )}
+            </span>
           </span>
+
+          {assignee && (
+            <Avatar
+              src={assignee.avatar_url}
+              color={assignee.color || '#6366f1'}
+              initials={`${assignee.first_name[0] || ''}${assignee.last_name[0] || ''}`}
+              size={28}
+            />
+          )}
+
+          {expandable && (
+            <span className={`mtask-chevron ${open ? 'mtask-chevron-open' : ''}`} aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </span>
+          )}
         </button>
-
-        {assignee && (
-          <Avatar
-            src={assignee.avatar_url}
-            color={assignee.color || '#6366f1'}
-            initials={`${assignee.first_name[0] || ''}${assignee.last_name[0] || ''}`}
-            size={28}
-          />
-        )}
-
-        {expandable && (
-          <span className={`mtask-chevron ${open ? 'mtask-chevron-open' : ''}`} aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </span>
-        )}
       </div>
 
       {expandable && open && (

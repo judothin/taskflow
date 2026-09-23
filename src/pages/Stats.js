@@ -43,10 +43,19 @@ export default function Stats() {
   }, [activeTeamId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  // Same pairing as Focus: window events for this tab, a Postgres subscription
+  // for everything happening on other devices.
   useEffect(() => {
     const handler = () => fetchData();
     window.addEventListener('tasks-changed', handler);
-    return () => window.removeEventListener('tasks-changed', handler);
+    const channel = supabase
+      .channel('stats-page')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, handler)
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener('tasks-changed', handler);
+    };
   }, [fetchData]);
 
   const doneToday = useMemo(

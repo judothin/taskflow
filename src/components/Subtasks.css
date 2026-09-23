@@ -250,6 +250,14 @@
 .st-card-list > .st-card-add,
 .st-card-list > .st-card-add-row { grid-column: 1 / -1; }
 
+/* Phones are always one column, whatever the two-column preference says — at
+   this width a split checklist gives each item ~150px, which wraps every line.
+   Overrides the rule above by source order, so the setting still applies on
+   desktop without needing !important here. */
+@media (max-width: 768px) {
+  .st-card-list { grid-template-columns: minmax(0, 1fr); }
+}
+
 .st-card-item {
   display: flex;
   /* Top-aligned, not centered: a label that wraps to two lines would
