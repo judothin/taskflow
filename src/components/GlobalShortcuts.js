@@ -6,6 +6,12 @@ import TaskForm from './TaskForm';
 import QuickLogModal from '../pages/QuickLog';
 import { OPEN_EVENT as OPEN_SEARCH } from './GlobalSearch';
 
+// This component already owns app-wide instances of both modals, so anything
+// that wants to open one fires the matching event rather than mounting its own
+// copy (the + menu in the nav, a page toolbar, a deep link).
+export const OPEN_NEW_TASK = 'open-new-task';
+export const OPEN_QUICK_LOG = 'open-quick-log';
+
 // True when the keystroke is meant for a text field (or rich-text editor),
 // where our single-key shortcuts must not hijack the input.
 function isTypingTarget(el) {
@@ -59,8 +65,17 @@ export default function GlobalShortcuts() {
         setShowQuickLog(true);
       }
     };
+    const openTask = () => { loadFormData(); setShowNewTask(true); };
+    const openLog = () => setShowQuickLog(true);
+
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener(OPEN_NEW_TASK, openTask);
+    window.addEventListener(OPEN_QUICK_LOG, openLog);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener(OPEN_NEW_TASK, openTask);
+      window.removeEventListener(OPEN_QUICK_LOG, openLog);
+    };
   }, [showNewTask, showQuickLog, loadFormData]);
 
   return (

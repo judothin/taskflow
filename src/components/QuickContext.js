@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
@@ -9,6 +9,8 @@ import './QuickContext.css';
 // round trip through the database. Realtime would also catch it, but this is
 // instant and works whether or not context_entries is in the publication.
 export const CONTEXT_CHANGED = 'context-changed';
+// Lets the + menu in the nav open this sheet without owning a second copy.
+export const OPEN_QUICK_CONTEXT = 'open-quick-context';
 
 // "I just learned something" — reachable from the top bar on every page,
 // because the moment you find out where the captcha lives is never the moment
@@ -23,6 +25,12 @@ export default function QuickContext() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setOpen(true);
+    window.addEventListener(OPEN_QUICK_CONTEXT, handler);
+    return () => window.removeEventListener(OPEN_QUICK_CONTEXT, handler);
+  }, []);
 
   if (!activeTeamId) return null;
 

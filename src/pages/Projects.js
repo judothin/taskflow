@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { TopBarPortal } from '../context/HeaderActionsContext';
@@ -133,6 +133,15 @@ export default function Projects() {
   };
 
   const openCreate = () => { setEditProject(null); setShowForm(true); };
+
+  // The + menu in the nav navigates here with this flag to open the form.
+  const location = useLocation();
+  useEffect(() => {
+    if (location.state?.create) {
+      openCreate();
+      window.history.replaceState({}, ''); // don't re-open on back
+    }
+  }, [location.state]);
   const openEdit   = (p, e) => { e.stopPropagation(); setEditProject(p); setShowForm(true); };
 
   const totalUnread = Object.values(unreadMap).reduce((s, n) => s + n, 0);

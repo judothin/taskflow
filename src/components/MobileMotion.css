@@ -62,31 +62,37 @@
   }
 
   /* ── Press feedback ─────────────────────────────────────────
-     Every tappable surface answers the finger immediately. The
-     press-in is near-instant and the release eases back, which is
-     what makes a tap feel acknowledged rather than laggy. */
-  .mtask-main,
-  .mtask-check,
-  .mfilter-trigger,
-  .msheet-person,
-  .mfilter-option,
-  .ctx-card,
-  .stat-card,
+     Only on things you deliberately press, never on cards or list
+     rows. `:active` is not applied on touch until the browser has
+     decided the gesture isn't a scroll — so a card that shrinks
+     on press shrinks LATE and lets go late, which reads as lag
+     rather than as feedback. On a big committed button that delay
+     is hidden by the action that follows it; on a row you're
+     scrolling past, it is the whole impression. */
   .mdetail-complete,
   .msheet-confirm,
-  .dock-item {
-    transition: transform var(--m-base) var(--m-out),
+  .mfilter-option,
+  .msheet-person {
+    transition: transform var(--m-fast) var(--m-out),
                 background-color var(--m-fast) linear;
   }
-  .mtask-main:active,
-  .mfilter-trigger:active,
-  .msheet-person:active,
-  .mfilter-option:active,
-  .stat-card:active,
   .mdetail-complete:active,
   .msheet-confirm:active {
     transform: scale(0.975);
-    transition-duration: var(--m-fast);
+  }
+
+  /* ── Sticky hover ───────────────────────────────────────────
+     A touch device has no hover, but a tap leaves :hover applied
+     until you tap something else — so a card stays highlighted
+     long after you've moved on, which looks like a stuck state.
+     Neutralise the ones that show up on a phone. */
+  @media (hover: none) {
+    .ctx-card:hover { border-color: var(--border); }
+    .create-item:hover { background: none; }
+    .mfilter-option:hover { background: var(--bg-3); }
+    .msheet-person:hover { background: var(--bg-3); }
+    .st-card-item:hover { background: none; }
+    .ctx-file-row:hover { background: none; }
   }
 
   /* ── Expanding drawer ───────────────────────────────────────
@@ -212,10 +218,11 @@
    has to behave like an app surface rather than a document.
    ══════════════════════════════════════════════════════════════ */
 @media (display-mode: standalone) {
-  /* Rubber-banding the whole page reveals the background behind
-     the app and makes it feel like a web page in a costume. Keep
-     the overscroll inside scrollers that actually scroll. */
-  html, body { overscroll-behavior-y: none; }
+  /* `contain` rather than `none`: it stops a scroll inside the app
+     chaining out to the document, but KEEPS the rubber-band. An
+     earlier version used `none`, which removed the bounce and made
+     every screen feel nailed down. */
+  html, body { overscroll-behavior-y: contain; }
 
   /* No text cursor or selection on chrome you only ever tap.
      Content keeps normal selection — you still want to copy a
@@ -233,4 +240,19 @@
   /* The status bar is translucent in standalone, so the fixed dock
      and header have to hold their own safe-area padding. */
   .mobile-dock { padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   Elastic pages
+   ------------------------------------------------------------
+   A page shorter than the screen has nothing to scroll, so it
+   can't rubber-band, and a surface that refuses to move at all
+   reads as frozen rather than as "you've seen everything".
+   One pixel of slack past the viewport is imperceptible as
+   scrolling but is enough for the scroller to be live, so every
+   screen has the same give.
+   ══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .page-content { min-height: calc(100dvh + 1px); }
 }

@@ -112,13 +112,18 @@ function HomeRedirect() {
   return <Navigate to={homePath(useIsPhone())} replace />;
 }
 
-// The dashboard itself is desktop-only: a phone asking for it lands on Focus
-// instead, so a stale bookmark, a deep link or a teammate's shared URL can't
-// drop someone into the widget grid on a 390px screen.
-function DashboardRoute() {
+// Pages whose layout is built for a wide screen. On a phone they redirect to
+// Focus rather than rendering a desktop grid at 390px — the companion is a
+// deliberate subset, and half-working screens are worse than absent ones. A
+// stale bookmark, a deep link or a teammate's shared URL all land somewhere
+// usable instead.
+//
+// The mobile-ready set is: focus, active, completed, stats, quicklog, context
+// and a task's detail view. Everything else goes through here.
+function DesktopOnly({ children }) {
   const isPhone = useIsPhone();
   if (isPhone) return <Navigate to="/focus" replace />;
-  return <Dashboard />;
+  return children;
 }
 
 function AppRoutes() {
@@ -131,7 +136,7 @@ function AppRoutes() {
       <Route path="/onboarding" element={<PrivateRoute><OnboardingRoute /></PrivateRoute>} />
       <Route path="/" element={<PrivateRoute><RequireTeam><Layout /></RequireTeam></PrivateRoute>}>
         <Route index element={<HomeRedirect />} />
-        <Route path="dashboard" element={<DashboardRoute />} />
+        <Route path="dashboard" element={<DesktopOnly><Dashboard /></DesktopOnly>} />
         <Route path="active" element={<ActiveTasks />} />
         {/* Companion destinations — the phone dock's five tabs. They're
             ordinary pages, so they work at any width; the dock is just the
@@ -139,20 +144,20 @@ function AppRoutes() {
         <Route path="focus" element={<Focus />} />
         <Route path="stats" element={<Stats />} />
         <Route path="quicklog" element={<QuickLogPage />} />
-        <Route path="tasks" element={<Tasks />} />
+        <Route path="tasks" element={<DesktopOnly><Tasks /></DesktopOnly>} />
         <Route path="tasks/:id" element={<TaskDetail />} />
         <Route path="completed" element={<Completed />} />
         {/* Teams moved into Settings — keep old links, bookmarks and the
             in-app "Manage teams" entry point working. */}
         <Route path="teams" element={<Navigate to="/settings?section=teams" replace />} />
-        <Route path="settings" element={<Settings />} />
-        <Route path="help" element={<Help />} />
-        <Route path="files" element={<Files />} />
+        <Route path="settings" element={<DesktopOnly><Settings /></DesktopOnly>} />
+        <Route path="help" element={<DesktopOnly><Help /></DesktopOnly>} />
+        <Route path="files" element={<DesktopOnly><Files /></DesktopOnly>} />
         <Route path="context" element={<Context />} />
-        <Route path="pomodoro" element={<Pomodoro />} />
-        <Route path="projects" element={<Projects />} />
-        <Route path="projects/:id" element={<ProjectDetail />} />
-        <Route path="submissions" element={<Submissions />} />
+        <Route path="pomodoro" element={<DesktopOnly><Pomodoro /></DesktopOnly>} />
+        <Route path="projects" element={<DesktopOnly><Projects /></DesktopOnly>} />
+        <Route path="projects/:id" element={<DesktopOnly><ProjectDetail /></DesktopOnly>} />
+        <Route path="submissions" element={<DesktopOnly><Submissions /></DesktopOnly>} />
       </Route>
       <Route path="*" element={<HomeRedirect />} />
     </Routes>

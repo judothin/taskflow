@@ -105,7 +105,7 @@
   flex-direction: column;
   gap: 4px;
 }
-.mtask-row:active { background: var(--bg-3); }
+/* No :active tint — see the press-feedback note in MobileMotion.css. */
 
 .mtask-title {
   font-size: 16px;

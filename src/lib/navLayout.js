@@ -51,6 +51,11 @@ export const NAV_ITEMS = {
   },
 };
 
+// Nav items whose pages are actually built for a phone. The mobile menu shows
+// only these; App.js redirects the rest to /focus. Keeping the two lists in
+// step is the point of putting this here rather than inline in Layout.
+export const MOBILE_NAV_IDS = new Set(['active', 'completed', 'context']);
+
 export const DEFAULT_NAV_LAYOUT = Object.keys(NAV_ITEMS).map(id => ({ id, visible: true }));
 
 const KEY = (uid) => `tf-nav-layout-${uid || 'anon'}`;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { InlineClock } from '../components/dashboardWidgets';
@@ -67,6 +68,15 @@ export default function Files() {
   }, [activeTeamId]);
 
   useEffect(() => { loadEntries(); }, [loadEntries]);
+
+  // The + menu in the nav navigates here with this flag to open the form.
+  const location = useLocation();
+  useEffect(() => {
+    if (location.state?.create) {
+      openAdd();
+      window.history.replaceState({}, ''); // don't re-open on back
+    }
+  }, [location.state]);
 
   // Ranked, forgiving match — "mini gallery" finds "mini inpo gal".
   // See lib/fuzzySearch.js.

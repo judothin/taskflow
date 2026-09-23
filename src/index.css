@@ -73,7 +73,11 @@ html.tf-boot, html.tf-boot *, html.tf-boot *::before, html.tf-boot *::after {
 html {
   font-size: 16px;
   overflow-x: clip;
-  scroll-behavior: smooth;
+  /* Not `smooth` globally: restoring a remembered scroll position would then
+     animate all the way down from the top on every back navigation, which is
+     slower and more disorienting than just being there. Anchors and the
+     scroll-into-view calls that want smoothing ask for it explicitly. */
+  scroll-behavior: auto;
 }
 
 body {

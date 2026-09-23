@@ -6,7 +6,9 @@ import { useTheme } from '../context/ThemeContext';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
 import { supabase } from '../lib/supabase';
 import { fetchUserPrefs, saveUserPrefs, saveUserPrefsDebounced } from '../lib/userPrefs';
-import { NAV_ITEMS, sanitizeNavLayout, loadNavLayoutCache, saveNavLayoutCache } from '../lib/navLayout';
+import { NAV_ITEMS, MOBILE_NAV_IDS, sanitizeNavLayout, loadNavLayoutCache, saveNavLayoutCache } from '../lib/navLayout';
+import CreateMenu from './CreateMenu';
+import ScrollMemory from './ScrollMemory';
 import QueuePanel from './QueuePanel';
 import Avatar from './Avatar';
 import GlobalSearch, { OPEN_EVENT } from './GlobalSearch';
@@ -242,6 +244,8 @@ export default function Layout() {
 
         <TeamSwitcher />
 
+        <div className="nav-create"><CreateMenu /></div>
+
         <button className="nav-search-btn" onClick={openSearch} title="Search (press /)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -386,6 +390,7 @@ export default function Layout() {
         <header className="mobile-header">
           <img src="/logo.png" alt="TaskFlow" className="mobile-logo-img" />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <CreateMenu compact />
             <button className="mobile-search-btn" onClick={openSearch} aria-label="Search">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -403,6 +408,7 @@ export default function Layout() {
           </div>
         </header>
         <HeaderActionsProvider>
+          <ScrollMemory />
           <TopBar />
           <div className="page-content">
             <ErrorBoundary><Outlet /></ErrorBoundary>
@@ -454,10 +460,10 @@ export default function Layout() {
             </button>
 
             <nav className="mobile-menu-nav">
-              {/* Dashboard is desktop-only (App.js sends a phone asking for it
-                  to Focus), so listing it here would just be a link that
-                  bounces somewhere else. */}
-              {visibleNavLayout.filter(({ id }) => id !== 'dashboard').map(({ id }) => {
+              {/* Only pages built for a phone. The rest redirect to Focus
+                  (see DesktopOnly in App.js), so listing them here would just
+                  be links that bounce somewhere else. */}
+              {visibleNavLayout.filter(({ id }) => MOBILE_NAV_IDS.has(id)).map(({ id }) => {
                 const item = NAV_ITEMS[id];
                 return (
                   <NavLink
