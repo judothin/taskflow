@@ -238,8 +238,7 @@
     -webkit-touch-callout: none;
   }
 
-  /* The floating dock positions itself above the home indicator (see
-     Layout.css), so it needs no safe-area padding of its own here. */
+  /* The dock already pads for the home indicator (see Layout.css). */
 }
 
 

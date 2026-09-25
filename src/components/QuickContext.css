@@ -21,6 +21,11 @@
   background: var(--accent-glow);
 }
 .qctx-trigger svg { flex-shrink: 0; }
+.qctx-trigger-icon { display: flex; }
+.qctx-trigger-text { display: flex; }
+/* Desktop is the compact pill; the hint and plus chip are the phone row's. */
+.qctx-trigger-hint,
+.qctx-trigger-plus { display: none; }
 
 .qctx-modal { max-width: 520px; }
 .qctx-textarea {
@@ -44,9 +49,76 @@
 }
 
 @media (max-width: 768px) {
-  /* Icon only — the top bar is tight on a phone and the sheet names itself. */
-  .qctx-trigger-label { display: none; }
-  .qctx-trigger { padding: 9px; min-width: 40px; min-height: 40px; justify-content: center; }
+  /* The top bar stacks into full-width rows on a phone, so this is a row:
+     tinted icon tile, what it is + what it does, and a plus to say "add". */
+  .qctx-trigger {
+    width: 100%;
+    gap: 12px;
+    min-height: 56px;
+    padding: 8px 10px 8px 8px;
+    border-radius: var(--radius-lg);
+    border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+    background: linear-gradient(135deg,
+      color-mix(in srgb, var(--accent) 10%, var(--bg-2)),
+      var(--bg-2) 70%);
+    color: var(--text);
+    text-align: left;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.12s ease, background 0.15s ease;
+  }
+  /* No hover state on touch — it would stick after a tap. */
+  .qctx-trigger:hover {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+    background: linear-gradient(135deg,
+      color-mix(in srgb, var(--accent) 10%, var(--bg-2)),
+      var(--bg-2) 70%);
+  }
+  .qctx-trigger:active { transform: scale(0.985); }
+
+  .qctx-trigger-icon {
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--accent-glow);
+    color: var(--accent);
+  }
+  .qctx-trigger-icon svg { width: 19px; height: 19px; }
+
+  .qctx-trigger-text {
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .qctx-trigger-label { font-size: 15px; font-weight: 700; color: var(--text); }
+  .qctx-trigger-hint {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .qctx-trigger-plus {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 4px 12px -3px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+
   /* 16px stops iOS zooming the viewport when a field takes focus. */
   .qctx-modal .input, .qctx-modal .qctx-textarea { font-size: 16px; }
 }

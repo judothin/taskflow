@@ -67,11 +67,23 @@ export default function QuickContext() {
         title="Save context"
         aria-label="Save context"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
-        </svg>
-        <span className="qctx-trigger-label">Context</span>
+        <span className="qctx-trigger-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+          </svg>
+        </span>
+        <span className="qctx-trigger-text">
+          <span className="qctx-trigger-label">Context</span>
+          {/* Phone only — there the button is a full-width row, and a bare
+              word doesn't say what tapping it does. */}
+          <span className="qctx-trigger-hint">Save something worth remembering</span>
+        </span>
+        <span className="qctx-trigger-plus" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14 M5 12h14" />
+          </svg>
+        </span>
       </button>
 
       {open && (

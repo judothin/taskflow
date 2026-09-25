@@ -677,12 +677,12 @@
 }
 
 @media (max-width: 768px) {
-  /* The floating dock's height, and how much screen it covers from the
+  /* The dock's height, and how much screen it covers from the
      bottom edge — anything fixed above it, or padding below content,
      measures from --dock-clear. */
   :root {
     --dock-h: 64px;
-    --dock-clear: calc(var(--dock-h) + max(12px, env(safe-area-inset-bottom)));
+    --dock-clear: calc(var(--dock-h) + env(safe-area-inset-bottom));
   }
 
   .layout { min-height: 100dvh; }
@@ -696,30 +696,25 @@
   .page-content  { padding: 16px; padding-bottom: calc(var(--dock-clear) + 12px); }
   .nav-toggle-tab { display: none; }
 
-  /* ── Floating dock ──
-     Detached from the screen edges: a pill that floats over the content
-     rather than a slab welded to the bottom. It sits above the home
-     indicator instead of padding around it, so it's the same height on
-     every phone. */
+  /* ── Dock ──
+     A full-width bar welded to the bottom edge. It pads around the home
+     indicator rather than sitting above it, so the bar's own background
+     runs all the way down. */
   .mobile-dock {
     --dock-pad: 6px;
     display: flex;
     position: fixed;
-    left: 12px;
-    right: 12px;
-    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 0;
+    right: 0;
+    bottom: 0;
     z-index: 250;
-    height: var(--dock-h);
-    padding: var(--dock-pad);
-    border-radius: 26px;
-    background: color-mix(in srgb, var(--bg-2) 72%, transparent);
+    height: calc(var(--dock-h) + env(safe-area-inset-bottom));
+    padding: var(--dock-pad) var(--dock-pad) calc(var(--dock-pad) + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--bg-2) 86%, transparent);
     -webkit-backdrop-filter: blur(24px) saturate(1.6);
     backdrop-filter: blur(24px) saturate(1.6);
-    border: 1px solid color-mix(in srgb, var(--text) 9%, transparent);
-    box-shadow:
-      0 1px 0 color-mix(in srgb, #fff 7%, transparent) inset,
-      0 10px 30px -8px rgba(0, 0, 0, 0.55),
-      0 2px 8px rgba(0, 0, 0, 0.25);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px -12px rgba(0, 0, 0, 0.45);
   }
 
   /* One highlight for the whole bar, slid to the active tab. Its width is
@@ -727,10 +722,10 @@
   .dock-indicator {
     position: absolute;
     top: var(--dock-pad);
-    bottom: var(--dock-pad);
+    height: calc(var(--dock-h) - 2 * var(--dock-pad));
     left: var(--dock-pad);
     width: calc((100% - 2 * var(--dock-pad)) / var(--dock-n));
-    border-radius: 20px;
+    border-radius: 16px;
     background: var(--accent-glow);
     border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
     transform: translate3d(calc(var(--dock-i) * 100%), 0, 0);

@@ -47,7 +47,7 @@ const COMPANION_TABS = [
 const activeTabIndex = (pathname) =>
   COMPANION_TABS.findIndex(t => pathname === t.to || pathname.startsWith(`${t.to}/`));
 
-// Floating tab bar. One highlight slides between tabs (driven by --dock-i)
+// Bottom tab bar. One highlight slides between tabs (driven by --dock-i)
 // rather than each tab fading its own background in and out, so switching
 // reads as movement from A to B. Log is the one place you write, so it's a
 // raised action button instead of a plain tab.
