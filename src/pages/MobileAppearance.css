@@ -217,6 +217,31 @@ details[open] > .mapp-section-head .mapp-chev { transform: rotate(90deg); }
   font-size: 13px;
   font-weight: 600;
 }
+.mapp-bg-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+}
+.mapp-bg-upload:disabled { opacity: 0.55; cursor: default; transform: none; }
+.mapp-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: mapp-spin 0.8s linear infinite;
+}
+@keyframes mapp-spin { to { transform: rotate(360deg); } }
+.mapp-error { margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--danger); }
 .mapp-note { font-size: 12.5px; color: var(--text-dim); margin-top: 10px; line-height: 1.5; }
 .mapp-note-top { margin: 4px 0 10px; }
 

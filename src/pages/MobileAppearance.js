@@ -3,7 +3,7 @@ import { useThemeCustomization } from '../context/ThemeCustomizationContext';
 import { Toggle } from '../components/SettingsControls';
 import {
   THEME_FIELDS, STATUS_FIELDS, FONT_SCALES,
-  DEFAULT_BG_TINT, MAX_BG_TINT_OPACITY,
+  DEFAULT_BG_TINT, MAX_BG_TINT_OPACITY, cacheBackgroundImage,
 } from '../lib/themeColors';
 import './MobileAppearance.css';
 
@@ -15,8 +15,8 @@ import './MobileAppearance.css';
 // on a phone and leaves desktop alone. Anything not touched here keeps
 // following desktop, and "Reset to match desktop" drops every override.
 //
-// The one thing missing is uploading images — that stays on desktop, and
-// the phone picks from what's already been uploaded.
+// Uploaded images go into the same shared library desktop uses (so they're
+// pickable on both), but uploading here only sets the PHONE's background.
 // ══════════════════════════════════════════════════════════════
 
 // Module-level for a stable identity: defined inside the page, every colour
@@ -129,6 +129,7 @@ export default function MobileAppearance() {
   const {
     phoneColors: c, mobileColors, setMobileValues, resetMobileKey, resetMobileAll,
     getPhoneColor, isMobileCustom, backgrounds, savedThemes, applyThemeToMobile,
+    maxBackgrounds, uploadBackground,
   } = useThemeCustomization();
 
   const countOf = (keys) => keys.filter(isMobileCustom).length;
@@ -160,7 +161,33 @@ export default function MobileAppearance() {
     setMobileValues(tintOpacity > 0 ? { bgTint: hex } : { bgTint: hex, bgTintOpacity: 0.3 });
 
   // null, not a missing key: "no background on the phone" even when desktop has one.
-  const pickBackground = (url) => setMobileValues({ background: url }, true);
+  const pickBackground = (url) => {
+    setMobileValues({ background: url }, true);
+    if (url) cacheBackgroundImage(url);
+  };
+
+  // Same limits as the desktop uploader in Settings.
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const full = backgrounds.length >= maxBackgrounds;
+  const onUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (fileRef.current) fileRef.current.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setUploadError("That file isn't an image."); return; }
+    if (file.size > 5 * 1024 * 1024) { setUploadError('Image must be 5 MB or smaller.'); return; }
+    setUploadError('');
+    setUploading(true);
+    try {
+      const url = await uploadBackground(file);
+      if (url) pickBackground(url);
+    } catch (err) {
+      setUploadError(err?.message || 'Upload failed. Try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
     <div className="mapp fade-in">
@@ -218,7 +245,23 @@ export default function MobileAppearance() {
       </Section>
 
       <Section title="Background" custom={countOf(BACKGROUND_KEYS)} onReset={() => resetMobileKey(...BACKGROUND_KEYS)}>
+        <input ref={fileRef} type="file" accept="image/*" onChange={onUpload} hidden />
         <div className="mapp-bg-grid">
+          <button
+            type="button"
+            className="mapp-bg mapp-bg-upload"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading || full}
+          >
+            {uploading ? (
+              <span className="mapp-spinner" aria-hidden="true" />
+            ) : (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            )}
+            <span>{uploading ? 'Uploading…' : full ? 'Library full' : 'Upload'}</span>
+          </button>
           <button
             type="button"
             className={`mapp-bg mapp-bg-none ${!c.background ? 'mapp-bg-on' : ''}`}
@@ -239,10 +282,11 @@ export default function MobileAppearance() {
             />
           ))}
         </div>
+        {uploadError && <p className="mapp-error">⚠ {uploadError}</p>}
         <p className="mapp-note">
-          {backgrounds.length
-            ? 'Upload new images from Settings on desktop.'
-            : 'No images yet — upload them from Settings on desktop, then pick one here.'}
+          {full
+            ? `You've saved ${maxBackgrounds} images, the most allowed. Delete one from Settings on desktop to upload another.`
+            : `Up to 5 MB. Uploads go in your image library (${backgrounds.length}/${maxBackgrounds}) and are set as your phone's background.`}
         </p>
 
         {c.background && (
