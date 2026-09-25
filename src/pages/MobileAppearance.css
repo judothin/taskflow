@@ -1,0 +1,341 @@
+/* ══════════════════════════════════════════════════════════════
+   Mobile Appearance
+   ------------------------------------------------------------
+   Thumb sizes throughout, same floor as the mobile task list:
+   16px-ish type, 44px+ targets, swatches big enough to hit.
+   ══════════════════════════════════════════════════════════════ */
+
+.mapp { display: flex; flex-direction: column; gap: 14px; }
+
+/* ── Header ── */
+.mapp-head { display: flex; align-items: center; gap: 14px; }
+.mapp-head-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+.mapp-head-text { min-width: 0; }
+.mapp-title { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }
+.mapp-sub { font-size: 13.5px; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Sync status + reset ── */
+.mapp-sync {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-2);
+}
+.mapp-sync-dot {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 18%, transparent);
+}
+.mapp-sync-custom .mapp-sync-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-glow);
+}
+.mapp-sync-text { min-width: 0; }
+.mapp-sync-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.mapp-sync-sub { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+
+.mapp-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 50px;
+  margin-top: -4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-3);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+.mapp-reset:active:not(:disabled) { transform: scale(0.985); }
+.mapp-reset:disabled { opacity: 0.45; cursor: default; }
+.mapp-reset-armed {
+  background: color-mix(in srgb, var(--danger) 16%, var(--bg-2));
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  color: var(--danger);
+}
+
+/* ── Sections ── */
+.mapp-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.mapp-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 14px 4px;
+  list-style: none;
+}
+details.mapp-section > .mapp-section-head {
+  padding-bottom: 14px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+details.mapp-section[open] > .mapp-section-head { padding-bottom: 4px; }
+.mapp-section-head::-webkit-details-marker { display: none; }
+.mapp-chev { color: var(--text-dim); flex-shrink: 0; transition: transform 0.18s ease; }
+details[open] > .mapp-section-head .mapp-chev { transform: rotate(90deg); }
+.mapp-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.mapp-section-body { padding: 4px 14px 14px; }
+
+.mapp-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.mapp-undo {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mapp-section-undo { margin-top: 12px; }
+
+/* ── Colour rows ── */
+.mapp-color-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 60px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mapp-color-row:last-of-type { border-bottom: none; }
+
+/* The native colour input is stretched invisibly over a swatch we draw
+   ourselves — its own chrome is tiny and looks different on every OS. */
+.mapp-swatch {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  border: 1px solid var(--border-light);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, #fff 12%, transparent);
+  overflow: hidden;
+  cursor: pointer;
+}
+.mapp-swatch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.mapp-swatch-sm { width: 38px; height: 38px; border-radius: 10px; }
+
+.mapp-row-text { flex: 1; min-width: 0; }
+.mapp-row-label { font-size: 15px; font-weight: 600; color: var(--text); }
+.mapp-row-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.mapp-hex { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+
+/* ── Background ── */
+.mapp-bg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+.mapp-bg {
+  aspect-ratio: 3 / 4;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background-color: var(--bg-3);
+  background-size: cover;
+  background-position: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s ease, transform 0.12s ease;
+}
+.mapp-bg:active { transform: scale(0.96); }
+.mapp-bg-on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.mapp-bg-none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+}
+.mapp-note { font-size: 12.5px; color: var(--text-dim); margin-top: 10px; line-height: 1.5; }
+.mapp-note-top { margin: 4px 0 10px; }
+
+/* ── Sliders ── */
+.mapp-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.mapp-slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.mapp-slider-value { font-family: var(--mono); font-size: 12.5px; color: var(--text-dim); font-weight: 500; }
+.mapp-range {
+  width: 100%;
+  height: 28px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.mapp-tint-row { display: flex; align-items: center; gap: 12px; }
+.mapp-tint-row .mapp-range { flex: 1; min-width: 0; }
+
+/* ── Segmented control ── */
+.mapp-field-label { font-size: 14px; font-weight: 600; color: var(--text); margin: 6px 0 8px; }
+.mapp-seg {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-top: 6px;
+  border-radius: 14px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+}
+.mapp-seg-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 42px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.mapp-seg-btn-on {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.mapp-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Saved themes ── */
+.mapp-themes { display: flex; flex-direction: column; gap: 8px; }
+.mapp-theme {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-3);
+  color: var(--text);
+  font-family: var(--font);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease;
+}
+.mapp-theme:active { transform: scale(0.985); }
+.mapp-theme-swatches { display: flex; flex-shrink: 0; }
+.mapp-theme-swatches > span {
+  width: 22px;
+  height: 22px;
+  margin-left: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-3);
+  background-size: cover;
+  background-position: center;
+}
+.mapp-theme-swatches > span:first-child { margin-left: 0; }
+.mapp-theme-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mapp-theme-action {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+.mapp-theme-action-done { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success); }

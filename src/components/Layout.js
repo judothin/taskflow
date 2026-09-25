@@ -167,7 +167,7 @@ export default function Layout() {
   const uid = user?.id;
   const { activeTeam } = useTeam();
   const { theme, toggle } = useTheme();
-  const { colors } = useThemeCustomization();
+  const { activeColors: colors } = useThemeCustomization();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -505,6 +505,14 @@ export default function Layout() {
                   </NavLink>
                 );
               })}
+              <NavLink
+                to="/appearance"
+                className={({ isActive }) => `mobile-menu-item ${isActive ? 'mobile-menu-item-active' : ''}`}
+                onClick={() => setSidebarOpen(false)}
+              >
+                <NavIcon d="M12 2a10 10 0 000 20c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.2-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16a6 6 0 006-6c0-5-4.5-9-10-9z" />
+                <span>Appearance</span>
+              </NavLink>
             </nav>
           </div>
 

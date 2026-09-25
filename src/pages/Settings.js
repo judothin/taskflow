@@ -88,8 +88,9 @@ export default function Settings() {
   const {
     getColor, setColor, setColorValues, resetColor, resetAll, isCustom, colors,
     backgrounds, maxBackgrounds, setBackground, uploadBackground, deleteBackground,
-    savedThemes, saveTheme, applyTheme, deleteTheme, themesUsingBackground,
+    savedThemes, saveTheme, applyTheme, deleteTheme, themesUsingBackground, mobileColors,
   } = useThemeCustomization();
+  const mobileOverrideCount = Object.keys(mobileColors || {}).length;
   const avatarRef = useRef();
   const bgInputRef = useRef();
   const logoChoice = colors.logo || 'auto';
@@ -473,6 +474,12 @@ export default function Settings() {
                 <p className="settings-card-sub">
                   Changes apply instantly and sync across your devices. The secondary color also drives the activity chart.
                 </p>
+                {mobileOverrideCount > 0 && (
+                  <p className="settings-card-sub">
+                    Your phone has {mobileOverrideCount} setting{mobileOverrideCount === 1 ? '' : 's'} of its own, which stay
+                    as they are when you change them here. Reset them from Appearance on your phone.
+                  </p>
+                )}
 
                 <Group title="Interface" count={THEME_FIELDS.length}>
                   <div className="theme-color-grid">

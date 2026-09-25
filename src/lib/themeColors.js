@@ -168,8 +168,31 @@ export function applyCachedThemeEarly() {
         }
       }
     }
-    if (best) applyThemeColors(best);
+    if (best) applyThemeColors(resolveForDevice(best, isPhoneViewport()));
   } catch { /* ignore — fall back to the base theme */ }
+}
+
+// ── Phone-only overrides ─────────────────────────────────────
+// The theme object can carry a `mobile` sub-object: keys set there replace
+// the desktop value on a phone, and anything absent follows desktop. A key
+// set to null means "unset on the phone" — e.g. desktop has a background
+// image and the phone wants none — which absence can't express. Living
+// inside theme_colors means it syncs with no schema change, and deleting
+// `mobile` is the whole of "reset to match desktop".
+// Same breakpoint as useIsPhone and the CSS — see lib/useIsPhone.js.
+export const PHONE_QUERY = '(max-width: 768px)';
+export const isPhoneViewport = () =>
+  typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(PHONE_QUERY).matches;
+
+export function resolveForDevice(colors, isPhone) {
+  const { mobile, ...base } = colors || {};
+  if (!isPhone || !mobile || typeof mobile !== 'object') return base;
+  const out = { ...base };
+  Object.entries(mobile).forEach(([k, v]) => {
+    if (v === null) delete out[k];
+    else out[k] = v;
+  });
+  return out;
 }
 
 export function applyThemeColors(colors) {

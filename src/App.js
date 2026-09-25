@@ -34,6 +34,7 @@ import Submissions from './pages/Submissions';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import Pomodoro from './pages/Pomodoro';
+import MobileAppearance from './pages/MobileAppearance';
 import Layout from './components/Layout';
 
 // A single, consistent boot loader for every gate. It's transparent (so the
@@ -126,6 +127,13 @@ function DesktopOnly({ children }) {
   return children;
 }
 
+// Appearance on a phone is its own screen (phone-only overrides); on desktop
+// the same URL goes to the full Settings section.
+function AppearanceRoute() {
+  const isPhone = useIsPhone();
+  return isPhone ? <MobileAppearance /> : <Navigate to="/settings?section=appearance" replace />;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -151,6 +159,7 @@ function AppRoutes() {
             in-app "Manage teams" entry point working. */}
         <Route path="teams" element={<Navigate to="/settings?section=teams" replace />} />
         <Route path="settings" element={<DesktopOnly><Settings /></DesktopOnly>} />
+        <Route path="appearance" element={<AppearanceRoute />} />
         <Route path="help" element={<DesktopOnly><Help /></DesktopOnly>} />
         <Route path="files" element={<DesktopOnly><Files /></DesktopOnly>} />
         <Route path="context" element={<Context />} />
