@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { useTheme } from '../context/ThemeContext';
@@ -40,8 +40,47 @@ const COMPANION_TABS = [
   { to: '/stats',     label: 'Stats',
     icon: 'M12 20V10 M18 20V4 M6 20v-4' },
   { to: '/quicklog',  label: 'Log',
-    icon: 'M12 5v14 M5 12h14' },
+    icon: 'M12 5v14 M5 12h14', primary: true },
 ];
+
+// Which tab a path belongs to, so a task opened from Tasks keeps Tasks lit.
+const activeTabIndex = (pathname) =>
+  COMPANION_TABS.findIndex(t => pathname === t.to || pathname.startsWith(`${t.to}/`));
+
+// Floating tab bar. One highlight slides between tabs (driven by --dock-i)
+// rather than each tab fading its own background in and out, so switching
+// reads as movement from A to B. Log is the one place you write, so it's a
+// raised action button instead of a plain tab.
+function MobileDock({ onNavigate }) {
+  const { pathname } = useLocation();
+  const active = activeTabIndex(pathname);
+  const onPrimary = active >= 0 && COMPANION_TABS[active].primary;
+
+  return (
+    <nav
+      className="mobile-dock"
+      aria-label="Primary"
+      style={{ '--dock-i': Math.max(active, 0), '--dock-n': COMPANION_TABS.length }}
+    >
+      <span
+        className={`dock-indicator ${active < 0 || onPrimary ? 'dock-indicator-hidden' : ''}`}
+        aria-hidden="true"
+      />
+      {COMPANION_TABS.map(tab => (
+        <NavLink
+          key={tab.to}
+          to={tab.to}
+          className={({ isActive }) =>
+            `dock-item ${tab.primary ? 'dock-item-primary' : ''} ${isActive ? 'dock-item-active' : ''}`}
+          onClick={onNavigate}
+        >
+          <span className="dock-icon"><NavIcon d={tab.icon} /></span>
+          <span className="dock-label">{tab.label}</span>
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
 
 function ProjectsNavBadge({ userId, teamId }) {
   const [count, setCount] = useState(0);
@@ -423,19 +462,7 @@ export default function Layout() {
           projects, files — is still reachable from the avatar menu in the
           header, which is also why all five slots can be tabs instead of
           spending one on "More". */}
-      <nav className="mobile-dock" aria-label="Primary">
-        {COMPANION_TABS.map(tab => (
-          <NavLink
-            key={tab.to}
-            to={tab.to}
-            className={({ isActive }) => `dock-item ${isActive ? 'dock-item-active' : ''}`}
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span className="dock-icon"><NavIcon d={tab.icon} /></span>
-            <span className="dock-label">{tab.label}</span>
-          </NavLink>
-        ))}
-      </nav>
+      <MobileDock onNavigate={() => setSidebarOpen(false)} />
 
       {/* ── Full-screen mobile menu (opened from the dock's "More") ── */}
       {sidebarOpen && (

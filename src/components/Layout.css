@@ -677,6 +677,14 @@
 }
 
 @media (max-width: 768px) {
+  /* The floating dock's height, and how much screen it covers from the
+     bottom edge — anything fixed above it, or padding below content,
+     measures from --dock-clear. */
+  :root {
+    --dock-h: 64px;
+    --dock-clear: calc(var(--dock-h) + max(12px, env(safe-area-inset-bottom)));
+  }
+
   .layout { min-height: 100dvh; }
 
   /* The sliding drawer is replaced by the dock + full-screen mobile menu. */
@@ -685,50 +693,73 @@
 
   .main-content { margin-left: 0; }
   /* Leave room for the fixed dock (plus the phone's home indicator). */
-  .page-content  { padding: 16px; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .page-content  { padding: 16px; padding-bottom: calc(var(--dock-clear) + 12px); }
   .nav-toggle-tab { display: none; }
 
+  /* ── Floating dock ──
+     Detached from the screen edges: a pill that floats over the content
+     rather than a slab welded to the bottom. It sits above the home
+     indicator instead of padding around it, so it's the same height on
+     every phone. */
   .mobile-dock {
+    --dock-pad: 6px;
     display: flex;
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    left: 12px;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
     z-index: 250;
-    gap: 2px;
-    padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
-    background: color-mix(in srgb, var(--bg-2) 90%, transparent);
-    -webkit-backdrop-filter: blur(20px) saturate(1.4);
-    backdrop-filter: blur(20px) saturate(1.4);
-    border-top: 1px solid var(--border);
+    height: var(--dock-h);
+    padding: var(--dock-pad);
+    border-radius: 26px;
+    background: color-mix(in srgb, var(--bg-2) 72%, transparent);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    backdrop-filter: blur(24px) saturate(1.6);
+    border: 1px solid color-mix(in srgb, var(--text) 9%, transparent);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, #fff 7%, transparent) inset,
+      0 10px 30px -8px rgba(0, 0, 0, 0.55),
+      0 2px 8px rgba(0, 0, 0, 0.25);
   }
 
-  /* Five fixed companion tabs share the bar equally. */
-  .mobile-dock { gap: 0; }
-
-  /* Taller dock with real labels: five destinations is the whole
-     navigation model on a phone, so it gets to be unmissable. */
-  .mobile-dock { padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+  /* One highlight for the whole bar, slid to the active tab. Its width is
+     one tab's share of the inner width; --dock-i moves it along. */
+  .dock-indicator {
+    position: absolute;
+    top: var(--dock-pad);
+    bottom: var(--dock-pad);
+    left: var(--dock-pad);
+    width: calc((100% - 2 * var(--dock-pad)) / var(--dock-n));
+    border-radius: 20px;
+    background: var(--accent-glow);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    transform: translate3d(calc(var(--dock-i) * 100%), 0, 0);
+    transition: transform 0.38s cubic-bezier(0.34, 1.3, 0.64, 1), opacity 0.2s ease;
+    pointer-events: none;
+  }
+  .dock-indicator-hidden { opacity: 0; }
 
   .dock-item {
+    position: relative;
+    z-index: 1;
     flex: 1 1 0;
     min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    min-height: 50px;
-    padding: 4px 2px;
+    gap: 3px;
+    padding: 0 2px;
     border: none;
     background: none;
-    border-radius: 12px;
+    border-radius: 20px;
     color: var(--text-muted);
     font-family: var(--font);
     text-decoration: none;
     cursor: pointer;
+    touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-    transition: color 0.15s ease;
+    transition: color 0.2s ease;
   }
 
   .dock-icon {
@@ -736,18 +767,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 46px;
-    height: 30px;
-    border-radius: 999px;
-    transition: background 0.18s ease, transform 0.18s ease;
+    width: 30px;
+    height: 26px;
   }
-
-  .dock-item svg { width: 23px; height: 23px; }
+  .dock-item svg { width: 22px; height: 22px; stroke-width: 2; }
 
   .dock-label {
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 600;
-    letter-spacing: -0.1px;
+    letter-spacing: 0.01em;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -755,8 +783,31 @@
   }
 
   .dock-item-active { color: var(--accent); }
-  .dock-item-active .dock-icon { background: var(--accent-glow); }
-  .dock-item:active .dock-icon { transform: scale(0.9); }
+  .dock-item-active svg { stroke-width: 2.4; }
+
+  /* ── Log: the raised action ── */
+  .dock-item-primary .dock-icon {
+    width: 44px;
+    height: 44px;
+    margin-top: -2px;
+    border-radius: 16px;
+    color: #fff;
+    background: linear-gradient(145deg,
+      color-mix(in srgb, var(--accent) 88%, #fff),
+      var(--accent) 55%,
+      color-mix(in srgb, var(--accent) 80%, #000));
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.25) inset,
+      0 6px 16px -4px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+  .dock-item-primary svg { width: 22px; height: 22px; stroke-width: 2.6; }
+  .dock-item-primary .dock-label { display: none; }
+  .dock-item-primary.dock-item-active .dock-icon {
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.25) inset,
+      0 0 0 3px var(--accent-glow),
+      0 6px 16px -4px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
 
   /* Unread badge → a compact dot anchored to the icon, not a trailing pill. */
   .mobile-dock .nav-unread-badge {
@@ -769,6 +820,7 @@
     border-radius: 8px;
     font-size: 9px;
     border: 2px solid var(--bg-2);
+    z-index: 1;
   }
 }
 

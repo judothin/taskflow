@@ -103,7 +103,8 @@
   /* The content fades in over the FIRST half of the opening, not alongside it.
      Matching the two durations left the checklist washed out while the box was
      already most of the way open, which read as slow. */
-  .collapse-inner {
+  .collapse-inner,
+  .dock-indicator {
     opacity: 0;
     transition: opacity 120ms linear;
   }
@@ -140,11 +141,10 @@
      The active pill scales up as it takes over, and the icon
      lifts a hair. Both on transform, so switching tabs costs
      nothing. */
-  .dock-icon { transition: background var(--m-base) var(--m-out),
-                           transform var(--m-base) var(--m-spring); }
-  .dock-item-active .dock-icon { transform: translate3d(0, -1px, 0) scale(1.06); }
-  .dock-item:active .dock-icon { transform: scale(0.88); transition-duration: var(--m-fast); }
-  .dock-label { transition: opacity var(--m-base) var(--m-out); opacity: 0.75; }
+  .dock-icon { transition: transform var(--m-base) var(--m-spring); }
+  .dock-item-active .dock-icon { transform: translate3d(0, -1px, 0); }
+  .dock-item:active .dock-icon { transform: scale(0.86); transition-duration: var(--m-fast); }
+  .dock-label { transition: opacity var(--m-base) var(--m-out); opacity: 0.7; }
   .dock-item-active .dock-label { opacity: 1; }
 
   /* ── Skeletons ──────────────────────────────────────────────
@@ -203,7 +203,8 @@
   .mdetail-action,
   .loading-pulse::after,
   .collapse,
-  .collapse-inner {
+  .collapse-inner,
+  .dock-indicator {
     animation: none !important;
     transition: none !important;
   }
@@ -237,9 +238,8 @@
     -webkit-touch-callout: none;
   }
 
-  /* The status bar is translucent in standalone, so the fixed dock
-     and header have to hold their own safe-area padding. */
-  .mobile-dock { padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
+  /* The floating dock positions itself above the home indicator (see
+     Layout.css), so it needs no safe-area padding of its own here. */
 }
 
 

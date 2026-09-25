@@ -201,7 +201,7 @@
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(68px + env(safe-area-inset-bottom));
+  bottom: calc(var(--dock-clear, 68px) + 4px);
   z-index: 200;
   padding: 10px 16px;
   background: linear-gradient(to top, var(--bg) 62%, transparent);

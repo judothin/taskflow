@@ -15,6 +15,8 @@
 // fetched past every cache.
 // ============================================================
 
+import { supabase } from './supabase';
+
 // The running build, read off the script tag the HTML actually loaded.
 function runningBundle() {
   const el = document.querySelector('script[src*="/static/js/main."]');
@@ -53,7 +55,16 @@ export function watchForUpdates() {
     last = now;
     busy = true;
     try {
-      if (await isStale()) window.location.reload();
+      if (await isStale()) {
+        // Resume is also when Supabase refreshes an expired session. Refresh
+        // tokens are single-use: if we reload mid-refresh, the server has
+        // already rotated the token but the new one never reaches storage, and
+        // the next launch presents a spent token and gets signed out.
+        // getSession() waits on the auth lock, so it resolves only once any
+        // in-flight refresh has finished and been persisted.
+        try { await supabase.auth.getSession(); } catch { /* reload anyway */ }
+        window.location.reload();
+      }
     } finally {
       busy = false;
     }
