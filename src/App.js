@@ -35,6 +35,7 @@ import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import Pomodoro from './pages/Pomodoro';
 import MobileAppearance from './pages/MobileAppearance';
+import GoLive from './pages/GoLive';
 import Layout from './components/Layout';
 
 // A single, consistent boot loader for every gate. It's transparent (so the
@@ -163,6 +164,7 @@ function AppRoutes() {
         <Route path="help" element={<DesktopOnly><Help /></DesktopOnly>} />
         <Route path="files" element={<DesktopOnly><Files /></DesktopOnly>} />
         <Route path="context" element={<Context />} />
+        <Route path="go-live" element={<DesktopOnly><GoLive /></DesktopOnly>} />
         <Route path="pomodoro" element={<DesktopOnly><Pomodoro /></DesktopOnly>} />
         <Route path="projects" element={<DesktopOnly><Projects /></DesktopOnly>} />
         <Route path="projects/:id" element={<DesktopOnly><ProjectDetail /></DesktopOnly>} />
