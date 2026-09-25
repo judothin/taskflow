@@ -65,3 +65,7 @@ create policy "context_entries_update_team" on public.context_entries
 
 create policy "context_entries_delete_team" on public.context_entries
   for delete using (public.is_team_member(team_id));
+
+-- PostgREST caches the schema; without this a newly added column (file_ids)
+-- stays invisible to the API and writes fail with "could not find the column".
+notify pgrst, 'reload schema';
