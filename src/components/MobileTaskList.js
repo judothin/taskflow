@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { subtaskProgress } from '../lib/subtasks';
 import { completeTask } from '../lib/completeTask';
+import { supabase } from '../lib/supabase';
 import Avatar from './Avatar';
 import TaskSubtasks from './TaskSubtasks';
 import Collapse from './Collapse';
@@ -127,12 +128,76 @@ export function CompleteSheet({ task, users, onClose, onDone }) {
   );
 }
 
+// ── Bottom sheet: change status ───────────────────────────────
+// Same rules as the desktop card's status popover: completing goes through
+// the "completed by" sheet, and reopening a completed task clears its
+// completion metadata.
+export function StatusSheet({ task, onClose, onPickComplete, onDone }) {
+  const [saving, setSaving] = useState(false);
+
+  const choose = async (s) => {
+    if (saving) return;
+    if (s === task.status) { onClose(); return; }
+    if (s === 'completed') { onClose(); onPickComplete(); return; }
+    setSaving(true);
+    const patch = { status: s, updated_at: new Date().toISOString() };
+    if (task.status === 'completed') { patch.date_completed = null; patch.completed_by = null; }
+    await supabase.from('tasks').update(patch).eq('id', task.id);
+    window.dispatchEvent(new CustomEvent('tasks-changed'));
+    setSaving(false);
+    onDone?.();
+    onClose();
+  };
+
+  return (
+    <ModalPortal onDismiss={onClose}>
+      <div className="msheet-overlay" onClick={onClose}>
+        <div className="msheet" onClick={e => e.stopPropagation()} role="dialog" aria-label="Change status">
+          <span className="msheet-grabber" aria-hidden="true" />
+
+          <h2 className="msheet-title">Change status</h2>
+          <p className="msheet-task">{titleOf(task)}</p>
+
+          <div className="mfilter-options">
+            {Object.entries(STATUS_META).map(([key, m]) => {
+              const on = key === task.status;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`mfilter-option ${on ? 'mfilter-option-on' : ''}`}
+                  onClick={() => choose(key)}
+                  disabled={saving}
+                  aria-pressed={on}
+                >
+                  <span className="mfilter-dot" style={{ background: m.color }} />
+                  <span className="mfilter-option-label">{m.label}</span>
+                  {on && (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="msheet-actions">
+            <button type="button" className="msheet-cancel" onClick={onClose}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
+
 // ── One row ───────────────────────────────────────────────────
 function MobileTaskRow({ task, users, onChanged, index = 0 }) {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
   const { activeTeamId } = useTeam();
   const [sheet, setSheet] = useState(false);
+  const [statusSheet, setStatusSheet] = useState(false);
   const [open, setOpen] = useState(false);
   const meta = STATUS_META[task.status] || STATUS_META.open;
   const { done, total } = subtaskProgress(task.subtasks);
@@ -192,24 +257,36 @@ function MobileTaskRow({ task, users, onChanged, index = 0 }) {
           <span className="mtask-circle" />
         </button>
 
-        {/* Everything but the check circle is ONE target. The avatar and the
-            chevron sat outside the button before, which made the chevron — the
-            obvious thing to tap for a dropdown — a dead zone, so the first tap
-            did nothing and the second one (on the title) worked. */}
-        <button
-          type="button"
+        {/* Everything but the check circle and the status pill is ONE target.
+            The avatar and the chevron sat outside it before, which made the
+            chevron — the obvious thing to tap for a dropdown — a dead zone, so
+            the first tap did nothing and the second one (on the title) worked.
+            It's a div with a button role rather than a <button> so the status
+            pill inside it can be a real button of its own. */}
+        <div
+          role="button"
+          tabIndex={0}
           className="mtask-main"
           onClick={onRowTap}
+          onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onRowTap(); } }}
           aria-expanded={expandable ? open : undefined}
         >
           <span className="mtask-main-text">
             <span className="mtask-title">{titleOf(task)}</span>
             {detail && <span className="mtask-detail">{detail}</span>}
             <span className="mtask-meta">
-              <span className="mtask-status">
+              <button
+                type="button"
+                className="mtask-status"
+                onClick={e => { e.stopPropagation(); setStatusSheet(true); }}
+                aria-label={`Status: ${meta.label}. Change status`}
+              >
                 <span className="mtask-dot" />
                 {meta.label}
-              </span>
+                <svg className="mtask-status-caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
               {total > 0 && (
                 <span className="mtask-sub">{done}/{total}</span>
               )}
@@ -237,7 +314,7 @@ function MobileTaskRow({ task, users, onChanged, index = 0 }) {
               </svg>
             </span>
           )}
-        </button>
+        </div>
       </div>
       </SwipeToComplete>
 
@@ -263,6 +340,15 @@ function MobileTaskRow({ task, users, onChanged, index = 0 }) {
           task={task}
           users={users}
           onClose={() => setSheet(false)}
+          onDone={onChanged}
+        />
+      )}
+
+      {statusSheet && (
+        <StatusSheet
+          task={task}
+          onClose={() => setStatusSheet(false)}
+          onPickComplete={() => setSheet(true)}
           onDone={onChanged}
         />
       )}

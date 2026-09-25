@@ -145,7 +145,28 @@
   font-size: 13px;
   color: var(--text-muted);
 }
-.mtask-status { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+/* A pill so it reads as tappable. Negative margin + padding grow the hit area
+   toward thumb size without pushing the meta row around. */
+.mtask-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -6px 0 -6px -8px;
+  padding: 6px 9px 6px 8px;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.mtask-status:active { background: var(--bg-2); }
+.mtask-status-caret { color: var(--text-dim); flex-shrink: 0; }
 .mtask-dot {
   width: 7px;
   height: 7px;
