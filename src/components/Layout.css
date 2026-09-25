@@ -681,7 +681,7 @@
      bottom edge — anything fixed above it, or padding below content,
      measures from --dock-clear. */
   :root {
-    --dock-h: 64px;
+    --dock-h: 70px;
     --dock-clear: calc(var(--dock-h) + env(safe-area-inset-bottom));
   }
 
@@ -702,6 +702,9 @@
      runs all the way down. */
   .mobile-dock {
     --dock-pad: 6px;
+    /* More room above the tabs than below: the bottom already has the home
+       indicator's inset, so an even 6px left the icons crowding the top edge. */
+    --dock-pad-top: 12px;
     display: flex;
     position: fixed;
     left: 0;
@@ -709,7 +712,7 @@
     bottom: 0;
     z-index: 250;
     height: calc(var(--dock-h) + env(safe-area-inset-bottom));
-    padding: var(--dock-pad) var(--dock-pad) calc(var(--dock-pad) + env(safe-area-inset-bottom));
+    padding: var(--dock-pad-top) var(--dock-pad) calc(var(--dock-pad) + env(safe-area-inset-bottom));
     background: color-mix(in srgb, var(--bg-2) 86%, transparent);
     -webkit-backdrop-filter: blur(24px) saturate(1.6);
     backdrop-filter: blur(24px) saturate(1.6);
@@ -721,8 +724,8 @@
      one tab's share of the inner width; --dock-i moves it along. */
   .dock-indicator {
     position: absolute;
-    top: var(--dock-pad);
-    height: calc(var(--dock-h) - 2 * var(--dock-pad));
+    top: var(--dock-pad-top);
+    height: calc(var(--dock-h) - var(--dock-pad-top) - var(--dock-pad));
     left: var(--dock-pad);
     width: calc((100% - 2 * var(--dock-pad)) / var(--dock-n));
     border-radius: 16px;
@@ -784,7 +787,6 @@
   .dock-item-primary .dock-icon {
     width: 44px;
     height: 44px;
-    margin-top: -2px;
     border-radius: 16px;
     color: #fff;
     background: linear-gradient(145deg,
