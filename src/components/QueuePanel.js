@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import useAnimatedList from '../lib/useAnimatedList';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
@@ -16,6 +17,9 @@ const ROI_COLORS = {
 export default function QueuePanel() {
   const { activeTeamId } = useTeam();
   const [queue, setQueue] = useState([]);
+  // Queued / started / finished tasks animate in and out, and the rest slide
+  // up or down to make room, instead of the list jumping on every refetch.
+  const { list: queueList, rowRef } = useAnimatedList(queue.filter(q => q.tasks), q => q.id);
   const [reorderingId, setReorderingId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { task, x, y }
@@ -161,17 +165,21 @@ export default function QueuePanel() {
         </div>
       ) : (
         <div className="queue-list">
-          {queue.map((item, index) => {
+          {queueList.map(({ item, phase }) => {
             const task = item.tasks;
-            if (!task) return null;
+            // Numbered by the live queue, so a row on its way out doesn't
+            // hold a place in the count.
+            const index = queue.indexOf(item);
             const roi = ROI_COLORS[task.roi] || ROI_COLORS.medium;
             const isFirst = index === 0;
             const isTarget = dropTarget?.id === item.id;
             return (
               <div
                 key={item.id}
+                ref={rowRef(item.id)}
                 className={[
                   'queue-item',
+                  phase !== 'idle'              ? `al-${phase}`             : '',
                   isFirst                       ? 'queue-item-first'         : '',
                   reorderingId === item.id       ? 'queue-item-dragging'      : '',
                   isTarget && !dropTarget.after  ? 'queue-item-insert-before' : '',
@@ -187,7 +195,7 @@ export default function QueuePanel() {
                 <span className={`queue-pos ${isFirst ? 'queue-pos-first' : ''}`}>
                   {isFirst
                     ? <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>
-                    : index + 1}
+                    : index >= 0 ? index + 1 : ''}
                 </span>
 
                 <div className="queue-item-text">

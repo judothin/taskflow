@@ -346,6 +346,29 @@ body.has-bg-image .completed-results {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── Animated lists (lib/useAnimatedList.js) ──
+   A row that arrives grows in from a touch smaller and fades up; one that
+   leaves shrinks and fades, and can't be clicked on its way out. On the
+   frosted theme it's scale only — fading translucent surfaces makes them
+   look doubled mid-fade (see .fade-in above). */
+.al-enter { animation: al-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.al-exit  { animation: al-exit 0.34s cubic-bezier(0.4, 0, 0.6, 1) both; pointer-events: none; }
+body.has-bg-image .al-enter { animation-name: al-enter-glass; }
+body.has-bg-image .al-exit  { animation-name: al-exit-glass; }
+@keyframes al-enter       { from { opacity: 0; transform: scale(0.94) translateY(8px); } }
+@keyframes al-exit        { 30% { opacity: 1; } to { opacity: 0; transform: scale(0.86) translateY(6px); } }
+@keyframes al-enter-glass { from { transform: scale(0.9) translateY(10px); } }
+@keyframes al-exit-glass  { to   { transform: scale(0.8) translateY(8px); visibility: hidden; } }
+
+/* Queue rows leave sideways, out of the list, rather than shrinking. */
+.queue-item.al-exit { animation-name: al-exit-side; }
+body.has-bg-image .queue-item.al-exit { animation-name: al-exit-side-glass; }
+@keyframes al-exit-side       { to { opacity: 0; transform: translateX(-24px); } }
+@keyframes al-exit-side-glass { to { transform: translateX(-28px); visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .al-enter, .al-exit { animation: none; }
+}
+
 @keyframes riseIn {
   from { transform: translateY(12px); }
   to   { transform: translateY(0); }

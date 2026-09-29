@@ -680,6 +680,13 @@ body.has-bg-image .settings-panel-fade { animation-name: settings-rise; }
   height: 100%;
 }
 
+/* Arriving / leaving after the first load: the shared list animations,
+   which have to outrank the slot's own mount animation above. */
+.focus-slot.al-enter { animation: al-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.focus-slot.al-exit  { animation: al-exit 0.34s cubic-bezier(0.4, 0, 0.6, 1) both; pointer-events: none; }
+body.has-bg-image .focus-slot.al-enter { animation-name: al-enter-glass; }
+body.has-bg-image .focus-slot.al-exit  { animation-name: al-exit-glass; }
+
 @keyframes focusIn {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }

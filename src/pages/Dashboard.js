@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { useTopBar } from '../context/TopBarContext';
+import useAnimatedList from '../lib/useAnimatedList';
 import TaskCard from '../components/TaskCard';
 import TaskForm from '../components/TaskForm';
 import { consumeNewTaskDeepLink, clearDeepLinkFromUrl } from '../lib/deepLink';
@@ -226,9 +227,14 @@ export default function Dashboard() {
   };
 
   // ── Data ──────────────────────────────────────────────────
+  // `loading` is the FIRST load only. Flipping it back on for every refresh
+  // (each queue / task change) switched Current Focus to its cached list and
+  // back again a moment later — the flicker when a task was queued or
+  // started. Refreshes now swap the data in place.
+  const loadedOnce = useRef(false);
   const fetchData = useCallback(async () => {
     if (!activeTeamId) { setLoading(false); return; }
-    setLoading(true);
+    if (!loadedOnce.current) setLoading(true);
     const [{ data: allTasks }, allUsers, { data: allProjects }] = await Promise.all([
       supabase.from('tasks').select('*').eq('team_id', activeTeamId).order('date_received', { ascending: false }),
       fetchTeamMembers(activeTeamId),
@@ -240,6 +246,7 @@ export default function Dashboard() {
     setCompletedTasks(done);
     setUsers(allUsers || []);
     setProjects(allProjects || []);
+    loadedOnce.current = true;
     setLoading(false);
 
     // Persist counts so the next mount can render them without a 0-flash.
@@ -319,6 +326,9 @@ export default function Dashboard() {
   // What to render: live tasks once ready, otherwise the cached list so there's
   // no empty flash while the first fetch is in flight.
   const displayFocus = focusReady ? focusTasks : (focusCache.length ? focusCache : focusTasks);
+  // A task queued or started slides into the row; one finished or dequeued
+  // shrinks out while the others move over (lib/useAnimatedList).
+  const { list: focusList, rowRef: focusRowRef } = useAnimatedList(displayFocus, t => t.id);
 
   const statCount = (key) => {
     // While the first fetch is in flight, show cached counts (no 0-flash).
@@ -357,11 +367,17 @@ export default function Dashboard() {
             </h2>
             {displayFocus.length > 0 ? (
               <div className="tasks-featured-grid" style={{ gridTemplateColumns: `repeat(${focusColumns}, minmax(0, 1fr))` }}>
-                {displayFocus.map((task, i) => {
+                {focusList.map(({ item: task, phase }, i) => {
                   const isCurrent = task.status === 'in_progress';
-                  const upNextNum = displayFocus.slice(0, i + 1).filter(t => t.status !== 'in_progress').length;
+                  const live = displayFocus.indexOf(task);
+                  const upNextNum = displayFocus.slice(0, live + 1).filter(t => t.status !== 'in_progress').length;
                   return (
-                    <div key={task.id} className="focus-slot" style={{ animationDelay: `${i * 60}ms` }}>
+                    <div
+                      key={task.id}
+                      ref={focusRowRef(task.id)}
+                      className={`focus-slot ${phase !== 'idle' ? `al-${phase}` : ''}`}
+                      style={phase === 'idle' ? { animationDelay: `${i * 60}ms` } : undefined}
+                    >
                       <span className={`focus-order-tag ${isCurrent ? 'focus-order-tag-current' : ''}`}>
                         {isCurrent ? (<><span className="focus-tag-dot" /> In Progress</>) : (`Up Next · ${upNextNum}`)}
                       </span>
