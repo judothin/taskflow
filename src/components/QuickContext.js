@@ -16,7 +16,9 @@ export const OPEN_QUICK_CONTEXT = 'open-quick-context';
 // because the moment you find out where the captcha lives is never the moment
 // you're on the Context page. Subject and description only; linking files is
 // the considered version of this, and that lives on the Context page itself.
-export default function QuickContext() {
+// `hideTrigger`: mount just the sheet, opened by OPEN_QUICK_CONTEXT — the
+// phone opens it from the dock rather than a top-bar button.
+export default function QuickContext({ hideTrigger = false }) {
   const { user } = useAuth();
   const { activeTeamId } = useTeam();
   const [open, setOpen] = useState(false);
@@ -60,7 +62,7 @@ export default function QuickContext() {
 
   return (
     <>
-      <button
+      {!hideTrigger && <button
         type="button"
         className="qctx-trigger"
         onClick={() => setOpen(true)}
@@ -84,7 +86,7 @@ export default function QuickContext() {
             <path d="M12 5v14 M5 12h14" />
           </svg>
         </span>
-      </button>
+      </button>}
 
       {open && (
         <ModalPortal onDismiss={close}>

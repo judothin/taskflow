@@ -4,6 +4,10 @@ import App from './App';
 import { applyCachedThemeEarly } from './lib/themeColors';
 import { captureNewTaskDeepLink } from './lib/deepLink';
 import { watchForUpdates } from './lib/appUpdate';
+import { preventZoom } from './lib/noZoom';
+
+// No pinch or focus zoom on phones — see lib/noZoom.js.
+preventZoom();
 
 // Capture any ?new=1&page=…&feedback=…&noticed=… deep link before React/auth
 // run, so the params survive a login redirect and the URL is stripped clean.

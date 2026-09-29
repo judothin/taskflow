@@ -65,7 +65,8 @@ export default function TopBar() {
   return (
     <div className="app-topbar">
       <div className="app-topbar-left">
-        <StreakFlame days={streakDays} paused={streakPaused} teamId={streakTeamId} size={46} />
+        {/* On a phone the flame lives in the app header instead (Layout). */}
+        {!isPhone && <StreakFlame days={streakDays} paused={streakPaused} teamId={streakTeamId} size={46} />}
         <div className="app-topbar-crumb">
           <span className="app-topbar-crumb-root">TaskFlow</span>
           <svg className="app-topbar-crumb-sep" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
@@ -73,7 +74,8 @@ export default function TopBar() {
         </div>
       </div>
       <div className="app-topbar-right">
-        <QuickContext />
+        {/* Phone: the dock's Context button opens it (mounted in Layout). */}
+        {!isPhone && <QuickContext />}
         {headerActions && <div className="app-topbar-actions">{headerActions}</div>}
         <div className="app-topbar-cluster">
           {gamificationEnabled && (
@@ -85,8 +87,10 @@ export default function TopBar() {
             compact size={46} shown={shown}
           />
           )}
-          {gamificationEnabled && <UserXpBar />}
-          <DashboardClock showDate={display.date} showTime={display.time} />
+          {/* Phone: level is the ring in the header, and the phone's own
+              status bar already shows the time. */}
+          {gamificationEnabled && !isPhone && <UserXpBar />}
+          {!isPhone && <DashboardClock showDate={display.date} showTime={display.time} />}
         </div>
       </div>
     </div>

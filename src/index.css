@@ -73,6 +73,10 @@ html.tf-boot, html.tf-boot *, html.tf-boot *::before, html.tf-boot *::after {
 html {
   font-size: 16px;
   overflow-x: clip;
+  /* Scrolling only — no pinch and no double-tap zoom on touch screens (see
+     lib/noZoom.js for the iOS gesture half). Elements can still narrow this
+     further, like the swipe rows' pan-y. */
+  touch-action: pan-x pan-y;
   /* Not `smooth` globally: restoring a remembered scroll position would then
      animate all the way down from the top on every back navigation, which is
      slower and more disorienting than just being there. Anchors and the
@@ -470,13 +474,17 @@ body.has-bg-image .completed-results {
   .modal-footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
   .modal-header { padding: 14px 16px; }
 
-  /* Inputs must be ≥16px or iOS Safari auto-zooms the page on focus. */
+  /* Inputs must be ≥16px or iOS Safari auto-zooms the page on focus.
+     !important because page styles give their own fields smaller sizes
+     (search boxes at 13.5px and so on), and any one of them would bring the
+     zoom back. The viewport's maximum-scale=1 is the backstop. */
   .input,
   input,
   select,
   textarea,
+  [contenteditable],
   .rich-editor-body {
-    font-size: 16px;
+    font-size: 16px !important;
   }
 
   /* Comfortable touch targets for the primary controls. */

@@ -607,6 +607,15 @@
 
 .mobile-logo-img { height: 32px; width: auto; object-fit: contain; }
 
+/* Streak flame (or the logo, with no streak) + level ring. Fixed height so
+   the header doesn't jump when the flame swaps in for the logo. */
+.mobile-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+}
+
 .user-avatar-sm {
   width: 30px;
   height: 30px;

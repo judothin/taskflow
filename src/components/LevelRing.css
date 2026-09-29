@@ -1,0 +1,39 @@
+.level-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--bg-3);
+}
+/* Start the fill at 12 o'clock rather than 3. */
+.level-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.level-ring-track { fill: none; stroke: var(--bg-4); }
+.level-ring-fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  filter: drop-shadow(0 0 3px var(--accent-glow));
+}
+.level-ring-num {
+  position: relative;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.5px;
+}
+
+.level-ring-pulse { animation: level-ring-pulse 0.5s cubic-bezier(0.34, 1.46, 0.64, 1); }
+@keyframes level-ring-pulse {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .level-ring-pulse { animation: none; }
+  .level-ring-fill { transition: none; }
+}

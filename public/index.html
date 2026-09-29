@@ -2,7 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- No zoom: maximum-scale=1 is what stops iOS zooming in when a field takes
+         focus (it applies even when text ends up under 16px, e.g. the "Small"
+         text size), user-scalable=no stops pinch on Android. iOS ignores that
+         part, so pinch is also blocked in src/lib/noZoom.js. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>TaskFlow — Ticketing</title>
 
     <!-- Paint the correct theme background BEFORE first paint so a reload never

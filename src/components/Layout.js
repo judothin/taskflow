@@ -16,6 +16,13 @@ import GlobalShortcuts from './GlobalShortcuts';
 import TopBar from './TopBar';
 import { HeaderActionsProvider } from '../context/HeaderActionsContext';
 import ErrorBoundary from './ErrorBoundary';
+import StreakFlame from './StreakFlame';
+import LevelRing from './LevelRing';
+import QuickContext, { OPEN_QUICK_CONTEXT } from './QuickContext';
+import { useStreak } from '../context/StreakContext';
+import { usePets } from '../context/PetContext';
+import { streakTier } from '../lib/streak';
+import useIsPhone from '../lib/useIsPhone';
 import './Layout.css';
 import './MobileMotion.css';
 
@@ -39,13 +46,16 @@ const COMPANION_TABS = [
     icon: 'M22 11.08V12a10 10 0 11-5.93-9.14 M22 4L12 14.01l-3-3' },
   { to: '/stats',     label: 'Stats',
     icon: 'M12 20V10 M18 20V4 M6 20v-4' },
+  // Not a page: opens the quick-save Context sheet over whatever you're on.
+  { action: OPEN_QUICK_CONTEXT, label: 'Context',
+    icon: 'M4 19.5A2.5 2.5 0 016.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z' },
   { to: '/quicklog',  label: 'Log',
     icon: 'M12 5v14 M5 12h14', primary: true },
 ];
 
 // Which tab a path belongs to, so a task opened from Tasks keeps Tasks lit.
 const activeTabIndex = (pathname) =>
-  COMPANION_TABS.findIndex(t => pathname === t.to || pathname.startsWith(`${t.to}/`));
+  COMPANION_TABS.findIndex(t => t.to && (pathname === t.to || pathname.startsWith(`${t.to}/`)));
 
 // Bottom tab bar. One highlight slides between tabs (driven by --dock-i)
 // rather than each tab fading its own background in and out, so switching
@@ -66,7 +76,17 @@ function MobileDock({ onNavigate }) {
         className={`dock-indicator ${active < 0 || onPrimary ? 'dock-indicator-hidden' : ''}`}
         aria-hidden="true"
       />
-      {COMPANION_TABS.map(tab => (
+      {COMPANION_TABS.map(tab => (tab.action ? (
+        <button
+          key={tab.label}
+          type="button"
+          className="dock-item"
+          onClick={() => { onNavigate(); window.dispatchEvent(new CustomEvent(tab.action)); }}
+        >
+          <span className="dock-icon"><NavIcon d={tab.icon} /></span>
+          <span className="dock-label">{tab.label}</span>
+        </button>
+      ) : (
         <NavLink
           key={tab.to}
           to={tab.to}
@@ -77,7 +97,7 @@ function MobileDock({ onNavigate }) {
           <span className="dock-icon"><NavIcon d={tab.icon} /></span>
           <span className="dock-label">{tab.label}</span>
         </NavLink>
-      ))}
+      )))}
     </nav>
   );
 }
@@ -168,6 +188,9 @@ export default function Layout() {
   const { activeTeam } = useTeam();
   const { theme, toggle } = useTheme();
   const { activeColors: colors } = useThemeCustomization();
+  const streak = useStreak();
+  const { gamificationEnabled } = usePets();
+  const isPhone = useIsPhone();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -427,7 +450,14 @@ export default function Layout() {
 
       <main className="main-content">
         <header className="mobile-header">
-          <img src="/logo.png" alt="TaskFlow" className="mobile-logo-img" />
+          {/* The streak takes the logo's spot (the logo comes back when
+              there's no streak to show), with the level ring beside it. */}
+          <div className="mobile-header-left">
+            {streakTier(streak.days)
+              ? <StreakFlame days={streak.days} paused={streak.paused} teamId={streak.teamId} size={40} />
+              : <img src="/logo.png" alt="TaskFlow" className="mobile-logo-img" />}
+            {gamificationEnabled && <LevelRing size={36} />}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <CreateMenu compact />
             <button className="mobile-search-btn" onClick={openSearch} aria-label="Search">
@@ -551,6 +581,10 @@ export default function Layout() {
 
       <GlobalSearch />
       <GlobalShortcuts />
+      {/* On a phone the Context sheet opens from the dock, so it's mounted
+          here without a trigger (TopBar mounts it with one on desktop — never
+          both, or one event would open two sheets). */}
+      {isPhone && <QuickContext hideTrigger />}
     </div>
   );
 }
