@@ -10,10 +10,17 @@
   background: rgba(0, 0, 0, 0.45);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
-  animation: gs-fade 0.14s ease;
+  animation: gs-fade-in 0.22s ease-out both;
+}
+/* Leaving: faster than arriving, and nothing inside can be clicked while it
+   goes. Keep the durations in step with CLOSE_MS in GlobalSearch.js. */
+.gs-overlay.gs-closing {
+  animation: gs-fade-out 0.17s ease-in both;
+  pointer-events: none;
 }
 
-@keyframes gs-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gs-fade-in  { from { opacity: 0; } }
+@keyframes gs-fade-out { to   { opacity: 0; } }
 
 .gs-panel {
   width: 100%;
@@ -28,12 +35,21 @@
   border-radius: 16px;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
-  animation: gs-pop 0.16s ease;
+  transform-origin: 50% 0;
+  animation: gs-pop-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+.gs-closing .gs-panel { animation: gs-pop-out 0.17s cubic-bezier(0.4, 0, 1, 1) both; }
 
-@keyframes gs-pop {
-  from { opacity: 0; transform: translateY(-8px) scale(0.985); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+/* Drops in from just above and settles; leaves by lifting back up and
+   shrinking slightly — the same path in reverse, quicker. */
+@keyframes gs-pop-in {
+  from { opacity: 0; transform: translateY(-14px) scale(0.965); }
+}
+@keyframes gs-pop-out {
+  to { opacity: 0; transform: translateY(-10px) scale(0.97); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gs-overlay, .gs-panel, .gs-closing .gs-panel { animation-duration: 0.01s; }
 }
 
 /* ── Input row ── */

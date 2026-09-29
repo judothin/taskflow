@@ -1,0 +1,148 @@
+/* ══════════════════════════════════════════════════════════════
+   Page transitions — see lib/pageTransitions.js
+   ------------------------------------------------------------
+   During a navigation the browser shows snapshots of the old and new
+   screens. Only the page content (`page`) moves; the rest of the screen is
+   told to cut straight to the new frame, so the sidebar, top bar, phone
+   header and dock look like they never went anywhere.
+   ══════════════════════════════════════════════════════════════ */
+
+.page-content { view-transition-name: page; }
+.sidebar      { view-transition-name: tf-sidebar; }
+.app-topbar   { view-transition-name: tf-topbar; }
+.mobile-header { view-transition-name: tf-mheader; }
+.mobile-dock  { view-transition-name: tf-dock; }
+
+/* Everything that isn't named below — the background image, the nav's
+   collapse tab — switches instantly. The OLD frame has to be hidden, not just
+   un-animated: two full-opacity snapshots stacked are blended additively,
+   which is what made the collapse arrow flash bold on every navigation. */
+::view-transition-old(root) { display: none; }
+::view-transition-new(root) { animation: none; }
+
+/* Sidebar, phone header, dock: show the new frame live and nothing else, so
+   they never move — and anything that animates by itself (the dock's
+   sliding highlight, the active nav item) still does. */
+::view-transition-old(tf-sidebar),
+::view-transition-old(tf-mheader),
+::view-transition-old(tf-dock) { display: none; }
+::view-transition-new(tf-sidebar),
+::view-transition-new(tf-mheader),
+::view-transition-new(tf-dock) { animation: none; }
+::view-transition-group(tf-sidebar),
+::view-transition-group(tf-mheader),
+::view-transition-group(tf-dock) { animation: none; z-index: 2; }
+
+/* Top bar: its title and buttons change between pages, but it's frosted
+   glass, so there's no clean way to fade one snapshot of it over another —
+   two translucent bars stacked darken the whole bar for a moment, which is
+   the flash we're avoiding. So it's treated like the rest of the chrome: the
+   old bar is gone from the first frame and the new one is live, which means
+   the new title and buttons play their own entrance (they rise and fade in,
+   TopBar.css) while everything that didn't change — streak, level, ⋯ —
+   simply stays put. Clipped so nothing can hang over the page below. */
+::view-transition-old(tf-topbar) { display: none; }
+::view-transition-new(tf-topbar) { animation: none; }
+::view-transition-group(tf-topbar) { animation: none; z-index: 2; overflow: clip; }
+
+/* The page: its box jumps straight to the new size (no stretching), and it's
+   clipped to that box so a sliding page never paints over the sidebar. */
+::view-transition-group(page) {
+  animation: none;
+  /* Sideways only — clipping vertically would cut the leaving page off at
+     the arriving page's height. */
+  overflow-x: clip;
+  z-index: 1;
+}
+/* The two pages slide past each other rather than overlapping in place, so
+   they're painted normally, not blended. */
+::view-transition-old(page),
+::view-transition-new(page) { mix-blend-mode: normal; }
+
+/* The slide. The new page travels a little further than the old one leaves,
+   and the old one fades faster than it moves — so the eye follows the page
+   that's arriving. */
+::view-transition-old(page) {
+  animation: vt-out-left 0.22s cubic-bezier(0.4, 0, 1, 1) both;
+  /* Where it was on screen before the new page scrolled (pageTransitions.js).
+     `translate` rather than `transform` so it adds to the slide. */
+  translate: 0 var(--vt-old-dy, 0px);
+}
+::view-transition-new(page) {
+  animation: vt-in-right 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+:root[data-nav-dir="back"]::view-transition-old(page) {
+  animation-name: vt-out-right;
+}
+:root[data-nav-dir="back"]::view-transition-new(page) {
+  animation-name: vt-in-left;
+}
+
+@keyframes vt-out-left  { to   { transform: translateX(-8%); opacity: 0; } }
+@keyframes vt-out-right { to   { transform: translateX(8%);  opacity: 0; } }
+@keyframes vt-in-right  { from { transform: translateX(14%); opacity: 0; } }
+@keyframes vt-in-left   { from { transform: translateX(-14%); opacity: 0; } }
+
+/* The page slide IS the entrance now, so a page's own fade-in (a 10px rise)
+   is off for good. It used to be switched off only while a transition ran —
+   and switching it back on afterwards restarts it, so every page did its
+   rise again right after sliding in: the tug at the end of each switch.
+   The body.has-bg-image selector outranks the frosted theme's riseIn. */
+.page-content > .fade-in,
+body.has-bg-image .page-content > .fade-in { animation: none; }
+
+/* ── Within a page: Settings sections ──
+   data-nav-dir="section" (sectionTransition in pageTransitions.js). The page
+   holds still and shows live — so the tab rail's highlight slides as normal —
+   and only the section panel crossfades: the old one lifts away as the new
+   one settles in, while the box eases between their heights.
+   The panel is only named during these switches. Named all the time, it
+   would be captured on its own during a PAGE switch and be left behind when
+   the rest of the page slid. */
+:root[data-nav-dir="section"] .settings-panel { view-transition-name: settings-panel; }
+
+:root[data-nav-dir="section"]::view-transition-old(page) { display: none; }
+:root[data-nav-dir="section"]::view-transition-new(page) { animation: none; }
+
+::view-transition-group(settings-panel) {
+  z-index: 1;
+  overflow: clip;
+  animation-duration: 0.34s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+::view-transition-old(settings-panel),
+::view-transition-new(settings-panel) {
+  /* Both at their own size, pinned to the top — never stretched as the box
+     changes height. Normal blending: they move past each other, so there's
+     nothing to add up. */
+  height: auto;
+  object-fit: none;
+  object-position: top left;
+  mix-blend-mode: normal;
+}
+::view-transition-old(settings-panel) {
+  animation: sec-out-up 0.2s cubic-bezier(0.4, 0, 1, 1) both;
+}
+::view-transition-new(settings-panel) {
+  animation: sec-in-up 0.34s cubic-bezier(0.22, 1, 0.36, 1) 0.06s both;
+}
+:root[data-section-dir="up"]::view-transition-old(settings-panel) { animation-name: sec-out-down; }
+:root[data-section-dir="up"]::view-transition-new(settings-panel) { animation-name: sec-in-down; }
+
+@keyframes sec-out-up   { to   { opacity: 0; transform: translateY(-10px); } }
+@keyframes sec-out-down { to   { opacity: 0; transform: translateY(10px); } }
+@keyframes sec-in-up    { from { opacity: 0; transform: translateY(12px); } }
+@keyframes sec-in-down  { from { opacity: 0; transform: translateY(-12px); } }
+
+/* ── Fallback (no View Transitions) ──
+   Just the arriving half: the new page slides in. */
+.page-enter-forward { animation: vt-in-right 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+.page-enter-back    { animation: vt-in-left 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(page),
+  ::view-transition-new(page),
+  ::view-transition-old(settings-panel),
+  ::view-transition-new(settings-panel) { animation: none; }
+  .page-enter-forward, .page-enter-back { animation: none; }
+}

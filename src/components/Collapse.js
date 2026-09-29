@@ -19,7 +19,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 //     instant the flag flips, leaving nothing to transition out.
 //   - `grid-template-rows: 0fr → 1fr` starts the transition on the same frames
 //     the children are mounting, and on a phone that mount work overruns them.
-export default function Collapse({ open, duration = 220, className = '', children }) {
+export default function Collapse({ open, duration = 300, className = '', children }) {
   const outerRef = useRef(null);
   const innerRef = useRef(null);
   const timerRef = useRef(null);

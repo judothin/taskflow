@@ -236,7 +236,7 @@ function MobileTaskRow({ task, users, onChanged, index = 0 }) {
     if (opening) {
       setTimeout(() => {
         rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }, 240);
+      }, 320);
     }
   };
 

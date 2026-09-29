@@ -58,8 +58,12 @@
   padding: 0;
 }
 
-/* Smooth theme switching */
-*:not(.fade-in):not(.loading-pulse):not([class*="animate"]) {
+/* Smooth theme switching — for elements with no transition of their own.
+   Wrapped in :where() so it carries NO specificity. Without that, its three
+   :not() filters made it outrank any single-class rule, so it silently
+   replaced every component's own `transition` (the drawer's height, the
+   dock's sliding highlight, the Settings tab pill…) and those all snapped. */
+:where(*:not(.fade-in):not(.loading-pulse):not([class*="animate"])) {
   transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
 }
 
@@ -188,18 +192,21 @@ body.has-bg-image .team-switcher-popover {
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* Colours and shadows only, not `all`: an auto-growing textarea would
+   otherwise animate its own height on every keystroke, and anything that
+   moves by transform would lag behind the finger. */
 button {
   font-family: var(--font);
   cursor: pointer;
   border: none;
   outline: none;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
 input, select, textarea {
   font-family: var(--font);
   outline: none;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 /* Scrollbar */
@@ -367,7 +374,8 @@ body.has-bg-image .completed-results {
   justify-content: center;
   z-index: 1000;
   padding: 12px;
-  animation: fadeIn 0.2s ease;
+  /* Opacity only — the backdrop fading in shouldn't also slide. */
+  animation: modal-backdrop-in 0.22s ease-out both;
 }
 
 .modal {
@@ -381,8 +389,27 @@ body.has-bg-image .completed-results {
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-lg);
-  animation: fadeIn 0.2s ease;
+  animation: modal-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+/* Arriving: the backdrop fades while the panel rises a little, grows the
+   last few percent and settles. */
+@keyframes modal-backdrop-in { from { opacity: 0; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(14px) scale(0.97); } }
+
+/* Leaving: ModalPortal leaves a frozen copy of a closing modal behind, and
+   this plays on it. Everything inside is inert and its entrance animations
+   are stopped (a copy is a new element, so they'd otherwise replay); the
+   whole copy fades while the panel sinks back and shrinks. Quicker than
+   arriving — nobody watches a modal leave. */
+.modal-portal-exit { pointer-events: none; animation: modal-backdrop-out 0.2s ease-in both; }
+.modal-portal-exit * { animation: none !important; pointer-events: none !important; }
+.modal-portal-exit .modal,
+.modal-portal-exit .msheet {
+  animation: modal-out 0.2s cubic-bezier(0.4, 0, 1, 1) both !important;
+}
+@keyframes modal-backdrop-out { to { opacity: 0; } }
+@keyframes modal-out { to { opacity: 0; transform: translateY(10px) scale(0.97); } }
 
 /* Page-level error boundary fallback */
 .error-boundary {
@@ -452,7 +479,12 @@ body.has-bg-image .completed-results {
     border-right: none;
     border-bottom: none;
     /* Slide up like a native sheet instead of the desktop fade. */
-    animation: sheetUp 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: sheetUp 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  /* …and back down the way it came when it closes. */
+  .modal-portal-exit .modal,
+  .modal-portal-exit .msheet {
+    animation: sheet-down 0.22s cubic-bezier(0.4, 0, 1, 1) both !important;
   }
   /* Grab handle: the sheet can be pushed back down, and nothing else on
      screen says so. Drawn on the header so it doesn't scroll away. */
@@ -495,6 +527,11 @@ body.has-bg-image .completed-results {
 @keyframes sheetUp {
   from { opacity: 0; transform: translateY(100%); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes sheet-down { to { transform: translateY(100%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay, .modal { animation: none; }
 }
 
 .modal-header {

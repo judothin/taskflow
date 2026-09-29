@@ -1,0 +1,54 @@
+/* Minimal: a thin gradient ring, the number in the middle, and one soft glow
+   hugging the stroke. No fill, no pulse — the colour carries the tier. */
+.streak-ring {
+  position: relative;
+  width: var(--ring-size, 30px);
+  height: var(--ring-size, 30px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  animation: streak-ring-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.streak-ring-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  filter:
+    drop-shadow(0 0 var(--glow-blur, 3px) color-mix(in srgb, var(--glow) 55%, transparent))
+    drop-shadow(0 0 calc(var(--glow-blur, 3px) * 1.6) color-mix(in srgb, var(--glow2, var(--glow)) 30%, transparent));
+}
+
+.streak-ring-count {
+  position: relative;
+  font-family: var(--font);
+  font-size: var(--count-size, 11px);
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Paused: dimmed, with a small dot at the top-right. */
+.streak-ring-paused .streak-ring-svg { opacity: 0.45; filter: none; }
+.streak-ring-pause {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  box-shadow: 0 0 0 2px var(--bg-2);
+}
+
+@keyframes streak-ring-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streak-ring { animation: none; }
+}

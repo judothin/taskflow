@@ -66,3 +66,19 @@ create policy "golive_items_delete_team" on public.golive_items
 
 -- Make the new table visible to the API straight away.
 notify pgrst, 'reload schema';
+
+-- ── Shared order (added later; safe to re-run) ─────────────────
+-- The list is dragged into whatever order the team wants to deploy in, and
+-- everyone sees the same order. Lower = higher up. Existing rows are seeded
+-- newest-first, matching how the list showed before there was an order.
+alter table public.golive_items add column if not exists position int;
+
+update public.golive_items g
+set position = r.rn
+from (
+  select id, row_number() over (partition by team_id order by created_at desc) as rn
+  from public.golive_items
+) r
+where g.id = r.id and g.position is null;
+
+notify pgrst, 'reload schema';

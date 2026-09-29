@@ -7,7 +7,7 @@ import { useTeam } from '../context/TeamContext';
 import { usePets } from '../context/PetContext';
 import { useStreak } from '../context/StreakContext';
 import AccountStatsCard from '../components/AccountStatsCard';
-import StreakFlame from '../components/StreakFlame';
+import StreakBar from '../components/StreakBar';
 import './Dashboard.css';
 import './Companion.css';
 
@@ -91,16 +91,17 @@ export default function Stats() {
       <div className="companion-stats-row">
         <AccountStatsCard userId={user?.id} tasksCompleted={userLevel?.tasks_completed} />
         <div className="card companion-streak-card">
-          {/* StreakFlame renders nothing below the first tier, so the card
-              states the count either way. */}
-          <StreakFlame days={streakDays} paused={streakPaused} teamId={streakTeamId} size={52} />
-          <div className="companion-streak-text">
-            <div className="companion-streak-days">
-              {streakDays} day{streakDays === 1 ? '' : 's'}
-              {streakPaused && <span className="companion-streak-paused">paused</span>}
+          <div className="companion-streak-label">Current streak</div>
+          {streakDays > 0 ? (
+            <StreakBar key={streakTeamId} variant="full" days={streakDays} best={streakBest} paused={streakPaused} />
+          ) : (
+            <div className="companion-streak-text">
+              <div className="companion-streak-days">0 days</div>
+              <div className="companion-streak-label">
+                Create or complete a task today to start one{streakBest ? ` · best ${streakBest}` : ''}.
+              </div>
             </div>
-            <div className="companion-streak-label">Current streak · best {streakBest}</div>
-          </div>
+          )}
         </div>
       </div>
     </div>

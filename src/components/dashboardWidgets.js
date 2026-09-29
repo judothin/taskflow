@@ -10,6 +10,7 @@ import { StatTile, STAT_ICONS } from './AccountStatsCard';
 import { useSpecialBadges } from '../context/SpecialBadgesContext';
 import { getRankBadges } from '../lib/petBadges';
 import RankBadges from './PetBadges';
+import StreakBar from './StreakBar';
 import './AccountStatsCard.css';
 
 // Live date/time readout for the dashboard top bar. Keeps its own tick so the
@@ -263,10 +264,15 @@ export function StreakWidget({ completedTasks, profile }) {
     <>
       <WidgetHead icon="M12 2s7 5 7 11a7 7 0 01-14 0c0-2 1-4 3-5 0 2 1 3 2 3 1.5 0 1-3-1-6 2 0 5 2 6 6" title="Your Streak" />
       <div className="widget-pad streak-body">
-        <div className="streak-flame">🔥</div>
-        <div className="streak-num">{streak}</div>
-        <div className="streak-label">day{streak !== 1 ? 's' : ''} in a row</div>
-        <div className="streak-best">Best: {best} day{best !== 1 ? 's' : ''}</div>
+        {streak > 0 ? (
+          <StreakBar variant="full" days={streak} best={best} />
+        ) : (
+          <>
+            <div className="streak-num">0</div>
+            <div className="streak-label">days in a row</div>
+            <div className="streak-best">Best: {best} day{best !== 1 ? 's' : ''}</div>
+          </>
+        )}
       </div>
     </>
   );

@@ -8,7 +8,6 @@ import { fetchTeamMembers } from '../lib/teams';
 import { useTopBar } from '../context/TopBarContext';
 import TaskCard from '../components/TaskCard';
 import TaskForm from '../components/TaskForm';
-import QuickLogModal from './QuickLog';
 import { consumeNewTaskDeepLink, clearDeepLinkFromUrl } from '../lib/deepLink';
 import ProjectsWidget from '../components/ProjectsWidget';
 import NotificationCenter from '../components/NotificationCenter';
@@ -18,7 +17,7 @@ import ActiveTasksList from '../components/ActiveTasksList';
 import BulkActionBar from '../components/BulkActionBar';
 import useBulkSelect from '../lib/useBulkSelect';
 import ModalPortal from '../components/ModalPortal';
-import { TopBarPortal } from '../context/HeaderActionsContext';
+import { TopBarPortal, TopBarMenuItems } from '../context/HeaderActionsContext';
 import {
   ActivityChartWidget, CompletedTodayWidget, RoiBreakdownWidget,
   LeaderboardWidget, RecentActivityWidget, StreakWidget, StatsWidget, BadgesWidget,
@@ -92,7 +91,6 @@ export default function Dashboard() {
   const [editTask, setEditTask] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [deepLinkPrefill, setDeepLinkPrefill] = useState(null);
-  const [showQuickLog, setShowQuickLog] = useState(false);
 
   // Deep link from an external tool (?new=1&page=&feedback=&noticed=). The
   // params were captured + stripped at boot (see lib/deepLink); once the
@@ -560,22 +558,19 @@ export default function Dashboard() {
               </button>
             </>
           ) : (
-            <>
-              <button className="btn btn-ghost" onClick={() => setEditing(true)}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9 M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
-                Edit Dashboard
-              </button>
-              <button className="btn btn-secondary" onClick={() => setShowQuickLog(true)}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                Quick Log
-              </button>
-              <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                New Task
-              </button>
-            </>
+            <button className="btn btn-primary btn-icon-only" onClick={() => setShowCreate(true)} title="New task (N)" aria-label="New task">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            </button>
           )}
       </TopBarPortal>
+      {/* Edit Dashboard lives in the top bar's ⋯ menu; while editing, the
+          editing controls above replace it. */}
+      <TopBarMenuItems items={editing ? null : [{
+        key: 'edit-dashboard',
+        label: 'Edit dashboard',
+        icon: 'M12 20h9 M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z',
+        onClick: () => setEditing(true),
+      }]} />
 
       {/* Task counts — locked top bar (always present) */}
       <div className={`stats-grid ${editing ? 'stats-grid-locked' : ''}`}>
@@ -640,7 +635,6 @@ export default function Dashboard() {
       {editTask && (
         <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={fetchData} users={users} projects={projects} />
       )}
-      {showQuickLog && <QuickLogModal onClose={() => setShowQuickLog(false)} />}
 
       {focusSelect.selectMode && (
         <BulkActionBar

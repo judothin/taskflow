@@ -16,13 +16,12 @@ import GlobalShortcuts from './GlobalShortcuts';
 import TopBar from './TopBar';
 import { HeaderActionsProvider } from '../context/HeaderActionsContext';
 import ErrorBoundary from './ErrorBoundary';
-import StreakFlame from './StreakFlame';
+import StreakRing from './StreakRing';
 import LevelRing from './LevelRing';
 import QuickContext, { OPEN_QUICK_CONTEXT } from './QuickContext';
 import { useStreak } from '../context/StreakContext';
 import { usePets } from '../context/PetContext';
 import { streakTier } from '../lib/streak';
-import useIsPhone from '../lib/useIsPhone';
 import './Layout.css';
 import './MobileMotion.css';
 
@@ -50,7 +49,8 @@ const COMPANION_TABS = [
   { action: OPEN_QUICK_CONTEXT, label: 'Context',
     icon: 'M4 19.5A2.5 2.5 0 016.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z' },
   { to: '/quicklog',  label: 'Log',
-    icon: 'M12 5v14 M5 12h14', primary: true },
+    // A pen writing a line: "jot something down".
+    icon: 'M12 20h9 M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z' },
 ];
 
 // Which tab a path belongs to, so a task opened from Tasks keeps Tasks lit.
@@ -59,12 +59,10 @@ const activeTabIndex = (pathname) =>
 
 // Bottom tab bar. One highlight slides between tabs (driven by --dock-i)
 // rather than each tab fading its own background in and out, so switching
-// reads as movement from A to B. Log is the one place you write, so it's a
-// raised action button instead of a plain tab.
+// reads as movement from A to B.
 function MobileDock({ onNavigate }) {
   const { pathname } = useLocation();
   const active = activeTabIndex(pathname);
-  const onPrimary = active >= 0 && COMPANION_TABS[active].primary;
 
   return (
     <nav
@@ -73,7 +71,7 @@ function MobileDock({ onNavigate }) {
       style={{ '--dock-i': Math.max(active, 0), '--dock-n': COMPANION_TABS.length }}
     >
       <span
-        className={`dock-indicator ${active < 0 || onPrimary ? 'dock-indicator-hidden' : ''}`}
+        className={`dock-indicator ${active < 0 ? 'dock-indicator-hidden' : ''}`}
         aria-hidden="true"
       />
       {COMPANION_TABS.map(tab => (tab.action ? (
@@ -91,7 +89,7 @@ function MobileDock({ onNavigate }) {
           key={tab.to}
           to={tab.to}
           className={({ isActive }) =>
-            `dock-item ${tab.primary ? 'dock-item-primary' : ''} ${isActive ? 'dock-item-active' : ''}`}
+            `dock-item ${isActive ? 'dock-item-active' : ''}`}
           onClick={onNavigate}
         >
           <span className="dock-icon"><NavIcon d={tab.icon} /></span>
@@ -190,7 +188,6 @@ export default function Layout() {
   const { activeColors: colors } = useThemeCustomization();
   const streak = useStreak();
   const { gamificationEnabled } = usePets();
-  const isPhone = useIsPhone();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -305,8 +302,6 @@ export default function Layout() {
         </div>
 
         <TeamSwitcher />
-
-        <div className="nav-create"><CreateMenu /></div>
 
         <button className="nav-search-btn" onClick={openSearch} title="Search (press /)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -450,11 +445,11 @@ export default function Layout() {
 
       <main className="main-content">
         <header className="mobile-header">
-          {/* The streak takes the logo's spot (the logo comes back when
+          {/* The streak ring takes the logo's spot (the logo comes back when
               there's no streak to show), with the level ring beside it. */}
           <div className="mobile-header-left">
             {streakTier(streak.days)
-              ? <StreakFlame days={streak.days} paused={streak.paused} teamId={streak.teamId} size={40} />
+              ? <StreakRing key={streak.teamId} days={streak.days} paused={streak.paused} size={30} />
               : <img src="/logo.png" alt="TaskFlow" className="mobile-logo-img" />}
             {gamificationEnabled && <LevelRing size={36} />}
           </div>
@@ -581,10 +576,10 @@ export default function Layout() {
 
       <GlobalSearch />
       <GlobalShortcuts />
-      {/* On a phone the Context sheet opens from the dock, so it's mounted
-          here without a trigger (TopBar mounts it with one on desktop — never
-          both, or one event would open two sheets). */}
-      {isPhone && <QuickContext hideTrigger />}
+      {/* The Context sheet, opened by event — from the dock on a phone and
+          the top bar's ⋯ menu on desktop. Mounted once, here, so one event
+          can't open two sheets. */}
+      <QuickContext hideTrigger />
     </div>
   );
 }

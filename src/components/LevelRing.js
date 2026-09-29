@@ -3,10 +3,9 @@ import { usePets } from '../context/PetContext';
 import { userXpToNext } from '../lib/xp';
 import './LevelRing.css';
 
-// The phone header's level readout: the level number inside a ring that
-// fills with XP toward the next one. The desktop top bar has the wider
-// UserXpBar pill; a phone header has room for a single round badge.
-// Pulses when XP lands, off the same `xp-awarded` event the pill listens to.
+// The level readout, in the phone header and the desktop top bar alike: the
+// level number inside a ring that fills with XP toward the next one. Pulses
+// when XP lands (the `xp-awarded` event).
 export default function LevelRing({ size = 36, stroke = 3.5 }) {
   const { userLevel } = usePets();
   const [pulsing, setPulsing] = useState(false);

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useNotifications, NOTIF_TYPES } from '../context/NotificationContext';
 import { supabase } from '../lib/supabase';
 import Avatar from './Avatar';
+import ModalPortal from './ModalPortal';
 import './NotificationCenter.css';
 
 const BellIcon = (props) => (
@@ -188,7 +188,8 @@ function NotificationDetail({ notif, onClose }) {
     action = { label: 'Open Files', go: () => navigate('/files') };
   }
 
-  return createPortal(
+  return (
+    <ModalPortal>
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal nc-detail-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
@@ -220,8 +221,8 @@ function NotificationDetail({ notif, onClose }) {
           </div>
         )}
       </div>
-    </div>,
-    document.body
+    </div>
+    </ModalPortal>
   );
 }
 
@@ -241,7 +242,8 @@ function NotificationSettings({ onClose }) {
       };
     });
 
-  return createPortal(
+  return (
+    <ModalPortal>
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal nc-settings-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
@@ -314,8 +316,8 @@ function NotificationSettings({ onClose }) {
           <button className="btn btn-primary" onClick={onClose}>Done</button>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
+    </ModalPortal>
   );
 }
 

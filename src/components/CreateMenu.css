@@ -1,12 +1,6 @@
 /* ── Create ("+") menu ─────────────────────────────────────── */
 .create-menu { position: relative; }
 
-/* In the sidebar it spans the rail, like the Search button under it. */
-.nav-create { padding: 0 12px 8px; }
-.nav-create .create-menu, .nav-create .create-trigger { width: 100%; }
-/* Collapsed rail: icon only. */
-.sidebar-collapsed .nav-create .create-trigger-label { display: none; }
-.sidebar-collapsed .nav-create { padding: 0 8px 8px; }
 
 .create-trigger {
   display: inline-flex;

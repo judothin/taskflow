@@ -51,7 +51,10 @@ export default function GlobalShortcuts() {
       if (isTypingTarget(e.target)) return;
       // Don't fire while any modal (ours or a page's) or the search palette is open.
       if (showNewTask || showQuickLog) return;
-      if (document.querySelector('.modal-overlay, .gs-overlay')) return;
+      // A closing modal's frozen copy (ModalPortal) doesn't count as open.
+      const modalOpen = [...document.querySelectorAll('.modal-overlay, .gs-overlay')]
+        .some(el => !el.closest('.modal-portal-exit'));
+      if (modalOpen) return;
 
       if (e.key === '/') {
         e.preventDefault();

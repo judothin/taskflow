@@ -3,14 +3,12 @@ import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
-import { TopBarPortal } from '../context/HeaderActionsContext';
 import { format, isSameDay, parseISO } from 'date-fns';
 import ContextMenu from '../components/ContextMenu';
 import TaskForm from '../components/TaskForm';
 import Avatar from '../components/Avatar';
 import CompletionCalendar from '../components/CompletionCalendar';
 import FeedbackContent from '../components/FeedbackContent';
-import QuickLogModal from './QuickLog';
 import MobileTaskList from '../components/MobileTaskList';
 import useIsPhone from '../lib/useIsPhone';
 import ModalPortal from '../components/ModalPortal';
@@ -182,7 +180,6 @@ export default function Completed() {
     location.state?.date ? parseISO(location.state.date) : new Date()
   );
   const [editTask, setEditTask] = useState(null);
-  const [showQuickLog, setShowQuickLog] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!activeTeamId) { setTasks([]); setUsers([]); setLoading(false); return; }
@@ -197,6 +194,12 @@ export default function Completed() {
   }, [activeTeamId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  // Quick Log and new tasks from the top bar menu / shortcuts are app-wide
+  // forms, so they announce saves rather than calling back into this page.
+  useEffect(() => {
+    window.addEventListener('tasks-changed', fetchData);
+    return () => window.removeEventListener('tasks-changed', fetchData);
+  }, [fetchData]);
 
   // Unique individual completers (handles "A, B" multi-credit).
   const completors = [...new Set(tasks.flatMap(namesOf))].sort();
@@ -236,16 +239,6 @@ export default function Completed() {
 
   return (
     <div className="dashboard fade-in">
-      <TopBarPortal>
-        <button className="btn btn-secondary" onClick={() => setShowQuickLog(true)}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
-            <polyline points="22 4 12 14.01 9 11.01"/>
-          </svg>
-          Quick Log
-        </button>
-      </TopBarPortal>
-
       <div className="completed-layout">
         {/* ── Left: calendar + people ── */}
         <aside className="completed-side">
@@ -373,9 +366,6 @@ export default function Completed() {
         />
       )}
 
-      {showQuickLog && (
-        <QuickLogModal onClose={() => { setShowQuickLog(false); fetchData(); }} />
-      )}
     </div>
   );
 }

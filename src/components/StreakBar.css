@@ -1,0 +1,106 @@
+/* ══════════════════════════════════════════════════════════════
+   Streak bar — see StreakBar.js
+   ══════════════════════════════════════════════════════════════ */
+
+.sb { display: flex; min-width: 0; }
+
+/* ── Track + fill (shared) ── */
+.sb-track {
+  position: relative;
+  display: block;
+  flex: 1;
+  min-width: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  overflow: hidden;
+}
+.sb-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--sb-pct, 0%);
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--sb-c1), var(--sb-c2));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--sb-c2) 45%, transparent);
+  transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* On a record run the full bar has heat moving through it. */
+.sb-record .sb-fill {
+  background: linear-gradient(90deg, var(--sb-c1), var(--sb-c2), var(--sb-c1));
+  background-size: 200% 100%;
+  animation: sb-flow 3s linear infinite;
+}
+@keyframes sb-flow { to { background-position: -200% 0; } }
+
+.sb-paused .sb-fill { filter: saturate(0.3); opacity: 0.55; box-shadow: none; animation: none; }
+
+/* ── Compact: flame · number · bar ── */
+.sb-compact {
+  align-items: center;
+  gap: 6px;
+}
+.sb-compact .sb-num {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.sb-compact .sb-track { flex: 0 0 auto; width: 56px; height: 5px; }
+
+/* ── Full: for cards ── */
+.sb-full { flex-direction: column; gap: 10px; width: 100%; }
+.sb-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sb-big {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.sb-unit { font-size: 14px; font-weight: 600; color: var(--text-muted); }
+.sb-tag {
+  margin-left: auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.sb-tag-record {
+  color: var(--sb-c2);
+  background: color-mix(in srgb, var(--sb-c2) 14%, transparent);
+}
+.sb-tag-paused { color: var(--text-dim); background: var(--bg-4); }
+.sb-full .sb-track { flex: none; width: 100%; height: 8px; }
+.sb-caption { font-size: 12.5px; color: var(--text-muted); }
+
+/* ── The flame ──
+   Two tongues on different rhythms, both pivoting from the base, so it
+   licks and leans instead of pulsing in place. transform-box makes the
+   origin the path's own box rather than the SVG's. */
+.sb-flame { flex-shrink: 0; overflow: visible; filter: drop-shadow(0 0 4px color-mix(in srgb, var(--sb-c2) 60%, transparent)); }
+.sb-flame path { transform-box: fill-box; transform-origin: 50% 100%; }
+.sb-flame-outer { animation: sb-writhe 1.3s ease-in-out infinite; }
+.sb-flame-inner { animation: sb-writhe-inner 0.9s ease-in-out infinite; }
+
+@keyframes sb-writhe {
+  0%   { transform: skewX(0deg)   scale(1, 1); }
+  20%  { transform: skewX(-6deg)  scale(0.96, 1.06); }
+  45%  { transform: skewX(4deg)   scale(1.03, 0.95); }
+  70%  { transform: skewX(-3deg)  scale(0.98, 1.08); }
+  100% { transform: skewX(0deg)   scale(1, 1); }
+}
+@keyframes sb-writhe-inner {
+  0%   { transform: skewX(0deg)  scale(1, 1);    opacity: 0.95; }
+  30%  { transform: skewX(8deg)  scale(0.9, 1.1); opacity: 0.8; }
+  60%  { transform: skewX(-7deg) scale(1.05, 0.9); opacity: 1; }
+  100% { transform: skewX(0deg)  scale(1, 1);    opacity: 0.95; }
+}
+
+.sb-paused .sb-flame path { animation-play-state: paused; }
+.sb-paused .sb-flame { filter: grayscale(0.7); opacity: 0.6; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-fill, .sb-record .sb-fill, .sb-flame path { animation: none; transition: none; }
+}

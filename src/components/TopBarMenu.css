@@ -1,0 +1,131 @@
+/* ── Top bar "⋯" menu ─────────────────────────────────────── */
+.tbm { position: relative; flex-shrink: 0; }
+
+.tbm-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.tbm-trigger:hover,
+.tbm-trigger-open { color: var(--text); background: var(--bg-3); border-color: var(--border-light); }
+.tbm-trigger:active { transform: scale(0.94); }
+/* The dots stand up while the menu is open — a small "this is now open" cue. */
+.tbm-trigger svg { transition: transform 0.25s cubic-bezier(0.34, 1.46, 0.64, 1); }
+.tbm-trigger-open svg { transform: rotate(90deg); }
+
+.tbm-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 300;
+  min-width: 220px;
+  padding: 5px;
+  /* Solid even over a background image — a menu you can read through isn't one. */
+  background: var(--bg-solid, var(--bg-2));
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  transform-origin: top right;
+}
+
+/* ── Open / close ──
+   AnimatedPopover toggles pop-in / pop-out; these override the shared
+   popover fade (TaskCard.css) with a grow from the ⋯ button. Opening springs
+   slightly and staggers the rows in; closing is quicker and all at once,
+   since nobody watches a menu leave. Extra `.tbm` in the selectors so this
+   wins over the shared rules regardless of stylesheet order. */
+.tbm .tbm-popover.pop-anim {
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+.tbm .tbm-popover.pop-out {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.9);
+}
+.tbm .tbm-popover.pop-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity 0.18s ease, transform 0.26s cubic-bezier(0.34, 1.36, 0.64, 1);
+}
+
+.tbm .tbm-popover .tbm-item,
+.tbm .tbm-popover .tbm-sep {
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: opacity 0.1s ease, transform 0.1s ease, background 0.12s ease;
+}
+.tbm .tbm-popover.pop-in .tbm-item,
+.tbm .tbm-popover.pop-in .tbm-sep {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.2s ease calc(40ms + var(--i, 0) * 35ms),
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1) calc(40ms + var(--i, 0) * 35ms),
+    background 0.12s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tbm .tbm-popover.pop-anim,
+  .tbm .tbm-popover.pop-in,
+  .tbm .tbm-popover .tbm-item,
+  .tbm .tbm-popover .tbm-sep,
+  .tbm-trigger svg { transition: opacity 0.12s ease; transform: none; }
+}
+
+.tbm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: calc(var(--radius-lg) - 4px);
+  background: none;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.tbm-item:hover,
+.tbm-item:focus-visible { background: var(--bg-3); outline: none; }
+.tbm-item-icon { display: flex; color: var(--text-muted); flex-shrink: 0; }
+.tbm-item:hover .tbm-item-icon { color: var(--accent); }
+.tbm-item-label { flex: 1; min-width: 0; white-space: nowrap; }
+
+.tbm-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 19px;
+  padding: 0 5px;
+  border: 1px solid var(--border-light);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--bg-3);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.tbm-sep { height: 1px; margin: 5px 6px; background: var(--border); }
+
+/* The New Task "+" — a square icon button the same size as the ⋯ beside it. */
+.btn-icon-only {
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  flex-shrink: 0;
+}

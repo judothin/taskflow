@@ -11,6 +11,7 @@ import FeedbackEditor from './FeedbackEditor';
 import SubtaskEditor from './SubtaskEditor';
 import { asSubtasks, cleanSubtasks } from '../lib/subtasks';
 import ModalPortal from './ModalPortal';
+import './TaskForm.css';
 
 // Run once in Supabase:
 // alter table tasks add column if not exists attachments jsonb default '[]'::jsonb;
@@ -140,7 +141,8 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
   const [dragOver, setDragOver]   = useState(false);
   const [fetchFailCount, setFetchFailCount] = useState(0);
   const dragDepth = useRef(0);
-  const [addToQueue, setAddToQueue] = useState(false);
+  // On by default: most new tasks are things you mean to get to.
+  const [addToQueue, setAddToQueue] = useState(true);
   const [batchAdd,   setBatchAdd]   = useState(false);
   const [batchCount, setBatchCount] = useState(0);
   const [error,        setError]        = useState('');
@@ -450,7 +452,7 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
       <ModalPortal>
       <div className="modal-overlay">
         <div
-          className="modal"
+          className="modal tf-modal"
           onPaste={handlePaste}
           onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}
@@ -474,8 +476,37 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
 
           <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
             <div className="modal-body">
-              <div className="form-grid" style={{ gap: 12 }}>
+              {/* Two columns on a wide screen, so the whole form fits without
+                  scrolling: what the task IS on the left (page, feedback,
+                  subtasks), how it's filed on the right. One column on a
+                  narrow screen, in the original order (TaskForm.css). */}
+              <div className="tf-layout">
+                <div className="form-grid tf-main" style={{ gap: 12 }}>
+                <div className="form-group">
+                  <label className="label">Page <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>— name or URL (auto-detected)</span></label>
+                  <input className="input" placeholder="e.g. Checkout, or https://example.com/page" value={form.page} onChange={set('page')} required />
+                </div>
 
+                <div className="form-group">
+                  <label className="label">Feedback / Issue</label>
+                  <FeedbackEditor
+                    value={form.feedback}
+                    onChange={(v) => setForm(f => ({ ...f, feedback: v }))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Subtasks <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>— checklist, progress shows on the card</span></label>
+                  <SubtaskEditor
+                    value={form.subtasks}
+                    onChange={(v) => setForm(f => ({ ...f, subtasks: v }))}
+                  />
+                </div>
+
+                </div>
+
+                <div className="form-grid tf-side" style={{ gap: 12 }}>
+                  <div className="form-grid tf-top" style={{ gap: 12 }}>
                 {!isGuest && (
                   <div className="form-group">
                     <label className="label">Status</label>
@@ -521,26 +552,7 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
                   </label>
                 )}
 
-                <div className="form-group">
-                  <label className="label">Page <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>— name or URL (auto-detected)</span></label>
-                  <input className="input" placeholder="e.g. Checkout, or https://example.com/page" value={form.page} onChange={set('page')} required />
-                </div>
-
-                <div className="form-group">
-                  <label className="label">Feedback / Issue</label>
-                  <FeedbackEditor
-                    value={form.feedback}
-                    onChange={(v) => setForm(f => ({ ...f, feedback: v }))}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="label">Subtasks <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-dim)', fontSize: 11 }}>— checklist, progress shows on the card</span></label>
-                  <SubtaskEditor
-                    value={form.subtasks}
-                    onChange={(v) => setForm(f => ({ ...f, subtasks: v }))}
-                  />
-                </div>
+                  </div>
 
                 <div className="form-group">
                   <label className="label">Noticed By</label>
@@ -676,8 +688,10 @@ export default function TaskForm({ task, onClose, onSaved, isGuest = false, user
                   />
                 </div>
 
-                {error && <div className="error-msg">⚠ {error}</div>}
+                </div>
               </div>
+
+              {error && <div className="error-msg" style={{ marginTop: 12 }}>⚠ {error}</div>}
             </div>
 
             <div className="modal-footer">

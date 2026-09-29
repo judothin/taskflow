@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { searchRank } from '../lib/fuzzySearch';
 import Avatar from '../components/Avatar';
+import Collapse from '../components/Collapse';
+import useFlipRows from '../lib/useFlipRows';
 import './GoLive.css';
 
 // ══════════════════════════════════════════════════════════════
@@ -17,6 +19,10 @@ import './GoLive.css';
 //
 // Ticking one off marks it live rather than deleting it, so a mis-click is a
 // tap on Undo (or Restore, later) instead of lost notes.
+//
+// Cards are collapsed by default — page, first line, counts — and open for
+// the full notes and files. The list's order is shared: drag a card by its
+// grip (or Alt+↑/↓ on it) and everyone on the team sees the new order.
 // ══════════════════════════════════════════════════════════════
 
 const EMPTY = { page: '', description: '', files: '' };
@@ -91,6 +97,7 @@ const Icon = {
   x: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>,
   undo: <><path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 102.13-9.36L1 10" /></>,
   chevron: <polyline points="9 18 15 12 9 6" />,
+  grip: <><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></>,
   link: <><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></>,
 };
 const Svg = ({ name, size = 15, width = 2 }) => (
@@ -182,14 +189,19 @@ function PageLabel({ page }) {
 }
 
 // ── One pending item ──────────────────────────────────────────
-function ItemCard({ item, index, onSave, onMarkLive, onDelete }) {
+// Collapsed: grip, page, the description's first line, counts and Mark live.
+// Open: the full description and files, plus edit / delete.
+function ItemCard({
+  item, index, open, onToggle, onSave, onMarkLive, onDelete, rowRef, drag,
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [copied, setCopied] = useState(false);
-  const fileCount = parseFiles(item.files).length;
+  const files = parseFiles(item.files);
   const who = nameOf(item.creator);
+  const firstLine = (item.description || '').split('\n').find(l => l.trim()) || '';
 
   const startEdit = () => {
     setDraft({ page: item.page, description: item.description || '', files: item.files || '' });
@@ -203,13 +215,12 @@ function ItemCard({ item, index, onSave, onMarkLive, onDelete }) {
     if (ok) setEditing(false);
   };
   const copyFiles = async () => {
-    const text = parseFiles(item.files).map(f => f.path).join('\n');
-    if (await copyText(text)) { setCopied(true); setTimeout(() => setCopied(false), 1400); }
+    if (await copyText(files.map(f => f.path).join('\n'))) { setCopied(true); setTimeout(() => setCopied(false), 1400); }
   };
 
   if (editing) {
     return (
-      <article className="gl-card gl-card-editing">
+      <article ref={rowRef} className="gl-card gl-card-editing">
         <ItemFields value={draft} onChange={setDraft} onSubmit={save} onCancel={() => setEditing(false)} autoFocusPage />
         <div className="gl-form-actions">
           <span className="gl-kbd-hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> to save · <kbd>Esc</kbd> to cancel</span>
@@ -223,64 +234,109 @@ function ItemCard({ item, index, onSave, onMarkLive, onDelete }) {
   }
 
   return (
-    <article className="gl-card" style={{ '--i': index }}>
-      <div className="gl-card-head">
-        <span className="gl-card-icon"><Svg name="page" size={16} /></span>
-        <div className="gl-card-title">
-          <PageLabel page={item.page} />
-          <div className="gl-meta">
+    <article
+      ref={rowRef}
+      className={`gl-card gl-item ${open ? 'gl-item-open' : ''} ${drag.dragging ? 'gl-item-dragging' : ''}`}
+      style={{ '--i': index }}
+      draggable={drag.enabled && drag.armed}
+      onDragStart={drag.onDragStart}
+      onDragOver={drag.onDragOver}
+      onDragEnd={drag.onDragEnd}
+      onDrop={(e) => e.preventDefault()}
+    >
+      <div className="gl-item-head">
+        <button
+          type="button"
+          className="gl-grip"
+          title={drag.enabled ? 'Drag to reorder (or Alt + ↑/↓)' : 'Clear the search to reorder'}
+          aria-label={`Reorder ${item.page}`}
+          disabled={!drag.enabled}
+          onPointerDown={drag.arm}
+          onPointerUp={drag.disarm}
+          onKeyDown={drag.onKey}
+        >
+          <Svg name="grip" size={16} width={0} />
+        </button>
+
+        <button type="button" className="gl-item-toggle" onClick={onToggle} aria-expanded={open}>
+          <span className={`gl-chev ${open ? 'gl-chev-open' : ''}`}><Svg name="chevron" size={14} width={2.5} /></span>
+          <span className="gl-item-main">
+            <span className="gl-item-title">{isUrl(item.page) ? shortUrl(item.page) : item.page}</span>
+            {firstLine && <span className={`gl-item-preview ${open ? 'gl-item-preview-hidden' : ''}`}>{firstLine}</span>}
+          </span>
+        </button>
+
+        <div className="gl-item-meta">
+          {files.length > 0 && (
+            <span className="gl-chip" title={files.map(f => f.path).join('\n')}>
+              <Svg name="file" size={12} /> {files.length} file{files.length === 1 ? '' : 's'}
+            </span>
+          )}
+          <span className="gl-who" title={`Added ${item.created_at ? format(new Date(item.created_at), 'PPpp') : ''}${who ? ` by ${who}` : ''}`}>
             {item.creator && (
               <Avatar
                 src={item.creator.avatar_url}
                 color={item.creator.color || '#6366f1'}
                 initials={`${item.creator.first_name?.[0] || ''}${item.creator.last_name?.[0] || ''}`}
-                size={18}
+                size={20}
               />
             )}
-            <span title={item.created_at ? format(new Date(item.created_at), 'PPpp') : undefined}>
-              Added {ago(item.created_at)}{who ? ` by ${who}` : ''}
-            </span>
-          </div>
+            {ago(item.created_at)}
+          </span>
         </div>
 
-        <div className="gl-card-actions">
-          {confirmDel ? (
-            <div className="gl-confirm" role="group" aria-label="Confirm delete">
-              <span>Delete for good?</span>
-              <button type="button" className="gl-confirm-yes" onClick={() => onDelete(item)}>Delete</button>
-              <button type="button" className="gl-confirm-no" onClick={() => setConfirmDel(false)}>Keep</button>
-            </div>
-          ) : (
-            <>
-              <button type="button" className="gl-icon-btn" onClick={startEdit} title="Edit" aria-label="Edit">
-                <Svg name="edit" />
-              </button>
-              <button type="button" className="gl-icon-btn gl-icon-btn-danger" onClick={() => setConfirmDel(true)} title="Delete" aria-label="Delete">
-                <Svg name="trash" />
-              </button>
-              <button type="button" className="gl-live-btn" onClick={() => onMarkLive(item)}>
-                <Svg name="check" size={14} width={3} />
-                Mark live
-              </button>
-            </>
-          )}
-        </div>
+        <button type="button" className="gl-live-btn" onClick={() => onMarkLive(item)}>
+          <Svg name="check" size={14} width={3} />
+          Mark live
+        </button>
       </div>
 
-      {item.description && <p className="gl-desc">{item.description}</p>}
+      <Collapse open={open} className="gl-item-body">
+        <div className="gl-item-inner">
+          {isUrl(item.page) && (
+            <div className="gl-section">
+              <div className="gl-section-label">Page</div>
+              <PageLabel page={item.page} />
+            </div>
+          )}
 
-      {fileCount > 0 && (
-        <div className="gl-files-block">
-          <div className="gl-files-head">
-            <span>{fileCount} file{fileCount === 1 ? '' : 's'}</span>
-            <button type="button" className="gl-copy" onClick={copyFiles}>
-              <Svg name={copied ? 'check' : 'copy'} size={12} width={2.4} />
-              {copied ? 'Copied' : 'Copy paths'}
-            </button>
+          <div className="gl-section">
+            <div className="gl-section-label">What changed</div>
+            {item.description
+              ? <p className="gl-desc">{item.description}</p>
+              : <p className="gl-desc gl-desc-empty">No description.</p>}
           </div>
-          <FileList text={item.files} />
+
+          {files.length > 0 && (
+            <div className="gl-section">
+              <div className="gl-section-label">
+                Files <span className="gl-section-count">{files.length}</span>
+                <button type="button" className="gl-copy" onClick={copyFiles}>
+                  <Svg name={copied ? 'check' : 'copy'} size={12} width={2.4} />
+                  {copied ? 'Copied' : 'Copy paths'}
+                </button>
+              </div>
+              <FileList text={item.files} />
+            </div>
+          )}
+
+          <div className="gl-item-foot">
+            <span className="gl-item-added">Added {ago(item.created_at)}{who ? ` by ${who}` : ''}</span>
+            {confirmDel ? (
+              <div className="gl-confirm" role="group" aria-label="Confirm delete">
+                <span>Delete for good?</span>
+                <button type="button" className="gl-confirm-yes" onClick={() => onDelete(item)}>Delete</button>
+                <button type="button" className="gl-confirm-no" onClick={() => setConfirmDel(false)}>Keep</button>
+              </div>
+            ) : (
+              <div className="gl-foot-actions">
+                <button type="button" className="gl-row-btn" onClick={startEdit}><Svg name="edit" size={13} /> Edit</button>
+                <button type="button" className="gl-row-btn gl-row-btn-danger" onClick={() => setConfirmDel(true)}><Svg name="trash" size={13} /> Delete</button>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </Collapse>
     </article>
   );
 }
@@ -323,10 +379,23 @@ export default function GoLive() {
   }, [activeTeamId]);
 
   useEffect(() => { setLoading(true); load(); }, [load]);
+  // Someone else may have reordered or ticked things off — pick that up when
+  // you come back to the tab.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [load]);
 
+  // The team's shared order (position); anything unplaced goes first,
+  // newest first.
   const pending = useMemo(
-    () => items.filter(i => i.status !== 'live')
-      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)),
+    () => items.filter(i => i.status !== 'live').sort((a, b) => {
+      const pa = a.position ?? -Infinity;
+      const pb = b.position ?? -Infinity;
+      if (pa !== pb) return pa - pb;
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    }),
     [items]);
   const live = useMemo(
     () => items.filter(i => i.status === 'live')
@@ -376,6 +445,8 @@ export default function GoLive() {
       page: draft.page.trim(),
       description: draft.description.trim(),
       files: draft.files.trim(),
+      // Top of the list: one above whatever's first now.
+      position: pending.length ? Math.min(...pending.map(i => i.position ?? 0)) - 1 : 0,
     }).select(SELECT).single();
     setAdding(false);
     if (error) { setFormError(error.message); return; }
@@ -438,6 +509,102 @@ export default function GoLive() {
     if (error) { setItems(prev => [item, ...prev]); showToast(`Couldn't delete: ${error.message}`); return; }
     showToast(`"${item.page}" deleted`, () => restoreDeleted(item));
   };
+
+  // ── Open / closed ──
+  // Everything starts collapsed; which cards you've opened is just yours.
+  const [openIds, setOpenIds] = useState(() => new Set());
+  const toggleOpen = (id) => setOpenIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  // ── Reorder ──
+  // Positions are stored on the rows, so the order is the same for the whole
+  // team. While dragging, the list follows a local id order (rows slide
+  // aside via useFlipRows); dropping writes the new positions.
+  const { rowRef, capture } = useFlipRows();
+  const [dragOrder, setDragOrder] = useState(null);
+  const dragOrderRef = useRef(null);
+  const [dragId, setDragId] = useState(null);
+  const [armedId, setArmedId] = useState(null);
+  // A filtered list has gaps in it, so "move above this one" would be
+  // ambiguous — reordering waits until the search is cleared.
+  const canReorder = !search.trim();
+
+  useEffect(() => {
+    const disarm = () => setArmedId(null);
+    window.addEventListener('pointerup', disarm);
+    return () => window.removeEventListener('pointerup', disarm);
+  }, []);
+
+  const persistOrder = async (ids) => {
+    const pos = new Map(ids.map((id, i) => [id, i + 1]));
+    const changed = pending.filter(i => i.position !== pos.get(i.id));
+    if (!changed.length) return;
+    setItems(prev => prev.map(i => (pos.has(i.id) ? { ...i, position: pos.get(i.id) } : i)));
+    const results = await Promise.all(changed.map(i =>
+      supabase.from('golive_items').update({ position: pos.get(i.id) }).eq('id', i.id)));
+    const failed = results.find(r => r.error);
+    if (failed) { showToast(`Couldn't save the new order: ${failed.error.message}`); load(); }
+  };
+
+  const setOrder = (ids) => { capture(); dragOrderRef.current = ids; setDragOrder(ids); };
+
+  const dragFor = (item) => ({
+    enabled: canReorder,
+    armed: armedId === item.id,
+    dragging: dragId === item.id,
+    arm: () => setArmedId(item.id),
+    disarm: () => setArmedId(null),
+    onDragStart: (e) => {
+      setDragId(item.id);
+      const ids = pending.map(i => i.id);
+      dragOrderRef.current = ids;
+      setDragOrder(ids);
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', item.id);
+    },
+    onDragOver: (e) => {
+      const moving = dragId;
+      if (!moving) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (moving === item.id) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height / 2;
+      const current = dragOrderRef.current || [];
+      const ids = current.filter(id => id !== moving);
+      const at = ids.indexOf(item.id) + (after ? 1 : 0);
+      ids.splice(at, 0, moving);
+      if (ids.join() !== current.join()) setOrder(ids);
+    },
+    onDragEnd: () => {
+      const ids = dragOrderRef.current;
+      dragOrderRef.current = null;
+      setDragId(null);
+      setArmedId(null);
+      setDragOrder(null);
+      if (ids) persistOrder(ids);
+    },
+    // Alt + ↑/↓ on the grip moves the card one place — reordering without
+    // a mouse.
+    onKey: (e) => {
+      if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || !canReorder) return;
+      e.preventDefault();
+      const ids = pending.map(i => i.id);
+      const from = ids.indexOf(item.id);
+      const to = from + (e.key === 'ArrowUp' ? -1 : 1);
+      if (to < 0 || to >= ids.length) return;
+      [ids[from], ids[to]] = [ids[to], ids[from]];
+      capture();
+      persistOrder(ids);
+    },
+  });
+
+  const shown = dragOrder
+    ? dragOrder.map(id => pending.find(i => i.id === id)).filter(Boolean)
+    : filtered;
 
   const copyAll = async () => {
     const text = pending.map(itemAsText).join('\n\n');
@@ -544,8 +711,19 @@ export default function GoLive() {
         </div>
       ) : (
         <div className="gl-list">
-          {filtered.map((item, i) => (
-            <ItemCard key={item.id} item={item} index={i} onSave={saveItem} onMarkLive={markLive} onDelete={remove} />
+          {shown.map((item, i) => (
+            <ItemCard
+              key={item.id}
+              item={item}
+              index={i}
+              open={openIds.has(item.id)}
+              onToggle={() => toggleOpen(item.id)}
+              onSave={saveItem}
+              onMarkLive={markLive}
+              onDelete={remove}
+              rowRef={rowRef(item.id)}
+              drag={dragFor(item)}
+            />
           ))}
         </div>
       )}

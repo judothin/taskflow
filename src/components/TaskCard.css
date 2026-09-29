@@ -48,9 +48,16 @@ body.has-bg-image .task-card:hover {
   box-shadow: 0 6px 18px -10px rgba(0,0,0,0.32);
 }
 
+/* The accent tint is laid OVER a full --bg-2 fill rather than blended into
+   it. As a gradient from --bg-2 to near-transparent, most of the card
+   ignored the glass-opacity setting (on a background image --bg-2 is the
+   glass colour at that opacity), so the focus cards didn't follow the
+   slider like every other surface. */
 .task-card-featured {
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
-  background: linear-gradient(135deg, var(--bg-2) 0%, color-mix(in srgb, var(--accent) 5%, transparent) 100%);
+  background:
+    linear-gradient(135deg, transparent 0%, color-mix(in srgb, var(--accent) 6%, transparent) 100%),
+    var(--bg-2);
 }
 
 /* Featured (focus-bar) cards wear an accent border + accent gradient as their
@@ -65,7 +72,9 @@ body.has-bg-image .task-card:hover {
    the glass hover so it wins the specificity tie in both modes. */
 .task-card-featured:hover,
 body.has-bg-image .task-card-featured:hover {
-  background: linear-gradient(135deg, var(--bg-2) 0%, color-mix(in srgb, var(--accent) 5%, transparent) 100%);
+  background:
+    linear-gradient(135deg, transparent 0%, color-mix(in srgb, var(--accent) 6%, transparent) 100%),
+    var(--bg-2);
   border-color: color-mix(in srgb, var(--accent) 42%, transparent);
   box-shadow: inset 0 0 16px -6px color-mix(in srgb, var(--accent) 22%, transparent);
 }
@@ -534,10 +543,11 @@ body.has-bg-image .task-card-featured:hover {
 
 /* ── Quick complete popover ────────────────────────────────── */
 .complete-popover {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  right: -1px;
-  top: auto;
+  /* Fixed to the viewport and placed by useAnchoredPosition, which also
+     caps its height to the window. Parked off-screen until it's placed. */
+  position: fixed;
+  top: 0;
+  left: -9999px;
   background: color-mix(in srgb, var(--bg-3) 82%, transparent);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
   backdrop-filter: blur(16px) saturate(1.4);
@@ -549,8 +559,9 @@ body.has-bg-image .task-card-featured:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 190px;
-  z-index: 50;
+  width: 200px;
+  z-index: 900;
+  overflow: hidden;
 }
 
 .complete-popover-label {
@@ -575,7 +586,10 @@ body.has-bg-image .task-card-featured:hover {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 160px;
+  max-height: 240px;
+  /* Shrinks first when the window is short, so Confirm is never cut off. */
+  min-height: 0;
+  flex: 0 1 auto;
   overflow-y: auto;
 }
 

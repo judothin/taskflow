@@ -76,6 +76,12 @@ const BG_CACHE_KEY = 'tf-bg-active';
 export function loadBgCache() {
   try { return JSON.parse(localStorage.getItem(BG_CACHE_KEY)); } catch { return null; }
 }
+export function clearBgCache(url) {
+  try {
+    const c = loadBgCache();
+    if (!url || (c && c.url === url)) localStorage.removeItem(BG_CACHE_KEY);
+  } catch {}
+}
 export function saveBgCache(url, data) {
   try { localStorage.setItem(BG_CACHE_KEY, JSON.stringify({ url, data })); } catch {}
 }

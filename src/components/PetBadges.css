@@ -86,6 +86,7 @@
 
 /* Selectable (Settings): earned badges toggle whether they show in the top bar */
 .pet-badge.selectable { cursor: pointer; }
+.pet-badge.selectable .rank-img { transition: opacity 0.18s ease; }
 .pet-badge.selectable:not(.shown) .rank-img { opacity: 0.5; }
 .pet-badge.selectable:hover .rank-img { opacity: 0.85; }
 .pet-badge.selectable.shown .rank-img { opacity: 1; }
@@ -106,9 +107,13 @@
 }
 .pet-badge-check.on { background: var(--accent); border-color: var(--accent); }
 
+/* No `to` frame on purpose: the pop ends at whatever the badge's own
+   opacity is — full for a shown badge, faded for an unselected one in
+   Settings. A hard-coded `opacity: 1` here held every badge at full
+   strength for the length of the pop, then dropped the unselected ones to
+   grey the moment it finished. */
 @keyframes rl-pop {
-  from { transform: scale(0.82); opacity: 0.4; }
-  to   { transform: scale(1); opacity: 1; }
+  from { transform: scale(0.82); opacity: 0; }
 }
 
 /* Widget strip: highest earned per track, centred. */

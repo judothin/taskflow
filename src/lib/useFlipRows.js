@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
-const DURATION = 240;
-const EASING = 'cubic-bezier(0.2, 0, 0, 1)';
+const DURATION = 320;
+const EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
 // Added to a row for the length of its slide. Rows cross each other on the way
 // past, so a list whose rows have a transparent background styles this class
@@ -13,7 +13,7 @@ const reduceMotion = () =>
   !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 // FLIP slide for a keyed list that reorders itself — a subtask sinking to the
-// bottom as it's checked off. Explicit rather than automatic: the caller calls
+// bottom as it's checked off, including across columns in a two-column list. Explicit rather than automatic: the caller calls
 // capture() immediately before the state change that reorders the rows, so the
 // hook reads layout only when something is actually about to move (a card's
 // checklist re-renders far more often than it reorders).
@@ -28,7 +28,7 @@ const reduceMotion = () =>
 export default function useFlipRows({ duration = DURATION } = {}) {
   const nodes   = useRef(new Map()); // id -> element
   const setters = useRef(new Map()); // id -> stable ref callback
-  const pending = useRef(null);      // id -> top, captured pre-reorder
+  const pending = useRef(null);      // id -> { left, top }, captured pre-reorder
   const timers  = useRef(new Map()); // id -> inline-style cleanup timeout
   const alive   = useRef(true);
 
@@ -45,9 +45,14 @@ export default function useFlipRows({ duration = DURATION } = {}) {
 
   const capture = useCallback(() => {
     if (reduceMotion()) return;
-    const tops = new Map();
-    nodes.current.forEach((el, id) => tops.set(id, el.getBoundingClientRect().top));
-    pending.current = tops;
+    // Both axes: in a two-column checklist a row can change columns at the
+    // same height, which a top-only measurement reads as "didn't move".
+    const rects = new Map();
+    nodes.current.forEach((el, id) => {
+      const r = el.getBoundingClientRect();
+      rects.set(id, { left: r.left, top: r.top });
+    });
+    pending.current = rects;
   }, []);
 
   // Runs after every render but bails on the first line unless capture() armed
@@ -61,8 +66,10 @@ export default function useFlipRows({ duration = DURATION } = {}) {
     nodes.current.forEach((el, id) => {
       const from = before.get(id);
       if (from == null) return; // row is new — it just appears
-      const delta = from - el.getBoundingClientRect().top;
-      if (Math.abs(delta) < 1) return;
+      const now = el.getBoundingClientRect();
+      const dx = from.left - now.left;
+      const dy = from.top - now.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
 
       // Invert: put the row back where it was. Neither checklist stylesheet
       // transitions `transform`, so this lands instantly with no transition to
@@ -70,11 +77,18 @@ export default function useFlipRows({ duration = DURATION } = {}) {
       // inline transition first stops it dead at its current spot.
       clearTimeout(timers.current.get(id));
       el.style.transition = '';
-      el.style.transform = `translateY(${delta}px)`;
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
       el.classList.add(SLIDING_CLASS);
       moved.push([id, el]);
     });
     if (!moved.length) return;
+
+    // Make the browser register the inverted position as a real style BEFORE
+    // it's released. Without this read, the release below lands in the same
+    // style pass as the inversion (a rAF runs before the frame is painted),
+    // the browser only ever sees the final position, and nothing slides —
+    // which is what happened: rows just jumped.
+    void moved[0][1].getBoundingClientRect();
 
     // Play: a frame later, release to the real position and let CSS interpolate.
     // Deliberately not cancelled on cleanup — this effect re-runs on every

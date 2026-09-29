@@ -792,29 +792,6 @@
   .dock-item-active { color: var(--accent); }
   .dock-item-active svg { stroke-width: 2.4; }
 
-  /* ── Log: the raised action ── */
-  .dock-item-primary .dock-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 16px;
-    color: #fff;
-    background: linear-gradient(145deg,
-      color-mix(in srgb, var(--accent) 88%, #fff),
-      var(--accent) 55%,
-      color-mix(in srgb, var(--accent) 80%, #000));
-    box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.25) inset,
-      0 6px 16px -4px color-mix(in srgb, var(--accent) 70%, transparent);
-  }
-  .dock-item-primary svg { width: 22px; height: 22px; stroke-width: 2.6; }
-  .dock-item-primary .dock-label { display: none; }
-  .dock-item-primary.dock-item-active .dock-icon {
-    box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.25) inset,
-      0 0 0 3px var(--accent-glow),
-      0 6px 16px -4px color-mix(in srgb, var(--accent) 70%, transparent);
-  }
-
   /* Unread badge → a compact dot anchored to the icon, not a trailing pill. */
   .mobile-dock .nav-unread-badge {
     position: absolute;

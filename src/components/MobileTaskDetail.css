@@ -120,7 +120,7 @@
 .mdetail-subtasks .st-card-item { min-height: 48px; padding: 8px 10px; }
 .mdetail-subtasks .st-card-item-label { font-size: 15px; line-height: 1.4; }
 .mdetail-subtasks .st-check { width: 22px; height: 22px; }
-.mdetail-subtasks .st-check:checked::after {
+.mdetail-subtasks .st-check::after {
   left: 6.5px; top: 2.5px; width: 5px; height: 11px;
 }
 

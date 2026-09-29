@@ -1,5 +1,7 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { unstable_HistoryRouter as HistoryRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { appHistory } from './lib/pageTransitions';
+import './PageTransitions.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TeamProvider, useTeam } from './context/TeamContext';
 import { PetProvider, usePets } from './context/PetContext';
@@ -176,8 +178,10 @@ function AppRoutes() {
 }
 
 export default function App() {
+  // Our own history rather than BrowserRouter's, so every navigation can run
+  // as a page transition — see lib/pageTransitions.js.
   return (
-    <BrowserRouter>
+    <HistoryRouter history={appHistory}>
       <ThemeProvider>
         <AuthProvider>
           <TeamProvider>
@@ -200,6 +204,6 @@ export default function App() {
           </TeamProvider>
         </AuthProvider>
       </ThemeProvider>
-    </BrowserRouter>
+    </HistoryRouter>
   );
 }

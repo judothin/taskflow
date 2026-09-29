@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useLayoutEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -20,6 +20,7 @@ import {
   DEFAULT_BG_TINT, MAX_BG_TINT_OPACITY,
 } from '../lib/themeColors';
 import { SETTINGS_SECTIONS as SECTIONS, resolveSettingsSection } from '../lib/settingsSections';
+import { sectionTransition } from '../lib/pageTransitions';
 import './Dashboard.css';
 import './Auth.css';
 
@@ -88,7 +89,7 @@ export default function Settings() {
   const {
     getColor, setColor, setColorValues, resetColor, resetAll, isCustom, colors,
     backgrounds, maxBackgrounds, setBackground, uploadBackground, deleteBackground,
-    savedThemes, saveTheme, applyTheme, deleteTheme, themesUsingBackground, mobileColors,
+    savedThemes, saveTheme, applyTheme, deleteTheme, backgroundUsage, mobileColors,
   } = useThemeCustomization();
   const mobileOverrideCount = Object.keys(mobileColors || {}).length;
   const avatarRef = useRef();
@@ -101,10 +102,50 @@ export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const section = resolveSettingsSection(searchParams.get('section'));
   const activeSection = useMemo(() => SECTIONS.find(s => s.id === section), [section]);
+
+  // One highlight that slides to the active tab, rather than each tab
+  // switching its own background. Measured from the active button so it
+  // works for the vertical rail and the narrow-screen horizontal strip alike.
+  const navRef = useRef(null);
+  const [pill, setPill] = useState(null);
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return undefined;
+    const measure = () => {
+      const el = nav.querySelector('.settings-nav-item-active');
+      if (!el) return;
+      setPill(p => ({
+        x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight,
+        // Only animate once it has a position to animate from.
+        animate: !!p,
+      }));
+      // On the horizontal strip, bring an off-screen tab into view.
+      if (nav.scrollWidth > nav.clientWidth) {
+        const left = el.offsetLeft - nav.scrollLeft;
+        if (left < 0 || left + el.offsetWidth > nav.clientWidth) {
+          nav.scrollTo({ left: el.offsetLeft - 16, behavior: 'smooth' });
+        }
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(nav);
+    return () => ro.disconnect();
+  }, [section]);
+  // Switching sections crossfades the panel (a view transition — see
+  // sectionTransition). Where that isn't available the new panel fades in
+  // instead, using fallbackDir.
+  const fallbackDir = useRef(null);
   const goTo = (id) => {
+    if (id === section) return;
+    const from = SECTIONS.findIndex(s => s.id === section);
+    const to = SECTIONS.findIndex(s => s.id === id);
+    const dir = to > from ? 'down' : 'up';
     const next = new URLSearchParams(searchParams);
     next.set('section', id);
-    setSearchParams(next, { replace: true });
+    const change = () => setSearchParams(next, { replace: true });
+    fallbackDir.current = null;
+    if (!sectionTransition(dir, change)) fallbackDir.current = dir;
   };
 
   const handleToggleGamification = async () => {
@@ -119,7 +160,9 @@ export default function Settings() {
   const [bgError, setBgError]   = useState('');
   const [bgBusy, setBgBusy]     = useState(false);
   const [themeName, setThemeName] = useState('');
-  const [confirmDeleteBg, setConfirmDeleteBg] = useState(null); // { bg, themes }
+  const [confirmDeleteBg, setConfirmDeleteBg] = useState(null); // { bg, desktop, phone, themes }
+  const [deletingBg, setDeletingBg] = useState(false);
+  const [deleteBgError, setDeleteBgError] = useState('');
 
   const handleBgUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -134,10 +177,24 @@ export default function Settings() {
     finally { setBgBusy(false); }
   };
 
+  // Deleting is permanent (the file goes from storage too), so it always
+  // asks — and says what else will change.
   const requestDeleteBg = (bg) => {
-    const themes = themesUsingBackground(bg.url);
-    if (themes.length) setConfirmDeleteBg({ bg, themes });
-    else deleteBackground(bg);
+    setDeleteBgError('');
+    setConfirmDeleteBg({ bg, ...backgroundUsage(bg.url) });
+  };
+  const closeDeleteBg = () => { if (!deletingBg) setConfirmDeleteBg(null); };
+  const confirmDeleteBackground = async () => {
+    setDeletingBg(true);
+    setDeleteBgError('');
+    try {
+      await deleteBackground(confirmDeleteBg.bg);
+      setConfirmDeleteBg(null);
+    } catch (err) {
+      setDeleteBgError(err?.message || "Couldn't delete it. Try again.");
+    } finally {
+      setDeletingBg(false);
+    }
   };
 
   const handleSaveTheme = async () => {
@@ -303,7 +360,14 @@ export default function Settings() {
       <div className="settings-shell">
 
         {/* ── Section nav ───────────────────────────────────── */}
-        <nav className="settings-nav" aria-label="Settings sections">
+        <nav ref={navRef} className={`settings-nav ${pill ? 'settings-nav-has-pill' : ''}`} aria-label="Settings sections">
+          {pill && (
+            <span
+              className={`settings-nav-pill ${pill.animate ? 'settings-nav-pill-anim' : ''}`}
+              style={{ width: pill.w, height: pill.h, transform: `translate(${pill.x}px, ${pill.y}px)` }}
+              aria-hidden="true"
+            />
+          )}
           {SECTIONS.map(s => (
             <button
               key={s.id}
@@ -319,7 +383,10 @@ export default function Settings() {
         </nav>
 
         {/* ── Active section ────────────────────────────────── */}
-        <div className="settings-panel">
+        <div
+          key={section}
+          className={`settings-panel ${fallbackDir.current ? 'settings-panel-fade' : ''}`}
+        >
           <header className="settings-panel-head">
             <h1 className="settings-panel-title">{activeSection.label}</h1>
             <p className="settings-panel-sub">{activeSection.blurb}</p>
@@ -729,28 +796,46 @@ export default function Settings() {
         </div>
       </div>
 
-      {confirmDeleteBg && (
+      {confirmDeleteBg && (() => {
+        const { bg, desktop, phone, themes } = confirmDeleteBg;
+        const inUse = desktop && phone ? 'your current background on desktop and your phone'
+          : desktop ? 'your current desktop background'
+          : phone ? 'your current phone background' : null;
+        return (
         <ModalPortal>
-        <div className="modal-overlay" onClick={() => setConfirmDeleteBg(null)}>
+        <div className="modal-overlay" onClick={closeDeleteBg}>
           <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header"><h2 className="settings-card-title">Delete this background?</h2></div>
             <div className="modal-body">
+              <div className="bg-delete-preview" style={{ backgroundImage: `url("${bg.url}")` }} />
               <p style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.6 }}>
-                It's used by {confirmDeleteBg.themes.length} saved theme{confirmDeleteBg.themes.length !== 1 ? 's' : ''}:{' '}
-                <strong>{confirmDeleteBg.themes.map(t => t.name).join(', ')}</strong>.
+                The image will be deleted from your account for good. This can't be undone.
               </p>
-              <p style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.6 }}>
-                Those themes keep the image on this device from cache. If the cache is cleared, they'll fall back to a solid color.
-              </p>
+              {(inUse || themes.length > 0) && (
+                <ul className="bg-delete-effects">
+                  {inUse && <li>It's {inUse} — that will switch to a plain background.</li>}
+                  {themes.length > 0 && (
+                    <li>
+                      {themes.length === 1 ? 'The saved theme' : `${themes.length} saved themes`}{' '}
+                      <strong>{themes.map(t => t.name).join(', ')}</strong>{' '}
+                      {themes.length === 1 ? 'uses' : 'use'} it — {themes.length === 1 ? 'it keeps' : 'they keep'} {themes.length === 1 ? 'its' : 'their'} colors, without the image.
+                    </li>
+                  )}
+                </ul>
+              )}
+              {deleteBgError && <div className="error-msg" style={{ marginTop: 12 }}>⚠ {deleteBgError}</div>}
             </div>
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setConfirmDeleteBg(null)}>Cancel</button>
-              <button className="btn btn-danger" onClick={() => { deleteBackground(confirmDeleteBg.bg); setConfirmDeleteBg(null); }}>Delete anyway</button>
+              <button className="btn btn-secondary" onClick={closeDeleteBg} disabled={deletingBg}>Cancel</button>
+              <button className="btn btn-danger" onClick={confirmDeleteBackground} disabled={deletingBg}>
+                {deletingBg ? 'Deleting…' : 'Delete'}
+              </button>
             </div>
           </div>
         </div>
         </ModalPortal>
-      )}
+        );
+      })()}
 
       {/* Crop modal — shown after file is selected */}
       {cropSrc && (

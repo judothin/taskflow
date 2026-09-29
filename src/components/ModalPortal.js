@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import useSheetGestures from './SheetGestures';
 import useIsPhone from '../lib/useIsPhone';
@@ -56,8 +56,55 @@ function unlockScroll() {
  *
  * Also freezes the page behind it — see the scroll lock above.
  */
-export default function ModalPortal({ children, onDismiss }) {
+// ── Exit animation ────────────────────────────────────────────
+// Modals are mounted with `{open && <ModalPortal>…}`, so on close React
+// removes them in one go and there's nothing left to animate — they just
+// vanished. Rather than giving every modal in the app its own closing state,
+// the portal leaves a frozen copy of itself behind: an inert clone of the DOM
+// it was showing, which plays the exit (index.css, .modal-portal-exit) and
+// then removes itself. The clone can't be clicked and isn't read out.
+//
+// Two timing details make or break this:
+//   - The copy is taken in a LAYOUT effect's cleanup. React empties the
+//     portal before plain effect cleanups run, so copying there found nothing
+//     and the exit silently never played.
+//   - It's only shown once the portal is really gone. In development React
+//     mounts everything twice (StrictMode), and the throwaway first unmount
+//     used to play a close animation over the modal as it opened — the
+//     stutter on open. If the portal is back by the time the copy would
+//     show, it was one of those, and the copy is dropped.
+const EXIT_MS = 200;
+const reducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+function snapshot(el) {
+  if (!el.firstChild || reducedMotion()) return null;
+  const clone = el.cloneNode(true);
+  // A clone starts scrolled to the top. Note where long modals were, to put
+  // them back once the clone is on the page (a detached node can't scroll).
+  const scrolls = [];
+  el.querySelectorAll('*').forEach((node, i) => { if (node.scrollTop) scrolls.push([i, node.scrollTop]); });
+  return { clone, scrolls };
+}
+
+function playExit(snap) {
+  const { clone, scrolls } = snap;
+  clone.classList.add('modal-portal-exit');
+  clone.setAttribute('aria-hidden', 'true');
+  clone.setAttribute('inert', '');
+  document.body.appendChild(clone);
+  if (scrolls.length) {
+    const nodes = clone.querySelectorAll('*');
+    scrolls.forEach(([i, top]) => { if (nodes[i]) nodes[i].scrollTop = top; });
+  }
+  setTimeout(() => clone.remove(), EXIT_MS + 40);
+}
+
+// `animateExit={false}` for anything that animates its own close (search).
+export default function ModalPortal({ children, onDismiss, animateExit = true }) {
   const elRef = useRef(null);
+  const animateExitRef = useRef(animateExit);
+  animateExitRef.current = animateExit;
   // Phones only: a sheet you can push back down. Opt-in per modal, because
   // only the caller knows how to close itself.
   useSheetGestures(elRef, onDismiss, useIsPhone());
@@ -67,6 +114,13 @@ export default function ModalPortal({ children, onDismiss }) {
     elRef.current.className = 'modal-portal';
   }
 
+  // Copy the modal while it's still there (see "Exit animation" above).
+  const exitSnap = useRef(null);
+  useLayoutEffect(() => {
+    const el = elRef.current;
+    return () => { exitSnap.current = animateExitRef.current ? snapshot(el) : null; };
+  }, []);
+
   useEffect(() => {
     const el = elRef.current;
     document.body.appendChild(el);
@@ -74,6 +128,11 @@ export default function ModalPortal({ children, onDismiss }) {
     return () => {
       unlockScroll();
       if (el.parentNode) el.parentNode.removeChild(el);
+      const snap = exitSnap.current;
+      exitSnap.current = null;
+      // After the current commit: a StrictMode re-mount will have put the
+      // portal back by then, and there's nothing to animate.
+      if (snap) queueMicrotask(() => { if (!el.isConnected) playExit(snap); });
     };
   }, []);
 

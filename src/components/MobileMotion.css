@@ -100,31 +100,24 @@
      that component for why the CSS-only approaches didn't hold
      up. All this adds is the content fading in behind the
      opening, so the panel doesn't arrive fully drawn at 0 height. */
-  /* The content fades in over the FIRST half of the opening, not alongside it.
-     Matching the two durations left the checklist washed out while the box was
-     already most of the way open, which read as slow. */
-  .collapse-inner,
-  .dock-indicator {
+  /* The content fades and settles in over the first part of the opening,
+     and fades out quicker than the box closes — so it's gone before the
+     panel is short enough to crop it. */
+  .collapse-inner {
     opacity: 0;
-    transition: opacity 120ms linear;
+    transform: translateY(-6px);
+    transition: opacity 140ms ease-in, transform 200ms ease-in;
   }
-  .collapse-open > .collapse-inner { opacity: 1; }
+  .collapse-open > .collapse-inner {
+    opacity: 1;
+    transform: none;
+    transition: opacity 220ms ease-out 40ms, transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
 
   .mtask-chevron { transition: transform var(--m-base) var(--m-out); }
 
-  /* ── Ticking a subtask off ──────────────────────────────────
-     A small pop on the box itself. This is the single most
-     repeated action on the phone, so it's worth a beat of
-     feedback. */
-  .st-check { transition: transform var(--m-base) var(--m-spring),
-                          background var(--m-fast) linear,
-                          border-color var(--m-fast) linear; }
-  .st-check:active { transform: scale(0.85); }
-  .st-check:checked { animation: m-tick var(--m-base) var(--m-spring); }
-  @keyframes m-tick {
-    0%   { transform: scale(0.8); }
-    100% { transform: scale(1); }
-  }
+  /* Ticking a subtask off (press, fill, tick, pop): Subtasks.css,
+     for every screen size. */
 
   /* ── Bottom sheets ──────────────────────────────────────────
      The overlay fades while the sheet rises, so the background

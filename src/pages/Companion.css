@@ -39,8 +39,8 @@
 
 .companion-streak-card {
   display: flex;
-  align-items: center;
-  gap: 16px;
+  flex-direction: column;
+  gap: 12px;
 }
 .companion-streak-text { min-width: 0; }
 .companion-streak-days {

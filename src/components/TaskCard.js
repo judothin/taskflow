@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { format, isSameYear } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -12,6 +13,7 @@ import AnimatedPopover from './AnimatedPopover';
 import useIsPhone from '../lib/useIsPhone';
 import DatePicker from './DatePicker';
 import ModalPortal from './ModalPortal';
+import useAnchoredPosition from '../lib/useAnchoredPosition';
 
 const STATUS_MAP = {
   critical:    { label: 'Critical',    cls: 'badge-critical',   cardCls: 'task-card-critical' },
@@ -66,6 +68,11 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
   const [editingPage, setEditingPage]     = useState(false);
   const [pageDraft, setPageDraft]         = useState('');
   const popoverRef                        = useRef(null);
+  const completeBtnRef                    = useRef(null);
+  // The Completed-by popover is portalled to <body> and placed next to the
+  // Quick Complete button, kept on screen (it used to hang off the top of the
+  // whole action column, often out of frame).
+  useAnchoredPosition(confirmComplete, completeBtnRef, popoverRef);
   const projectPopoverRef                 = useRef(null);
   const assigneePopoverRef                = useRef(null);
   const roiRef                            = useRef(null);
@@ -89,6 +96,8 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
   useEffect(() => {
     if (!confirmComplete) return;
     const handler = (e) => {
+      // The button toggles it itself — closing here too would reopen it.
+      if (completeBtnRef.current?.contains(e.target)) return;
       if (popoverRef.current && !popoverRef.current.contains(e.target)) {
         setConfirmComplete(false);
         setCompletedBy([]);
@@ -572,8 +581,10 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
         {!selectMode && (
         <div className="task-card-actions" style={{ position: 'relative' }}>
 
-          {/* Complete popover */}
-          <AnimatedPopover open={confirmComplete} className="complete-popover" ref={popoverRef}>
+          {/* Complete popover — in a portal so no card can clip it, positioned
+              by useAnchoredPosition. */}
+          {createPortal(
+          <AnimatedPopover open={confirmComplete} className="complete-popover" ref={popoverRef} onClick={(e) => e.stopPropagation()}>
               <p className="complete-popover-label">
                 Completed by
                 {completedBy.length > 0 && <span className="complete-popover-count">{completedBy.length}</span>}
@@ -625,7 +636,8 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
                   Cancel
                 </button>
               </div>
-          </AnimatedPopover>
+          </AnimatedPopover>,
+          document.body)}
 
           {/* Open full view */}
           <button
@@ -657,6 +669,7 @@ export default function TaskCard({ task, onEdit, onDeleted, featured = false, us
           {/* Quick Complete — the one write the companion keeps */}
           {canComplete && (
             <button
+              ref={completeBtnRef}
               className={`task-action-btn ${confirmComplete ? 'task-action-btn-active' : ''}`}
               data-tooltip="Quick Complete"
               onClick={() => { setConfirmComplete(v => !v); setCompletedBy([]); setConfirmDelete(false); }}

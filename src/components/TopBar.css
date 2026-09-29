@@ -26,6 +26,8 @@
   min-width: 0;
   flex-shrink: 1;
 }
+/* The streak bar after the page name, set off by a hairline. */
+.app-topbar-left > .sb { padding-left: 14px; border-left: 1px solid var(--border); height: 22px; }
 
 /* Breadcrumb / page title (left side) */
 .app-topbar-crumb {
@@ -43,6 +45,7 @@
 }
 .app-topbar-crumb-sep { color: var(--text-dim); opacity: 0.7; flex-shrink: 0; }
 .app-topbar-crumb-current {
+  animation: tb-swap-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
   font-size: 16px;
   font-weight: 700;
   color: var(--text);
@@ -67,6 +70,26 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+/* A page's buttons arrive with it (and when they change — the dashboard's
+   edit controls), staggered left to right. Only on mount: the same buttons
+   re-rendering don't replay it. */
+.app-topbar-actions > * {
+  animation: tb-swap-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.app-topbar-actions > :nth-child(2) { animation-delay: 30ms; }
+.app-topbar-actions > :nth-child(3) { animation-delay: 60ms; }
+.app-topbar-actions > :nth-child(n + 4) { animation-delay: 90ms; }
+
+/* Rise, fade and un-blur — the blur makes the handover read as the new
+   label coming into focus rather than text popping in. */
+@keyframes tb-swap-in {
+  from { opacity: 0; transform: translateY(6px); filter: blur(3px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-topbar-crumb-current,
+  .app-topbar-actions > * { animation: none; }
 }
 /* A subtle divider between page actions and the status cluster */
 .app-topbar-actions::after {

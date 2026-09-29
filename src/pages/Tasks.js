@@ -7,7 +7,6 @@ import TaskCard from '../components/TaskCard';
 import TaskForm from '../components/TaskForm';
 import BulkActionBar from '../components/BulkActionBar';
 import useBulkSelect from '../lib/useBulkSelect';
-import QuickLogModal from './QuickLog';
 import '../components/TaskCard.css';
 import './Dashboard.css';
 import './Tasks.css';
@@ -35,7 +34,6 @@ export default function Tasks() {
   const [sortBy, setSortBy] = useState('date_desc');
   const [editTask, setEditTask] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [showQuickLog, setShowQuickLog] = useState(false);
   const { selectMode, selectedIds, toggle, clear, toggleAll, toggleSelectMode, exitSelectMode } = useBulkSelect();
 
   const fetchData = useCallback(async () => {
@@ -53,6 +51,12 @@ export default function Tasks() {
   }, [activeTeamId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  // Quick Log and new tasks from the top bar menu / shortcuts are app-wide
+  // forms, so they announce saves rather than calling back into this page.
+  useEffect(() => {
+    window.addEventListener('tasks-changed', fetchData);
+    return () => window.removeEventListener('tasks-changed', fetchData);
+  }, [fetchData]);
 
   const filtered = tasks
     .filter(t => {
@@ -101,18 +105,8 @@ export default function Tasks() {
               {filtered.every(t => selectedIds.has(t.id)) ? 'Clear all' : 'Select all'}
             </button>
           )}
-          <button className="btn btn-secondary" onClick={() => setShowQuickLog(true)}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
-              <polyline points="22 4 12 14.01 9 11.01"/>
-            </svg>
-            Quick Log
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            New Task
+          <button className="btn btn-primary btn-icon-only" onClick={() => setShowCreate(true)} title="New task (N)" aria-label="New task">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           </button>
       </TopBarPortal>
 
@@ -193,9 +187,6 @@ export default function Tasks() {
       )}
       {editTask && (
         <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={fetchData} users={users} projects={projects} />
-      )}
-      {showQuickLog && (
-        <QuickLogModal onClose={() => setShowQuickLog(false)} />
       )}
     </div>
   );

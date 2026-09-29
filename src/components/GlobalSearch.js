@@ -39,6 +39,9 @@ function Icon({ type }) {
   );
 }
 
+// Keep in step with the exit animations in GlobalSearch.css.
+const CLOSE_MS = 170;
+
 export default function GlobalSearch() {
   const navigate = useNavigate();
   const { activeTeamId } = useTeam();
@@ -50,12 +53,32 @@ export default function GlobalSearch() {
   const inputRef = useRef(null);
   const listRef = useRef(null);
 
-  const close = useCallback(() => { setOpen(false); setQuery(''); setActiveIdx(0); }, []);
+  // Closing plays the exit animation first (GlobalSearch.css) and only then
+  // unmounts, so the palette leaves the way it arrived instead of vanishing.
+  // The query is cleared after it's gone, so the text doesn't blank mid-fade.
+  const [closing, setClosing] = useState(false);
+  const closeTimer = useRef(null);
+  const close = useCallback(() => {
+    if (closeTimer.current) return;
+    setClosing(true);
+    closeTimer.current = setTimeout(() => {
+      closeTimer.current = null;
+      setOpen(false);
+      setClosing(false);
+      setQuery('');
+      setActiveIdx(0);
+    }, CLOSE_MS);
+  }, []);
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
 
   // ── Open trigger: the custom open event (fired by the "/" shortcut and the
-  //    sidebar search button). ──
+  //    sidebar search button). Opening mid-close cancels the close. ──
   useEffect(() => {
-    const onOpen = () => setOpen(true);
+    const onOpen = () => {
+      if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+      setClosing(false);
+      setOpen(true);
+    };
     window.addEventListener(OPEN_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_EVENT, onOpen);
   }, []);
@@ -187,8 +210,8 @@ export default function GlobalSearch() {
   let runningIdx = -1;
 
   return (
-    <ModalPortal>
-      <div className="gs-overlay" onMouseDown={close}>
+    <ModalPortal animateExit={false}>
+      <div className={`gs-overlay ${closing ? 'gs-closing' : ''}`} onMouseDown={close}>
         <div className="gs-panel" onMouseDown={e => e.stopPropagation()} role="dialog" aria-label="Search">
           <div className="gs-input-row">
             <svg className="gs-input-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

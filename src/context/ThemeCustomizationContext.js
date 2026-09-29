@@ -4,7 +4,7 @@ import { useTheme } from './ThemeContext';
 import { supabase } from '../lib/supabase';
 import {
   applyThemeColors, clearThemeColors, effectiveColor, loadThemeCache, saveThemeCache,
-  cacheBackgroundImage, resolveForDevice,
+  cacheBackgroundImage, resolveForDevice, clearBgCache,
 } from '../lib/themeColors';
 import useIsPhone from '../lib/useIsPhone';
 import { fetchUserPrefs, saveUserPrefs, saveUserPrefsDebounced } from '../lib/userPrefs';
@@ -180,18 +180,63 @@ export function ThemeCustomizationProvider({ children }) {
     return url;
   }, [uid, backgrounds.length, refreshBackgrounds]);
 
+  // Deleting a background removes it for good: the library row, the file in
+  // storage, this device's cached copy, and every reference to it — the
+  // current theme (desktop and the phone override) and any saved theme — so
+  // nothing is left pointing at an image that no longer exists. Settings
+  // confirms first and lists what will change (see backgroundUsage).
   const deleteBackground = useCallback(async (bg) => {
     if (!uid || !bg) return;
-    await supabase.from('user_backgrounds').delete().eq('id', bg.id);
-    // Keep the storage object AND the local data-URI cache so any theme still
-    // referencing it keeps working on this device (until cache is cleared).
-    await refreshBackgrounds();
-  }, [uid, refreshBackgrounds]);
+    const url = bg.url;
 
-  const themesUsingBackground = useCallback(
-    (url) => savedThemes.filter(t => t.colors && t.colors.background === url),
-    [savedThemes]
-  );
+    const { error } = await supabase.from('user_backgrounds').delete().eq('id', bg.id);
+    if (error) throw error;
+
+    // Storage path from the public URL: …/object/public/task-images/<path>.
+    // Only removed if no other library row still uses the same file.
+    const marker = '/object/public/task-images/';
+    const at = url.indexOf(marker);
+    if (at !== -1) {
+      const { data: others } = await supabase.from('user_backgrounds')
+        .select('id').eq('user_id', uid).eq('url', url).limit(1);
+      if (!others || !others.length) {
+        const path = decodeURIComponent(url.slice(at + marker.length).split('?')[0]);
+        await supabase.storage.from('task-images').remove([path]);
+      }
+    }
+
+    // The current look. The phone override is dropped rather than set to
+    // "none", so the phone goes back to following desktop.
+    const cur = colorsRef.current;
+    let next = cur;
+    if (cur.background === url) { next = { ...next }; delete next.background; }
+    if (cur.mobile && cur.mobile.background === url) {
+      const mobile = { ...cur.mobile };
+      delete mobile.background;
+      next = { ...next, mobile };
+      if (!Object.keys(mobile).length) delete next.mobile;
+    }
+    if (next !== cur) commit(next, true);
+
+    // Saved themes that used it keep their colours, minus the image.
+    const affected = savedThemes.filter(t => t.colors && t.colors.background === url);
+    await Promise.all(affected.map(t => {
+      const colors = { ...t.colors };
+      delete colors.background;
+      return supabase.from('user_themes').update({ colors }).eq('id', t.id);
+    }));
+
+    clearBgCache(url);
+    await Promise.all([refreshBackgrounds(), affected.length ? refreshThemes() : null]);
+  }, [uid, commit, savedThemes, refreshBackgrounds, refreshThemes]);
+
+  // What deleting a background would touch, for the confirm dialog.
+  const backgroundUsage = useCallback((url) => ({
+    desktop: colors.background === url,
+    phone: !!(colors.mobile && colors.mobile.background === url),
+    themes: savedThemes.filter(t => t.colors && t.colors.background === url),
+  }), [colors, savedThemes]);
+
 
   // ── Saved themes ─────────────────────────────────────────
   const saveTheme = useCallback(async (name) => {
@@ -233,7 +278,7 @@ export function ThemeCustomizationProvider({ children }) {
     <Ctx.Provider value={{
       colors, setColor, setColorValues, resetColor, resetAll, getColor, isCustom,
       backgrounds, maxBackgrounds: MAX_BACKGROUNDS, setBackground, uploadBackground, deleteBackground,
-      savedThemes, saveTheme, applyTheme, deleteTheme, themesUsingBackground,
+      savedThemes, saveTheme, applyTheme, deleteTheme, backgroundUsage,
       activeColors, mobileColors, phoneColors, setMobileValues, resetMobileKey, resetMobileAll,
       getPhoneColor, isMobileCustom, applyThemeToMobile,
     }}>

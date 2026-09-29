@@ -1,0 +1,25 @@
+/* ── Task form ──────────────────────────────────────────────
+   Wide enough to fill in without scrolling: the content (page, feedback,
+   subtasks) gets a big main column, and the filing details sit in a
+   sidebar beside it. */
+.modal.tf-modal { max-width: min(1240px, 96vw); max-height: 94dvh; }
+
+.tf-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  align-items: start;
+}
+.tf-side {
+  padding-left: 24px;
+  border-left: 1px solid var(--border);
+}
+
+/* One column below this: both columns dissolve into a single stack, and the
+   status / queue / batch group moves back to the top, where it was. */
+@media (max-width: 960px) {
+  .tf-layout { display: flex; flex-direction: column; gap: 12px; }
+  .tf-main, .tf-side { display: contents; }
+  .tf-top { order: -1; }
+  .tf-side { padding-left: 0; border-left: none; }
+}

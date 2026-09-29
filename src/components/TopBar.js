@@ -8,11 +8,11 @@ import { NAV_ITEMS } from '../lib/navLayout';
 import { useHeaderActions } from '../context/HeaderActionsContext';
 import { useStreak } from '../context/StreakContext';
 import { useSpecialBadges } from '../context/SpecialBadgesContext';
-import StreakFlame from './StreakFlame';
-import QuickContext from './QuickContext';
+import StreakBar from './StreakBar';
+import TopBarMenu from './TopBarMenu';
 import useIsPhone from '../lib/useIsPhone';
 import RankBadges from './PetBadges';
-import UserXpBar from './UserXpBar';
+import LevelRing from './LevelRing';
 import { DashboardClock } from './dashboardWidgets';
 import './TopBar.css';
 
@@ -45,7 +45,7 @@ export default function TopBar() {
   const { pathname } = useLocation();
   const isPhone = useIsPhone();
   const headerActions = useHeaderActions();
-  const { days: streakDays, paused: streakPaused, teamId: streakTeamId } = useStreak();
+  const { days: streakDays, best: streakBest, paused: streakPaused, teamId: streakTeamId } = useStreak();
   const { specialFlags } = useSpecialBadges();
   const [shown, setShown] = useState(null);
 
@@ -65,17 +65,19 @@ export default function TopBar() {
   return (
     <div className="app-topbar">
       <div className="app-topbar-left">
-        {/* On a phone the flame lives in the app header instead (Layout). */}
-        {!isPhone && <StreakFlame days={streakDays} paused={streakPaused} teamId={streakTeamId} size={46} />}
         <div className="app-topbar-crumb">
           <span className="app-topbar-crumb-root">TaskFlow</span>
           <svg className="app-topbar-crumb-sep" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-          <span className="app-topbar-crumb-current">{routeTitle(pathname)}</span>
+          {/* Keyed by title so a new page's name animates in (TopBar.css). */}
+          <span key={routeTitle(pathname)} className="app-topbar-crumb-current">{routeTitle(pathname)}</span>
         </div>
+        {/* After the page name, so the title reads first. On a phone the
+            streak is the ring in the app header instead (Layout). */}
+        {!isPhone && (
+          <StreakBar key={streakTeamId} days={streakDays} best={streakBest} paused={streakPaused} />
+        )}
       </div>
       <div className="app-topbar-right">
-        {/* Phone: the dock's Context button opens it (mounted in Layout). */}
-        {!isPhone && <QuickContext />}
         {headerActions && <div className="app-topbar-actions">{headerActions}</div>}
         <div className="app-topbar-cluster">
           {gamificationEnabled && (
@@ -87,11 +89,14 @@ export default function TopBar() {
             compact size={46} shown={shown}
           />
           )}
-          {/* Phone: level is the ring in the header, and the phone's own
+          {/* Phone: the level ring is in the app header, and the phone's own
               status bar already shows the time. */}
-          {gamificationEnabled && !isPhone && <UserXpBar />}
+          {gamificationEnabled && !isPhone && <LevelRing size={34} />}
           {!isPhone && <DashboardClock showDate={display.date} showTime={display.time} />}
         </div>
+        {/* Quick Log, Save context and the page's own extras. The phone has
+            the dock for those instead. */}
+        {!isPhone && <TopBarMenu />}
       </div>
     </div>
   );

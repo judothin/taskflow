@@ -8,25 +8,21 @@ import { supabase } from './supabase';
 export const STREAK_CHANGED = 'streak-changed';
 
 // Highest threshold first — streakTier() returns the first match.
-// `color` tints the day count; `glow` is the pulsing halo behind the flame.
-// `countTop` = where the day number sits vertically on that flame (% from the
-// top). Flames get taller/differently-shaped per tier, so the readable "body"
-// spot moves — tuned per asset rather than a single centered value.
+// `c1` → `c2` is the streak bar's gradient while you're working back up to
+// your best (components/StreakBar.js). On a record run the bar takes a new
+// colour each day instead, so these only apply below your best.
 export const STREAK_TIERS = [
-  { min: 22, key: 'pearl',         color: '#e9edf5', glow: '#a855f7', glow2: '#60a5fa', label: 'Pearl', countTop: 66 },
-  { min: 16, key: 'greentopurple', color: '#c084fc', glow: '#a855f7', label: 'Ascendant', countTop: 64 },
-  { min: 11, key: 'blue',          color: '#60a5fa', glow: '#3b82f6', label: 'Sapphire',  countTop: 63 },
-  { min: 6,  key: 'red',           color: '#f87171', glow: '#ef4444', label: 'Crimson',   countTop: 62 },
-  { min: 4,  key: 'orange',        color: '#fb923c', glow: '#f97316', label: 'Amber',     countTop: 60 },
-  { min: 1,  key: 'yellow',        color: '#fde047', glow: '#facc15', label: 'Kindling',  countTop: 58 },
+  { min: 21, key: 'aurora', label: 'Aurora', c1: '#a855f7', c2: '#2dd4bf' },
+  { min: 11, key: 'teal',   label: 'Teal',   c1: '#14b8a6', c2: '#5eead4' },
+  { min: 7,  key: 'blaze',  label: 'Blaze',  c1: '#ef4444', c2: '#fb923c' },
+  { min: 4,  key: 'silver', label: 'Silver', c1: '#9aa4b2', c2: '#eef1f5' },
+  { min: 1,  key: 'bronze', label: 'Bronze', c1: '#a0612b', c2: '#e3a36a' },
 ];
 
 export function streakTier(days) {
   if (!days || days < 1) return null;
   return STREAK_TIERS.find(t => days >= t.min) || null;
 }
-
-export const streakImg = (key) => `/streak-flames/${key}f-Photoroom.png`;
 
 // Caller's LOCAL date as YYYY-MM-DD, so day boundaries match what they see.
 function localToday() {

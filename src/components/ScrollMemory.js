@@ -50,8 +50,12 @@ export default function ScrollMemory() {
     }
     const y = readAll()[pathname];
     if (typeof y !== 'number') return;
-    // Wait for the incoming screen to have laid out, or there's nothing to
-    // scroll to yet. Two frames covers the mount plus its first data paint.
+    // Right away when the screen is already tall enough — that lands inside
+    // the page transition, so the arriving page is captured at the right
+    // spot. Otherwise wait for it to lay out: two frames covers the mount
+    // plus its first data paint.
+    window.scrollTo(0, y);
+    if (Math.abs(window.scrollY - y) < 2) return;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => window.scrollTo(0, y));
     });
