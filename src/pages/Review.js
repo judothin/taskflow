@@ -59,6 +59,7 @@ const ICONS = {
   users: <><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75" /></>,
   upload: <><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></>,
   refresh: <><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" /></>,
+  text: <><line x1="17" y1="10" x2="3" y2="10" /><line x1="21" y1="6" x2="3" y2="6" /><line x1="21" y1="14" x2="3" y2="14" /><line x1="17" y1="18" x2="3" y2="18" /></>,
   list: <><path d="M9 11l3 3L22 4" /><line x1="3" y1="6" x2="5" y2="6" /><line x1="3" y1="12" x2="5" y2="12" /><line x1="3" y1="18" x2="5" y2="18" /><line x1="9" y1="18" x2="17" y2="18" /></>,
 };
 const Svg = ({ name, size = 15, width = 2 }) => (
@@ -308,7 +309,7 @@ function ComposerModal({ post, teamId, members, defaults, onClose, onSaved }) {
                   placeholder="https://staging.example.com/pricing" inputMode="url" />
               </div>
               <div className="form-group">
-                <label className="label" htmlFor="rv-desc">What to look at <span className="rv-optional">optional</span></label>
+                <label className="label" htmlFor="rv-desc">Description <span className="rv-optional">optional</span></label>
                 <textarea id="rv-desc" className="input rv-textarea" rows={4} value={description}
                   onChange={e => setDescription(e.target.value)}
                   placeholder="What changed, what to check, anything you're unsure about…" />
@@ -559,7 +560,21 @@ function DetailModal({ post, members, uid, isAdmin, teamId, onClose, onEdit }) {
               ) : <div className="rv-link-card rv-link-plain"><Svg name="link" size={16} /><span className="rv-link-text">{post.url}</span></div>
             )}
 
-            {post.description && <p className="rv-desc">{post.description}</p>}
+            <section className="rv-desc-section">
+              <span className="rv-section-label"><Svg name="text" size={14} /> Description</span>
+              {post.description?.trim() ? (
+                <p className="rv-desc">{post.description}</p>
+              ) : (
+                <p className="rv-desc rv-desc-empty">
+                  No description.
+                  {canManage && (
+                    <button type="button" className="rv-text-btn" onClick={() => onEdit(post)}>
+                      <Svg name="edit" size={13} /> Add a description
+                    </button>
+                  )}
+                </p>
+              )}
+            </section>
 
             {post.screenshots?.length > 0 && (
               <div className="rv-shots rv-shots-view">

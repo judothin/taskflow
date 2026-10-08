@@ -169,7 +169,13 @@ html.ui-modern .rv-link-card {
 }
 html.ui-modern a.rv-link-card:hover { border-color: var(--border-light); background: var(--bg-3); }
 html.ui-modern .rv-link-open { font-weight: 500; }
-html.ui-modern .rv-desc { font-size: 14.5px; }
+html.ui-modern .rv-desc {
+  font-size: 14.5px;
+  border-radius: var(--m-r-lg);
+  background: var(--bg-2);
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern .rv-desc-empty { background: var(--bg-3); box-shadow: none; border-color: transparent; font-style: normal; }
 
 html.ui-modern .rv-section-label {
   font-size: 13px;
