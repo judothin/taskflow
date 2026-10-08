@@ -28,7 +28,18 @@ requestAnimationFrame(() => requestAnimationFrame(() => {
 
 // Register the service worker so the app is installable ("Add to Home Screen")
 // and its shell keeps working offline. Failures are non-fatal.
-if ('serviceWorker' in navigator) {
+//
+// Production only. The worker serves static files cache-first, which is safe
+// for a build (every file name carries a content hash) but not for the dev
+// server, whose /static/js/bundle.js keeps one name across edits — it served
+// the previous build on every reload, so changes seemed not to land. In
+// development, remove any worker an earlier session installed.
+if ('serviceWorker' in navigator && process.env.NODE_ENV !== 'production') {
+  navigator.serviceWorker.getRegistrations()
+    .then(regs => regs.forEach(r => r.unregister()))
+    .catch(() => {});
+  if (window.caches) caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+} else if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then((reg) => {
       // Resuming an installed app doesn't re-navigate, so nothing would
