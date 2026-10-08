@@ -162,7 +162,10 @@
 .rv-hint { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
 .rv-hint-top { margin-bottom: 14px; }
 .rv-textarea { resize: vertical; line-height: 1.5; min-height: 40px; font-family: var(--font); }
-.rv-composer, .rv-detail { max-width: 640px; }
+.rv-composer { max-width: 760px; }
+/* Big and wide: the post on the left, its activity + comments on the right,
+   each scrolling on its own. Stacks into one column on narrower screens. */
+.rv-detail { max-width: 1120px; height: 88dvh; max-height: 88dvh; }
 .rv-defaults { max-width: 520px; }
 
 /* Reviewer chips */
@@ -268,13 +271,44 @@ label.rv-precheck-item:hover { border-color: var(--border-light); }
 .rv-footer-hint { margin-right: auto; align-self: center; font-size: 12.5px; color: var(--text-muted); }
 
 /* ── Detail ── */
-.rv-detail { max-height: 92dvh; }
 .rv-detail-head { align-items: flex-start; gap: 12px; }
 .rv-detail-head-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .rv-detail-meta { display: flex; align-items: center; gap: 8px; }
 .rv-detail-title { font-size: 19px; font-weight: 700; color: var(--text); line-height: 1.3; word-break: break-word; }
 .rv-detail-by { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); }
-.rv-detail-body { display: flex; flex-direction: column; gap: 16px; }
+.rv-detail-cols {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+}
+.rv-detail-body { display: flex; flex-direction: column; gap: 18px; overflow-y: auto; min-height: 0; padding: 20px 24px 24px; }
+.rv-detail-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-3) 40%, var(--bg-2));
+}
+.rv-detail-activity {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 22px;
+}
+.rv-detail-activity .rv-section-label-gap { margin-top: 0; }
+.rv-shots-view { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+
+@media (max-width: 960px) {
+  .rv-detail-cols { display: flex; flex-direction: column; overflow-y: auto; }
+  .rv-detail-body { overflow: visible; flex-shrink: 0; }
+  .rv-detail-side { border-left: none; border-top: 1px solid var(--border); background: none; flex: 1 0 auto; }
+  .rv-detail-activity { overflow: visible; flex: 1 0 auto; }
+  .rv-detail-side .rv-comment-box { position: sticky; bottom: 0; background: var(--bg-2); }
+}
 
 .rv-link-card {
   display: flex; align-items: center; gap: 10px;
@@ -421,7 +455,9 @@ a.rv-link-card:hover { border-color: var(--accent); text-decoration: none; }
   .rv-row-title { white-space: normal; }
   .rv-row-side { flex-direction: row; justify-content: space-between; align-items: center; }
   .rv-row-url { max-width: 100%; }
-  .rv-detail { max-height: 94dvh; }
+  .rv-detail { height: 94dvh; max-height: 94dvh; }
+  .rv-detail-body { padding: 4px 16px 18px; }
+  .rv-detail-activity { padding: 16px; }
   .rv-comment-box { padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
   .rv-decision-actions .btn { flex: 1; justify-content: center; }
 }

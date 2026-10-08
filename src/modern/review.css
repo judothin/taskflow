@@ -226,7 +226,8 @@ html.ui-modern .rv-tl-bubble {
 }
 html.ui-modern .rv-tl-text { font-size: 14px; }
 
-html.ui-modern .rv-comment-box { padding: 12px 22px; background: var(--bg); }
+html.ui-modern .rv-detail-side { background: var(--bg); }
+html.ui-modern .rv-comment-box { padding: 12px 22px; background: var(--bg-2); }
 html.ui-modern .rv-comment-box .btn { height: 36px; }
 
 /* ── Dashboard widget ── */
@@ -254,4 +255,11 @@ html.ui-modern .rw-more { border-radius: var(--m-r); }
   html.ui-modern .rv-row { padding: 14px; }
   html.ui-modern .rv-comment-box { padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
   html.ui-modern .rv-tab { padding: 8px 12px; }
+}
+
+/* The wide post view: the generic .modal-body padding above would win here,
+   so the left column's padding is restated. */
+html.ui-modern .rv-detail-body { padding: 20px 24px 24px; }
+@media (max-width: 768px) {
+  html.ui-modern .rv-detail-body { padding: 4px 16px 18px; }
 }

@@ -547,6 +547,7 @@ function DetailModal({ post, members, uid, isAdmin, teamId, onClose, onEdit }) {
             <button className="rv-icon-btn" onClick={onClose} aria-label="Close"><Svg name="x" size={18} /></button>
           </div>
 
+          <div className="rv-detail-cols">
           <div className="modal-body rv-detail-body">
             {post.url && (
               isUrl(post.url) ? (
@@ -659,15 +660,6 @@ function DetailModal({ post, members, uid, isAdmin, teamId, onClose, onEdit }) {
               {error && <div className="error-msg">⚠ {error}</div>}
             </div>
 
-            {/* ── History + comments ── */}
-            <div className="rv-section-label rv-section-label-gap"><Svg name="comment" size={14} /> Activity</div>
-            <Timeline
-              events={thread.events}
-              comments={thread.comments}
-              members={members}
-              uid={uid}
-              onDeleteComment={(id) => deleteReviewComment(id).catch(e => setError(e.message))}
-            />
             {canManage && (
               <div className="rv-manage">
                 <button className="rv-text-btn" onClick={() => onEdit(post)}><Svg name="edit" size={13} /> Edit post</button>
@@ -683,6 +675,19 @@ function DetailModal({ post, members, uid, isAdmin, teamId, onClose, onEdit }) {
                 )}
               </div>
             )}
+          </div>
+
+          <div className="rv-detail-side">
+          <div className="rv-detail-activity">
+            {/* ── History + comments ── */}
+            <div className="rv-section-label rv-section-label-gap"><Svg name="comment" size={14} /> Activity</div>
+            <Timeline
+              events={thread.events}
+              comments={thread.comments}
+              members={members}
+              uid={uid}
+              onDeleteComment={(id) => deleteReviewComment(id).catch(e => setError(e.message))}
+            />
             <div ref={endRef} />
           </div>
 
@@ -698,6 +703,8 @@ function DetailModal({ post, members, uid, isAdmin, teamId, onClose, onEdit }) {
             <button className="btn btn-primary" onClick={postComment} disabled={!comment.trim() || posting} aria-label="Post comment">
               <Svg name="send" size={15} />
             </button>
+          </div>
+          </div>
           </div>
         </div>
       </div>
