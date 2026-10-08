@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import useRefresh from '../lib/useRefresh';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { TopBarPortal } from '../context/HeaderActionsContext';
@@ -36,27 +37,34 @@ export default function Tasks() {
   const [showCreate, setShowCreate] = useState(false);
   const { selectMode, selectedIds, toggle, clear, toggleAll, toggleSelectMode, exitSelectMode } = useBulkSelect();
 
-  const fetchData = useCallback(async () => {
+  // Skeletons on the first load only: flipping `loading` on for every refresh
+  // swapped the whole list for placeholders and back each time a task was
+  // added — a flash. Refreshes are burst-coalesced and latest-only too
+  // (lib/useRefresh).
+  const loadedOnce = useRef(false);
+  const { run: fetchData, refresh: refreshData } = useRefresh(async (isStale) => {
     if (!activeTeamId) { setTasks([]); setUsers([]); setProjects([]); setLoading(false); return; }
-    setLoading(true);
+    if (!loadedOnce.current) setLoading(true);
     const [{ data: allTasks }, allUsers, { data: allProjects }] = await Promise.all([
       supabase.from('tasks').select('*').eq('team_id', activeTeamId).order('date_received', { ascending: false }),
       fetchTeamMembers(activeTeamId),
       supabase.from('projects').select('id, title').eq('team_id', activeTeamId).order('title'),
     ]);
+    if (isStale()) return;
+    loadedOnce.current = true;
     setTasks(allTasks || []);
     setUsers((allUsers || []).sort((a, b) => (a.first_name || '').localeCompare(b.first_name || '')));
     setProjects(allProjects || []);
     setLoading(false);
-  }, [activeTeamId]);
+  });
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchData(); }, [activeTeamId, fetchData]);
   // Quick Log and new tasks from the top bar menu / shortcuts are app-wide
   // forms, so they announce saves rather than calling back into this page.
   useEffect(() => {
-    window.addEventListener('tasks-changed', fetchData);
-    return () => window.removeEventListener('tasks-changed', fetchData);
-  }, [fetchData]);
+    window.addEventListener('tasks-changed', refreshData);
+    return () => window.removeEventListener('tasks-changed', refreshData);
+  }, [refreshData]);
 
   const filtered = tasks
     .filter(t => {
@@ -166,7 +174,7 @@ export default function Tasks() {
       ) : (
         <div className="tasks-grid">
           {filtered.map(task => (
-            <TaskCard key={task.id} task={task} onEdit={setEditTask} onDeleted={fetchData} users={users} projects={projects}
+            <TaskCard key={task.id} task={task} onEdit={setEditTask} onDeleted={refreshData} users={users} projects={projects}
               selectMode={selectMode} selected={selectedIds.has(task.id)} onToggleSelect={toggle} />
           ))}
         </div>
@@ -176,17 +184,17 @@ export default function Tasks() {
         <BulkActionBar
           selectedTasks={tasks.filter(t => selectedIds.has(t.id))}
           users={users}
-          onChanged={fetchData}
+          onChanged={refreshData}
           onClear={clear}
           onExit={exitSelectMode}
         />
       )}
 
       {showCreate && (
-        <TaskForm onClose={() => setShowCreate(false)} onSaved={fetchData} users={users} projects={projects} />
+        <TaskForm onClose={() => setShowCreate(false)} onSaved={refreshData} users={users} projects={projects} />
       )}
       {editTask && (
-        <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={fetchData} users={users} projects={projects} />
+        <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={refreshData} users={users} projects={projects} />
       )}
     </div>
   );

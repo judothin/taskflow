@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import useRefresh from '../lib/useRefresh';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import TaskCard from './TaskCard';
@@ -49,35 +50,36 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
 
   useEffect(() => { setStatusFilter(initialStatus); }, [initialStatus]);
 
-  const fetchData = useCallback(async () => {
+  // Burst-coalesced and latest-only — see lib/useRefresh.
+  const { run: fetchData, refresh: refreshData } = useRefresh(async (isStale) => {
     if (!activeTeamId) { setTasks([]); setCompletedTasks([]); setUsers([]); setProjects([]); setLoading(false); return; }
     const [{ data: allTasks }, allUsers, { data: allProjects }] = await Promise.all([
       supabase.from('tasks').select('*').eq('team_id', activeTeamId).order('date_received', { ascending: false }),
       fetchTeamMembers(activeTeamId),
       supabase.from('projects').select('id, title').eq('team_id', activeTeamId).order('title'),
     ]);
+    if (isStale()) return;
     setTasks((allTasks || []).filter(t => t.status !== 'completed'));
     setCompletedTasks((allTasks || []).filter(t => t.status === 'completed'));
     setUsers(allUsers || []);
     setProjects(allProjects || []);
     setLoading(false);
-  }, [activeTeamId]);
+  });
 
   useEffect(() => {
     fetchData();
     const channel = supabase
       .channel('active-tasks-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, refreshData)
       .subscribe();
-    const handler = () => fetchData();
-    window.addEventListener('tasks-changed', handler);
-    window.addEventListener('queue-changed', handler);
+    window.addEventListener('tasks-changed', refreshData);
+    window.addEventListener('queue-changed', refreshData);
     return () => {
       supabase.removeChannel(channel);
-      window.removeEventListener('tasks-changed', handler);
-      window.removeEventListener('queue-changed', handler);
+      window.removeEventListener('tasks-changed', refreshData);
+      window.removeEventListener('queue-changed', refreshData);
     };
-  }, [fetchData]);
+  }, [activeTeamId, fetchData, refreshData]);
 
   const isCritical = (t) => t.status === 'critical' || t.roi === 'critical';
   const baseList = statusFilter === 'completed' ? completedTasks : tasks;
@@ -269,11 +271,11 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
           <p>{hasFilters ? 'Try adjusting your search or filters' : 'Create your first task to get started'}</p>
         </div>
       ) : isPhone ? (
-        <MobileTaskList tasks={filtered} users={users} onChanged={fetchData} />
+        <MobileTaskList tasks={filtered} users={users} onChanged={refreshData} />
       ) : (
         <div className="tasks-grid" style={gridStyle}>
           {filtered.map(task => (
-            <TaskCard key={task.id} task={task} onEdit={setEditTask} onDeleted={fetchData} users={users} projects={projects}
+            <TaskCard key={task.id} task={task} onEdit={setEditTask} onDeleted={refreshData} users={users} projects={projects}
               selectMode={selectMode} selected={selectedIds.has(task.id)} onToggleSelect={toggle} />
           ))}
         </div>
@@ -283,14 +285,14 @@ export default function ActiveTasksList({ initialStatus = 'all', showTitle = tru
         <BulkActionBar
           selectedTasks={[...tasks, ...completedTasks].filter(t => selectedIds.has(t.id))}
           users={users}
-          onChanged={fetchData}
+          onChanged={refreshData}
           onClear={clear}
           onExit={exitSelectMode}
         />
       )}
 
-      {showCreate && <TaskForm onClose={() => setShowCreate(false)} onSaved={fetchData} users={users} projects={projects} />}
-      {editTask && <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={fetchData} users={users} projects={projects} />}
+      {showCreate && <TaskForm onClose={() => setShowCreate(false)} onSaved={refreshData} users={users} projects={projects} />}
+      {editTask && <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={refreshData} users={users} projects={projects} />}
     </section>
   );
 }

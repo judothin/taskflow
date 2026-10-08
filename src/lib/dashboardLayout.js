@@ -108,6 +108,12 @@ export const WIDGETS = {
     icon: 'M3 6h18 M3 12h18 M3 18h12',
     defaultSize: 'third',
   },
+  review: {
+    name: 'Ready for Review',
+    desc: 'Posts waiting on your review, plus everything still open.',
+    icon: 'M9 11l3 3L22 4 M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
+    defaultSize: 'third',
+  },
   pomodoro: {
     name: 'Pomodoro',
     desc: 'A focus timer with custom durations — shared with the Pomodoro page.',

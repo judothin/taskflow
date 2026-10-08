@@ -1,0 +1,125 @@
+/* ══════════════════════════════════════════════════════════════
+   New UI — theme picker (components/UiPresetPicker.js) and the New UI
+   switch's label chip. Only rendered with the new UI on.
+   ══════════════════════════════════════════════════════════════ */
+
+html.ui-modern .ui-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 16px 0 8px;
+}
+
+html.ui-modern .ui-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 6px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--m-r-lg);
+  color: var(--text-muted);
+  text-align: left;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+html.ui-modern .ui-preset:hover { background: var(--bg-3); }
+html.ui-modern .ui-preset:focus-visible { outline: none; box-shadow: var(--m-ring); }
+html.ui-modern .ui-preset-active { color: var(--text); }
+
+/* The tiny app drawing. Colours come inline from the preset. */
+html.ui-modern .ui-preset-preview {
+  position: relative;
+  display: flex;
+  height: 84px;
+  overflow: hidden;
+  border: 1px solid;
+  border-radius: 10px;
+  box-shadow: var(--m-shadow-sm);
+  transition: box-shadow 0.12s ease;
+}
+html.ui-modern .ui-preset-active .ui-preset-preview {
+  box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 4px var(--accent);
+}
+
+html.ui-modern .ui-preset-side {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 30%;
+  padding: 9px 7px;
+  border-right: 1px solid;
+}
+html.ui-modern .ui-preset-side > span {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  opacity: 0.18;
+}
+html.ui-modern .ui-preset-side > span:first-child { opacity: 1; width: 70%; }
+html.ui-modern .ui-preset-side > span:nth-child(3) { width: 60%; }
+
+html.ui-modern .ui-preset-main {
+  flex: 1;
+  padding: 10px;
+}
+html.ui-modern .ui-preset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  height: 100%;
+  padding: 8px;
+  border: 1px solid;
+  border-radius: 6px;
+}
+html.ui-modern .ui-preset-line {
+  display: block;
+  height: 5px;
+  width: 80%;
+  border-radius: 3px;
+  opacity: 0.75;
+}
+html.ui-modern .ui-preset-line-short { width: 50%; opacity: 0.25; }
+html.ui-modern .ui-preset-btn {
+  display: block;
+  margin-top: auto;
+  width: 34px;
+  height: 10px;
+  border-radius: 4px;
+}
+
+html.ui-modern .ui-preset-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 2px;
+  font-size: 13px;
+  font-weight: 500;
+}
+html.ui-modern .ui-preset-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+html.ui-modern .ui-preset-check { margin-left: auto; color: var(--accent); }
+
+/* "New" tag beside the New UI switch. */
+html.ui-modern .settings-new-chip {
+  padding: 1px 7px;
+  background: var(--m-accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* On the phone's Appearance screen the grid sits in a grouped section. */
+@media (max-width: 768px) {
+  html.ui-modern .ui-preset-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin: 4px 0 12px;
+  }
+  html.ui-modern .ui-preset-preview { height: 76px; }
+}

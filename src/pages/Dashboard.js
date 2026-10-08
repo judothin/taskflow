@@ -7,12 +7,14 @@ import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { useTopBar } from '../context/TopBarContext';
 import useAnimatedList from '../lib/useAnimatedList';
+import useRefresh from '../lib/useRefresh';
 import TaskCard from '../components/TaskCard';
 import TaskForm from '../components/TaskForm';
 import { consumeNewTaskDeepLink, clearDeepLinkFromUrl } from '../lib/deepLink';
 import ProjectsWidget from '../components/ProjectsWidget';
 import NotificationCenter from '../components/NotificationCenter';
 import QueueWidget from '../components/QueueWidget';
+import ReviewWidget from '../components/ReviewWidget';
 import PomodoroWidget from '../components/PomodoroWidget';
 import ActiveTasksList from '../components/ActiveTasksList';
 import BulkActionBar from '../components/BulkActionBar';
@@ -194,14 +196,15 @@ export default function Dashboard() {
   // columns — measure the grid's actual column+gap width in pixels so a
   // drag of that many pixels moves the span by exactly 1.
   const GRID_COLS = 12;
-  const GRID_GAP = 24; // must match .dash-grid's `gap` in Dashboard.css
   const startResize = (type, e) => {
     e.preventDefault();
     e.stopPropagation();
     const gridEl = gridRef.current;
     if (!gridEl) return;
     const rect = gridEl.getBoundingClientRect();
-    const pxPerSpan = (rect.width - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS + GRID_GAP;
+    // Read the live gap — it differs between the classic and new UI.
+    const gap = parseFloat(getComputedStyle(gridEl).columnGap) || 0;
+    const pxPerSpan = (rect.width - gap * (GRID_COLS - 1)) / GRID_COLS + gap;
     const startX = e.clientX;
     const startSpan = spanFor(layout.find(b => b.type === type)?.size);
 
@@ -232,20 +235,30 @@ export default function Dashboard() {
   // back again a moment later — the flicker when a task was queued or
   // started. Refreshes now swap the data in place.
   const loadedOnce = useRef(false);
-  const fetchData = useCallback(async () => {
-    if (!activeTeamId) { setLoading(false); return; }
+  // Tasks and the queue load together and land in one render. Current Focus
+  // is built from both (in-progress tasks + queued ones), so fetched
+  // separately a task being queued or started could leave the list when one
+  // half arrived and come back with the other — an exit and re-entry on the
+  // animated row. useRefresh also folds each burst of change events into one
+  // fetch and drops out-of-order responses.
+  const { run: fetchData, refresh: refreshData } = useRefresh(async (isStale) => {
+    if (!activeTeamId) { setQueue([]); setQueueLoaded(true); setLoading(false); return; }
     if (!loadedOnce.current) setLoading(true);
-    const [{ data: allTasks }, allUsers, { data: allProjects }] = await Promise.all([
+    const [{ data: allTasks }, allUsers, { data: allProjects }, { data: queueRows }] = await Promise.all([
       supabase.from('tasks').select('*').eq('team_id', activeTeamId).order('date_received', { ascending: false }),
       fetchTeamMembers(activeTeamId),
       supabase.from('projects').select('id, title').eq('team_id', activeTeamId).order('title'),
+      supabase.from('queue').select('id, task_id, position, tasks(*)').eq('team_id', activeTeamId).order('position'),
     ]);
+    if (isStale()) return;
     const active = (allTasks || []).filter(t => t.status !== 'completed');
     const done = (allTasks || []).filter(t => t.status === 'completed');
     setTasks(active);
     setCompletedTasks(done);
     setUsers(allUsers || []);
     setProjects(allProjects || []);
+    setQueue((queueRows || []).filter(q => q.tasks));
+    setQueueLoaded(true);
     loadedOnce.current = true;
     setLoading(false);
 
@@ -261,37 +274,23 @@ export default function Dashboard() {
     };
     setStatCache(counts);
     try { localStorage.setItem(STAT_CACHE_KEY, JSON.stringify(counts)); } catch {}
-  }, [activeTeamId]);
-
-  const fetchQueue = useCallback(async () => {
-    if (!activeTeamId) { setQueue([]); setQueueLoaded(true); return; }
-    const { data } = await supabase
-      .from('queue')
-      .select('id, task_id, position, tasks(*)')
-      .eq('team_id', activeTeamId)
-      .order('position');
-    setQueue((data || []).filter(q => q.tasks));
-    setQueueLoaded(true);
-  }, [activeTeamId]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
+  });
 
   useEffect(() => {
-    fetchQueue();
+    fetchData();
     const channel = supabase
       .channel('dashboard-queue')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue' }, fetchQueue)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, () => { fetchQueue(); fetchData(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue' }, refreshData)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, refreshData)
       .subscribe();
-    const handler = () => { fetchQueue(); fetchData(); };
-    window.addEventListener('queue-changed', handler);
-    window.addEventListener('tasks-changed', handler);
+    window.addEventListener('queue-changed', refreshData);
+    window.addEventListener('tasks-changed', refreshData);
     return () => {
       supabase.removeChannel(channel);
-      window.removeEventListener('queue-changed', handler);
-      window.removeEventListener('tasks-changed', handler);
+      window.removeEventListener('queue-changed', refreshData);
+      window.removeEventListener('tasks-changed', refreshData);
     };
-  }, [fetchQueue, fetchData]);
+  }, [activeTeamId, fetchData, refreshData]);
 
   const inProgress = useMemo(() => tasks.filter(t => t.status === 'in_progress'), [tasks]);
 
@@ -381,7 +380,7 @@ export default function Dashboard() {
                       <span className={`focus-order-tag ${isCurrent ? 'focus-order-tag-current' : ''}`}>
                         {isCurrent ? (<><span className="focus-tag-dot" /> In Progress</>) : (`Up Next · ${upNextNum}`)}
                       </span>
-                      <TaskCard task={task} onEdit={setEditTask} onDeleted={fetchData} featured users={users} projects={projects}
+                      <TaskCard task={task} onEdit={setEditTask} onDeleted={refreshData} featured users={users} projects={projects}
                         selectMode={focusSelect.selectMode} selected={focusSelect.selectedIds.has(task.id)} onToggleSelect={focusSelect.toggle} />
                     </div>
                   );
@@ -418,6 +417,7 @@ export default function Dashboard() {
       case 'queue':          return <QueueWidget />;
       case 'pomodoro':       return <PomodoroWidget />;
       case 'projects':       return <ProjectsWidget />;
+      case 'review':         return <ReviewWidget />;
       default:               return null;
     }
   };
@@ -646,17 +646,17 @@ export default function Dashboard() {
       )}
 
       {showCreate && (
-        <TaskForm prefill={deepLinkPrefill} onClose={() => { setShowCreate(false); setDeepLinkPrefill(null); }} onSaved={fetchData} users={users} projects={projects} />
+        <TaskForm prefill={deepLinkPrefill} onClose={() => { setShowCreate(false); setDeepLinkPrefill(null); }} onSaved={refreshData} users={users} projects={projects} />
       )}
       {editTask && (
-        <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={fetchData} users={users} projects={projects} />
+        <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={refreshData} users={users} projects={projects} />
       )}
 
       {focusSelect.selectMode && (
         <BulkActionBar
           selectedTasks={[...tasks, ...completedTasks].filter(t => focusSelect.selectedIds.has(t.id))}
           users={users}
-          onChanged={fetchData}
+          onChanged={refreshData}
           onClear={focusSelect.clear}
           onExit={focusSelect.exitSelectMode}
         />

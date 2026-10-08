@@ -5,6 +5,11 @@
 // so the whole app stays coherent from a handful of pickers.
 // ============================================================
 
+// The new UI (Settings › Appearance › "New UI"). Its palettes are CSS — see
+// src/modern/tokens.css — so turning it on is a class and a preset id on
+// <html>, not a set of variables.
+import { resolvePreset } from './uiPresets';
+
 // Base colors shown as pickers in Settings (each drives derived shades).
 export const THEME_FIELDS = [
   { key: 'bg',     label: 'Background', desc: 'Page background & card surfaces', varRef: '--bg' },
@@ -141,6 +146,8 @@ export function clearThemeColors(clearBackground = true) {
   // background propagation that a custom background image relies on, hiding it.
   r.style.removeProperty('background-color');
   r.classList.remove('a11y-bold');
+  r.classList.remove('ui-modern');
+  r.removeAttribute('data-preset');
   document.body.classList.remove('has-bg-image');
   if (clearBackground) {
     const layer = document.getElementById('tf-bg-layer');
@@ -190,11 +197,15 @@ export const PHONE_QUERY = '(max-width: 768px)';
 export const isPhoneViewport = () =>
   typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(PHONE_QUERY).matches;
 
+const ACCOUNT_WIDE_KEYS = ['modernUi', 'preset'];
+
 export function resolveForDevice(colors, isPhone) {
   const { mobile, ...base } = colors || {};
   if (!isPhone || !mobile || typeof mobile !== 'object') return base;
   const out = { ...base };
   Object.entries(mobile).forEach(([k, v]) => {
+    // The new UI is account-wide — a phone can't opt out of it on its own.
+    if (ACCOUNT_WIDE_KEYS.includes(k)) return;
     if (v === null) delete out[k];
     else out[k] = v;
   });
@@ -205,6 +216,29 @@ export function applyThemeColors(colors) {
   const root = document.documentElement;
   clearThemeColors(false); // start clean so removed keys revert to theme defaults; leave the background layer alone here — handled below, only touched if it actually changed
   const c = colors || {};
+
+  // Accessibility and layout preferences apply in both UIs: text size
+  // (whole-UI zoom), bolder body text, and subtask checklists on task cards
+  // in one column or two. The latter is a variable rather than a prop because
+  // task cards render from half a dozen places — this way the preference
+  // reaches all of them. The value is the narrowest a column may be, not a
+  // column count, so a card too narrow to split collapses to one.
+  const scale = Number(c.fontScale) || 1;
+  if (scale !== 1) root.style.setProperty('zoom', String(scale));
+  if (c.bold) root.classList.add('a11y-bold');
+  if (Number(c.subtaskColumns) === 2) root.style.setProperty('--st-card-min', '190px');
+
+  // New UI: a preset palette from tokens.css replaces every custom colour and
+  // the background image. Those stay saved in `colors`, untouched, so turning
+  // the new UI back off brings the old look back exactly as it was.
+  if (c.modernUi) {
+    root.classList.add('ui-modern');
+    root.setAttribute('data-preset', resolvePreset(c.preset).id);
+    const layer = document.getElementById('tf-bg-layer');
+    if (layer) layer.style.backgroundImage = '';
+    return;
+  }
+
   const cs = getComputedStyle(root);
   const cur = (v, fb) => (cs.getPropertyValue(v).trim() || fb);
 
@@ -237,19 +271,6 @@ export function applyThemeColors(colors) {
   if (c.logo === 'white') root.style.setProperty('--logo-filter', 'none');
   else if (c.logo === 'black') root.style.setProperty('--logo-filter', 'invert(1)');
   // 'auto' / unset → leave the theme default (--logo-filter from :root / [data-theme]).
-
-  // Accessibility: text size (whole-UI zoom) + bolder body text.
-  const scale = Number(c.fontScale) || 1;
-  if (scale !== 1) root.style.setProperty('zoom', String(scale));
-  if (c.bold) root.classList.add('a11y-bold');
-
-  // Subtask checklists on task cards, in one column (default) or two. A
-  // variable rather than a prop because task cards render from half a dozen
-  // places (dashboard, tasks, project detail, pomodoro, queue) — this way the
-  // preference reaches all of them without threading it through each one.
-  // The value is the narrowest a column may be, not a column count, so a card
-  // too narrow to split still collapses to one (see `.st-card-list`).
-  if (Number(c.subtaskColumns) === 2) root.style.setProperty('--st-card-min', '190px');
 
   // Background image: layer it on the body. Surfaces become translucent so the
   // image shows through (frosted glass — the blur is applied in CSS via

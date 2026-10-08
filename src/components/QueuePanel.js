@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import useAnimatedList from '../lib/useAnimatedList';
+import useRefresh from '../lib/useRefresh';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
@@ -27,15 +28,18 @@ export default function QueuePanel() {
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
 
-  const fetchQueue = useCallback(async () => {
+  // Burst-coalesced and latest-only (lib/useRefresh): one queue action fires
+  // several change events, and racing refetches made rows exit and re-enter.
+  const { run: fetchQueue, refresh: refreshQueue } = useRefresh(async (isStale) => {
     if (!activeTeamId) { setQueue([]); return; }
     const { data } = await supabase
       .from('queue')
       .select('id, task_id, position, tasks(*)')
       .eq('team_id', activeTeamId)
       .order('position');
+    if (isStale()) return;
     setQueue(data || []);
-  }, [activeTeamId]);
+  });
 
   useEffect(() => {
     fetchQueue();
@@ -43,18 +47,18 @@ export default function QueuePanel() {
     // Realtime subscription (works if replication is enabled for the queue table)
     const channel = supabase
       .channel('queue-sidebar')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue' }, fetchQueue)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, fetchQueue)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue' }, refreshQueue)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, refreshQueue)
       .subscribe();
 
     // Fallback: listen for the custom event fired by ContextMenu
-    window.addEventListener('queue-changed', fetchQueue);
+    window.addEventListener('queue-changed', refreshQueue);
 
     return () => {
       supabase.removeChannel(channel);
-      window.removeEventListener('queue-changed', fetchQueue);
+      window.removeEventListener('queue-changed', refreshQueue);
     };
-  }, [fetchQueue]);
+  }, [activeTeamId, fetchQueue, refreshQueue]);
 
   // ── Edit ──────────────────────────────────────────────────────────────────
   // Load team members + projects lazily so the edit form's assignee/project
@@ -203,7 +207,7 @@ export default function QueuePanel() {
                   <div className="queue-item-feedback">{task.feedback}</div>
                 </div>
 
-                <span className="queue-roi" style={{ background: roi.bg, color: roi.color, borderColor: roi.border }}>
+                <span className="queue-roi" data-roi={task.roi} style={{ background: roi.bg, color: roi.color, borderColor: roi.border }}>
                   {task.roi}
                 </span>
               </div>
@@ -229,7 +233,7 @@ export default function QueuePanel() {
           y={ctxMenu.y}
           onClose={() => setCtxMenu(null)}
           onEdit={openEdit}
-          onDeleted={fetchQueue}
+          onDeleted={refreshQueue}
         />
       )}
 
@@ -237,7 +241,7 @@ export default function QueuePanel() {
         <TaskForm
           task={editTask}
           onClose={() => setEditTask(null)}
-          onSaved={fetchQueue}
+          onSaved={refreshQueue}
           users={users}
           projects={projects}
         />

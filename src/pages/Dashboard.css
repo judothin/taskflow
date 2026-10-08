@@ -155,6 +155,20 @@ body.has-bg-image .settings-panel-fade { animation-name: settings-rise; }
 .settings-row-label { font-size: 13px; font-weight: 600; color: var(--text); }
 .settings-row-desc { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; line-height: 1.45; }
 .settings-row-value { font-size: 13px; color: var(--text-muted); font-family: var(--mono); }
+/* "New" tag beside a setting's label (the New UI switch). */
+.settings-new-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
 
 /* Collapsible group inside a card */
 .settings-group { border-top: 1px solid var(--border); }

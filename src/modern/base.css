@@ -1,0 +1,437 @@
+/* ══════════════════════════════════════════════════════════════
+   New UI — base primitives
+   Covers src/index.css: page base, scrollbars, .btn, .card, .input,
+   .label, .badge, modals, forms, attachments, empty states, the rich
+   text editor and the error boundary.
+   ══════════════════════════════════════════════════════════════ */
+
+html.ui-modern body {
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text);
+  font-feature-settings: 'cv11', 'ss01';
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.003em;
+}
+
+html.ui-modern h1,
+html.ui-modern h2,
+html.ui-modern h3,
+html.ui-modern h4 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+html.ui-modern strong,
+html.ui-modern b { font-weight: 600; }
+
+html.ui-modern.a11y-bold body { font-weight: 500; }
+
+html.ui-modern ::selection { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+
+html.ui-modern a { color: var(--accent); }
+
+html.ui-modern :focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+html.ui-modern kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 0 5px;
+}
+
+/* No background image, no frosted glass, in the new UI. */
+html.ui-modern #tf-bg-layer { display: none; }
+html.ui-modern body.has-bg-image::after { content: none; }
+
+/* Scrollbars: thin, transparent track. */
+html.ui-modern ::-webkit-scrollbar { width: 10px; height: 10px; }
+html.ui-modern ::-webkit-scrollbar-track { background: transparent; }
+html.ui-modern ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+html.ui-modern ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text) 28%, transparent);
+  background-clip: padding-box;
+}
+
+/* Route loader */
+html.ui-modern .route-loader-spinner {
+  width: 22px;
+  height: 22px;
+  border-width: 2px;
+  border-color: var(--border);
+  border-top-color: var(--accent);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────── */
+html.ui-modern .btn {
+  height: 34px;
+  padding: 0 14px;
+  gap: 6px;
+  justify-content: center;
+  border-radius: var(--m-r);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  letter-spacing: normal;
+  text-transform: none;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+html.ui-modern .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+html.ui-modern .btn:focus-visible { outline: none; box-shadow: var(--m-ring); }
+
+html.ui-modern .btn-primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border: 1px solid transparent;
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern .btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: var(--m-shadow-sm);
+}
+
+html.ui-modern .btn-secondary {
+  background: var(--bg-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern .btn-secondary:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--text);
+  border-color: var(--border-light);
+}
+
+html.ui-modern .btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+}
+html.ui-modern .btn-ghost:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--text);
+  border-color: transparent;
+}
+
+html.ui-modern .btn-danger {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+  border: 1px solid transparent;
+}
+html.ui-modern .btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+html.ui-modern .btn-sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  border-radius: var(--m-r-sm);
+}
+
+/* ── Cards ───────────────────────────────────────────────────── */
+html.ui-modern .card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--m-r-lg);
+  box-shadow: var(--m-shadow-sm);
+  padding: 20px;
+}
+
+/* ── Inputs ──────────────────────────────────────────────────── */
+html.ui-modern .input {
+  min-height: 36px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--m-r);
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--text);
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern textarea.input { line-height: 1.5; }
+html.ui-modern .input:hover:not(:focus):not(:disabled) { border-color: var(--border-light); }
+html.ui-modern .input:focus {
+  border-color: var(--accent);
+  box-shadow: var(--m-ring);
+}
+html.ui-modern .input::placeholder { color: var(--text-dim); }
+html.ui-modern .input:disabled { opacity: 0.6; background: var(--bg-3); }
+html.ui-modern select.input option { background: var(--bg-2); color: var(--text); }
+html.ui-modern select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+}
+
+html.ui-modern input[type="checkbox"],
+html.ui-modern input[type="radio"] { accent-color: var(--accent); }
+html.ui-modern input[type="range"] { accent-color: var(--accent); }
+
+html.ui-modern .label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+  margin-bottom: 6px;
+}
+
+/* ── Badges ──────────────────────────────────────────────────── */
+html.ui-modern .badge {
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: none !important;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  line-height: 18px;
+}
+html.ui-modern .badge-open       { background: color-mix(in srgb, var(--st-open) 12%, transparent); color: var(--st-open); }
+html.ui-modern .badge-inprogress { background: color-mix(in srgb, var(--st-inprogress) 14%, transparent); color: color-mix(in srgb, var(--st-inprogress) 82%, var(--text)); }
+html.ui-modern .badge-onhold     { background: color-mix(in srgb, var(--st-onhold) 12%, transparent); color: var(--st-onhold); }
+html.ui-modern .badge-completed  { background: color-mix(in srgb, var(--st-completed) 12%, transparent); color: var(--st-completed); }
+html.ui-modern .badge-critical   { background: color-mix(in srgb, var(--st-critical) 12%, transparent); color: var(--st-critical); }
+html.ui-modern .badge-high       { background: color-mix(in srgb, var(--warning) 14%, transparent); color: color-mix(in srgb, var(--warning) 85%, var(--text)); }
+html.ui-modern .badge-medium     { background: color-mix(in srgb, var(--info) 12%, transparent); color: var(--info); }
+html.ui-modern .badge-low        { background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--success); }
+
+/* ── Modals ──────────────────────────────────────────────────── */
+html.ui-modern .modal-overlay {
+  background: var(--m-overlay);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  padding: 24px;
+}
+html.ui-modern .modal,
+html.ui-modern body.has-bg-image .modal {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--m-r-xl);
+  box-shadow: var(--m-shadow-lg);
+}
+html.ui-modern .modal-header {
+  padding: 18px 22px 14px;
+  border-bottom: none;
+}
+html.ui-modern .modal-header h2,
+html.ui-modern .modal-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+html.ui-modern .modal-body { padding: 6px 22px 20px; }
+html.ui-modern .modal-footer {
+  padding: 14px 22px;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 0 0 var(--m-r-xl) var(--m-r-xl);
+}
+
+@media (max-width: 768px) {
+  html.ui-modern .modal-overlay { padding: 0; }
+  html.ui-modern .modal {
+    border-radius: 20px 20px 0 0;
+    border: none;
+    border-top: 1px solid var(--border);
+  }
+  html.ui-modern .modal-header { padding: 24px 18px 12px; }
+  html.ui-modern .modal-header::before {
+    top: 8px;
+    width: 36px;
+    height: 5px;
+    margin-left: -18px;
+    border-radius: 999px;
+    background: var(--border-light);
+  }
+  html.ui-modern .modal-body { padding: 4px 18px 18px; }
+  html.ui-modern .modal-footer {
+    padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+    border-radius: 0;
+  }
+  html.ui-modern .btn { height: 42px; padding: 0 18px; font-size: 15px; border-radius: 10px; }
+  html.ui-modern .btn-sm { height: 34px; padding: 0 12px; font-size: 14px; border-radius: var(--m-r); }
+  html.ui-modern .input { min-height: 44px; border-radius: 10px; padding: 10px 14px; }
+  html.ui-modern .card { padding: 16px; border-radius: 14px; }
+}
+
+/* ── Forms ───────────────────────────────────────────────────── */
+html.ui-modern .form-grid { gap: 18px; }
+html.ui-modern .form-group { gap: 6px; }
+html.ui-modern .form-group .label { margin-bottom: 0; }
+
+html.ui-modern .error-msg {
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ── Attachments ─────────────────────────────────────────────── */
+html.ui-modern .attach-dropzone {
+  border: 2px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: var(--m-r-xl);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-2));
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+html.ui-modern .attach-spinner {
+  border-width: 2px;
+  border-color: var(--border);
+  border-top-color: var(--accent);
+}
+html.ui-modern .attach-list {
+  gap: 2px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--m-r-lg);
+  padding: 4px;
+}
+html.ui-modern .attach-item {
+  gap: 10px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--m-r);
+  background: transparent;
+}
+html.ui-modern .attach-item:hover { background: var(--bg-3); }
+html.ui-modern .attach-item-new { background: var(--m-accent-soft); }
+html.ui-modern .attach-thumb { border-radius: var(--m-r-sm); border-color: var(--border); }
+html.ui-modern .attach-name {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+}
+html.ui-modern .attach-size {
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+html.ui-modern .attach-remove { border-radius: var(--m-r-sm); width: 24px; height: 24px; }
+html.ui-modern .attach-remove:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+html.ui-modern .attach-add-btn {
+  justify-content: center;
+  height: 36px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--m-r);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+html.ui-modern .attach-add-btn:hover:not(:disabled) {
+  border-color: var(--border-light);
+  background: var(--bg-3);
+  color: var(--text);
+}
+
+/* ── Empty state ─────────────────────────────────────────────── */
+html.ui-modern .empty-state {
+  gap: 8px;
+  padding: 56px 24px;
+  color: var(--text-muted);
+}
+html.ui-modern .empty-state svg { opacity: 0.35; color: var(--text-muted); }
+html.ui-modern .empty-state h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+html.ui-modern .empty-state p {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  max-width: 42ch;
+}
+
+/* ── Error boundary ──────────────────────────────────────────── */
+html.ui-modern .error-boundary-card {
+  border-radius: var(--m-r-xl);
+  border-color: var(--border);
+  box-shadow: var(--m-shadow);
+  padding: 32px;
+}
+html.ui-modern .error-boundary-title { font-size: 17px; font-weight: 600; }
+html.ui-modern .error-boundary-msg { font-size: 12.5px; }
+
+/* ── Rich text editor ────────────────────────────────────────── */
+html.ui-modern .rich-editor-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--m-r-lg);
+  background: var(--bg-2);
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern .rich-editor-wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--m-ring);
+}
+html.ui-modern .rich-editor-toolbar {
+  gap: 2px;
+  padding: 6px 8px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+html.ui-modern .rich-toolbar-btn {
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--m-r-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+html.ui-modern .rich-toolbar-btn:hover { background: var(--bg-3); color: var(--text); border: none; }
+html.ui-modern .rich-toolbar-bold { font-weight: 600; font-size: 13.5px; letter-spacing: normal; }
+html.ui-modern .rich-toolbar-divider { background: var(--border); height: 14px; margin: 0 4px; }
+html.ui-modern .rich-editor-body {
+  padding: 12px 14px;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.6;
+}
+html.ui-modern .editor-cb {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border-light);
+  border-radius: 5px;
+  background: var(--bg-2);
+}
+html.ui-modern .editor-cb:checked { background: var(--accent); border-color: var(--accent); }
+html.ui-modern .editor-cb:checked::after {
+  left: 4.5px;
+  top: 1.5px;
+  border-color: var(--accent-contrast);
+}
+
+/* Inline heavy weights in the JSX (modal titles, page names, avatars…).
+   The new UI tops out at 600. */
+html.ui-modern [style*="font-weight: 700"],
+html.ui-modern [style*="font-weight: 800"],
+html.ui-modern [style*="font-weight: 900"] {
+  font-weight: 600 !important;
+}

@@ -37,7 +37,7 @@ export const SETTINGS_SECTIONS = [
   {
     id: 'appearance',
     label: 'Appearance',
-    blurb: 'Colors, background image, and saved themes.',
+    blurb: 'The new UI, themes, colors, and background image.',
     icon: 'M12 2a10 10 0 000 20c1.1 0 2-.9 2-2 0-.5-.2-1-.6-1.4-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.4A4.7 4.7 0 0022 12c0-5.5-4.5-10-10-10z M7.5 11.5a1 1 0 100-2 1 1 0 000 2z',
   },
   {

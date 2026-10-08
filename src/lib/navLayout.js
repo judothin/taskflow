@@ -23,7 +23,7 @@ export const NAV_ITEMS = {
   projects: {
     to: '/projects', label: 'Projects',
     icon: 'M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z',
-    badge: true,
+    badge: 'projects', // unread projects (see NavBadge in Layout)
   },
   files: {
     to: '/files', label: 'Files',
@@ -36,6 +36,11 @@ export const NAV_ITEMS = {
   golive: {
     to: '/go-live', label: 'Go Live',
     icon: 'M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0 M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5',
+  },
+  review: {
+    to: '/review', label: 'Ready for Review',
+    icon: 'M9 11l3 3L22 4 M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
+    badge: 'review', // posts waiting on your verdict
   },
   pomodoro: {
     to: '/pomodoro', label: 'Pomodoro',
@@ -58,7 +63,7 @@ export const NAV_ITEMS = {
 // Nav items whose pages are actually built for a phone. The mobile menu shows
 // only these; App.js redirects the rest to /focus. Keeping the two lists in
 // step is the point of putting this here rather than inline in Layout.
-export const MOBILE_NAV_IDS = new Set(['active', 'completed', 'context']);
+export const MOBILE_NAV_IDS = new Set(['active', 'completed', 'context', 'review']);
 
 export const DEFAULT_NAV_LAYOUT = Object.keys(NAV_ITEMS).map(id => ({ id, visible: true }));
 

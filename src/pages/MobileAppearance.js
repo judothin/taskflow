@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
+import { useTheme } from '../context/ThemeContext';
 import { Toggle } from '../components/SettingsControls';
+import UiPresetPicker from '../components/UiPresetPicker';
 import {
   THEME_FIELDS, STATUS_FIELDS, FONT_SCALES,
   DEFAULT_BG_TINT, MAX_BG_TINT_OPACITY, cacheBackgroundImage,
@@ -129,8 +131,9 @@ export default function MobileAppearance() {
   const {
     phoneColors: c, mobileColors, setMobileValues, resetMobileKey, resetMobileAll,
     getPhoneColor, isMobileCustom, backgrounds, savedThemes, applyThemeToMobile,
-    maxBackgrounds, uploadBackground,
+    maxBackgrounds, uploadBackground, modernUi, preset, setModernUi, setPreset,
   } = useThemeCustomization();
+  const { theme, setTheme } = useTheme();
 
   const countOf = (keys) => keys.filter(isMobileCustom).length;
   const total = Object.keys(mobileColors).length;
@@ -200,135 +203,209 @@ export default function MobileAppearance() {
         </div>
         <div className="mapp-head-text">
           <h1 className="mapp-title">Appearance</h1>
-          <p className="mapp-sub">Changes here only apply on your phone.</p>
+          <p className="mapp-sub">
+            {modernUi ? 'The new UI and its theme apply on all your devices.' : 'Changes here only apply on your phone.'}
+          </p>
         </div>
       </header>
 
-      <div className={`mapp-sync ${total ? 'mapp-sync-custom' : ''}`}>
-        <span className="mapp-sync-dot" aria-hidden="true" />
-        <div className="mapp-sync-text">
-          <div className="mapp-sync-title">
-            {total ? `${total} change${total === 1 ? '' : 's'} from desktop` : 'Matching desktop'}
-          </div>
-          <div className="mapp-sync-sub">
-            {total
-              ? 'Everything else still follows your desktop look.'
-              : 'Change anything below to give your phone its own look.'}
-          </div>
-        </div>
-      </div>
-      <button
-        type="button"
-        className={`mapp-reset ${armed ? 'mapp-reset-armed' : ''}`}
-        onClick={onReset}
-        disabled={!total}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 102.13-9.36L1 10" />
-        </svg>
-        {armed ? 'Tap again to reset' : 'Reset to match desktop'}
-      </button>
-
-      <Section title="Colors" custom={countOf(INTERFACE_KEYS)} onReset={() => resetMobileKey(...INTERFACE_KEYS)}>
-        {THEME_FIELDS.map(f => (
-          <ColorRow key={f.key} field={f} value={getPhoneColor(f.key)} custom={isMobileCustom(f.key)}
-            onChange={(v) => setMobileValues({ [f.key]: v })} onReset={() => resetMobileKey(f.key)} />
-        ))}
-      </Section>
-
-      <Section title="Status colors" collapsible defaultOpen={false}
-        custom={countOf(STATUS_KEYS)} onReset={() => resetMobileKey(...STATUS_KEYS)}>
-        {STATUS_FIELDS.map(f => (
-          <ColorRow key={f.key} field={f} value={getPhoneColor(f.key)} custom={isMobileCustom(f.key)}
-            onChange={(v) => setMobileValues({ [f.key]: v })} onReset={() => resetMobileKey(f.key)} />
-        ))}
-      </Section>
-
-      <Section title="Background" custom={countOf(BACKGROUND_KEYS)} onReset={() => resetMobileKey(...BACKGROUND_KEYS)}>
-        <input ref={fileRef} type="file" accept="image/*" onChange={onUpload} hidden />
-        <div className="mapp-bg-grid">
-          <button
-            type="button"
-            className="mapp-bg mapp-bg-upload"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading || full}
-          >
-            {uploading ? (
-              <span className="mapp-spinner" aria-hidden="true" />
-            ) : (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-            )}
-            <span>{uploading ? 'Uploading…' : full ? 'Library full' : 'Upload'}</span>
-          </button>
-          <button
-            type="button"
-            className={`mapp-bg mapp-bg-none ${!c.background ? 'mapp-bg-on' : ''}`}
-            onClick={() => pickBackground(null)}
-            aria-pressed={!c.background}
-          >
-            None
-          </button>
-          {backgrounds.map(bg => (
-            <button
-              key={bg.id}
-              type="button"
-              className={`mapp-bg ${c.background === bg.url ? 'mapp-bg-on' : ''}`}
-              style={{ backgroundImage: `url("${bg.url}")` }}
-              onClick={() => pickBackground(bg.url)}
-              aria-pressed={c.background === bg.url}
-              aria-label="Use this background"
-            />
-          ))}
-        </div>
-        {uploadError && <p className="mapp-error">⚠ {uploadError}</p>}
-        <p className="mapp-note">
-          {full
-            ? `You've saved ${maxBackgrounds} images, the most allowed. Delete one from Settings on desktop to upload another.`
-            : `Up to 5 MB. Uploads go in your image library (${backgrounds.length}/${maxBackgrounds}) and are set as your phone's background.`}
-        </p>
-
-        {c.background && (
-          <div className="mapp-sliders">
-            <Slider
-              label="Glass opacity"
-              display={`${Math.round((c.glassOpacity ?? 0.55) * 100)}%`}
-              min="0.2" max="0.95" step="0.05"
-              value={c.glassOpacity ?? 0.55}
-              onChange={(e) => setMobileValues({ glassOpacity: Number(e.target.value) })}
-            />
-            <Slider
-              label="Glass blur"
-              display={`${c.glassBlur ?? 14}px`}
-              min="0" max="30" step="1"
-              value={c.glassBlur ?? 14}
-              onChange={(e) => setMobileValues({ glassBlur: Number(e.target.value) })}
-            />
-            <div className="mapp-slider">
-              <div className="mapp-slider-head">
-                <span>Tint</span>
-                <span className="mapp-slider-value">
-                  {tintOpacity > 0 ? `${tintColor.toUpperCase()} · ${Math.round(tintOpacity * 100)}%` : 'Off'}
-                </span>
-              </div>
-              <div className="mapp-tint-row">
-                <label className="mapp-swatch mapp-swatch-sm" style={{ background: tintColor }}>
-                  <input type="color" value={tintColor} onChange={(e) => onTintColor(e.target.value)} aria-label="Tint color" />
-                </label>
-                <input
-                  type="range"
-                  className="mapp-range"
-                  min="0" max={MAX_BG_TINT_OPACITY} step="0.05"
-                  value={tintOpacity}
-                  onChange={(e) => setMobileValues({ bgTintOpacity: Number(e.target.value) })}
-                  aria-label="Tint strength"
-                />
-              </div>
+      <Section title="Design">
+        <div className="mapp-toggle-row">
+          <div className="mapp-row-text">
+            <div className="mapp-row-label">New UI</div>
+            <div className="mapp-row-sub">
+              {modernUi ? 'Cleaner design with preset themes, on every device' : 'Try a cleaner design with preset themes'}
             </div>
           </div>
-        )}
+          <Toggle on={modernUi} onClick={() => setModernUi(!modernUi)} label="New UI" />
+        </div>
       </Section>
+
+      {modernUi && (
+        <Section title="Theme">
+          <UiPresetPicker value={preset} mode={theme} onChange={setPreset} />
+          <div className="mapp-field-label">Mode</div>
+          <Segmented
+            label="Mode"
+            options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
+            value={theme}
+            onChange={setTheme}
+          />
+        </Section>
+      )}
+
+      {!modernUi && (
+        <>
+        <div className={`mapp-sync ${total ? 'mapp-sync-custom' : ''}`}>
+          <span className="mapp-sync-dot" aria-hidden="true" />
+          <div className="mapp-sync-text">
+            <div className="mapp-sync-title">
+              {total ? `${total} change${total === 1 ? '' : 's'} from desktop` : 'Matching desktop'}
+            </div>
+            <div className="mapp-sync-sub">
+              {total
+                ? 'Everything else still follows your desktop look.'
+                : 'Change anything below to give your phone its own look.'}
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          className={`mapp-reset ${armed ? 'mapp-reset-armed' : ''}`}
+          onClick={onReset}
+          disabled={!total}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 102.13-9.36L1 10" />
+          </svg>
+          {armed ? 'Tap again to reset' : 'Reset to match desktop'}
+        </button>
+
+        <Section title="Colors" custom={countOf(INTERFACE_KEYS)} onReset={() => resetMobileKey(...INTERFACE_KEYS)}>
+          {THEME_FIELDS.map(f => (
+            <ColorRow key={f.key} field={f} value={getPhoneColor(f.key)} custom={isMobileCustom(f.key)}
+              onChange={(v) => setMobileValues({ [f.key]: v })} onReset={() => resetMobileKey(f.key)} />
+          ))}
+        </Section>
+
+        <Section title="Status colors" collapsible defaultOpen={false}
+          custom={countOf(STATUS_KEYS)} onReset={() => resetMobileKey(...STATUS_KEYS)}>
+          {STATUS_FIELDS.map(f => (
+            <ColorRow key={f.key} field={f} value={getPhoneColor(f.key)} custom={isMobileCustom(f.key)}
+              onChange={(v) => setMobileValues({ [f.key]: v })} onReset={() => resetMobileKey(f.key)} />
+          ))}
+        </Section>
+
+        <Section title="Background" custom={countOf(BACKGROUND_KEYS)} onReset={() => resetMobileKey(...BACKGROUND_KEYS)}>
+          <input ref={fileRef} type="file" accept="image/*" onChange={onUpload} hidden />
+          <div className="mapp-bg-grid">
+            <button
+              type="button"
+              className="mapp-bg mapp-bg-upload"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading || full}
+            >
+              {uploading ? (
+                <span className="mapp-spinner" aria-hidden="true" />
+              ) : (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+              )}
+              <span>{uploading ? 'Uploading…' : full ? 'Library full' : 'Upload'}</span>
+            </button>
+            <button
+              type="button"
+              className={`mapp-bg mapp-bg-none ${!c.background ? 'mapp-bg-on' : ''}`}
+              onClick={() => pickBackground(null)}
+              aria-pressed={!c.background}
+            >
+              None
+            </button>
+            {backgrounds.map(bg => (
+              <button
+                key={bg.id}
+                type="button"
+                className={`mapp-bg ${c.background === bg.url ? 'mapp-bg-on' : ''}`}
+                style={{ backgroundImage: `url("${bg.url}")` }}
+                onClick={() => pickBackground(bg.url)}
+                aria-pressed={c.background === bg.url}
+                aria-label="Use this background"
+              />
+            ))}
+          </div>
+          {uploadError && <p className="mapp-error">⚠ {uploadError}</p>}
+          <p className="mapp-note">
+            {full
+              ? `You've saved ${maxBackgrounds} images, the most allowed. Delete one from Settings on desktop to upload another.`
+              : `Up to 5 MB. Uploads go in your image library (${backgrounds.length}/${maxBackgrounds}) and are set as your phone's background.`}
+          </p>
+
+          {c.background && (
+            <div className="mapp-sliders">
+              <Slider
+                label="Glass opacity"
+                display={`${Math.round((c.glassOpacity ?? 0.55) * 100)}%`}
+                min="0.2" max="0.95" step="0.05"
+                value={c.glassOpacity ?? 0.55}
+                onChange={(e) => setMobileValues({ glassOpacity: Number(e.target.value) })}
+              />
+              <Slider
+                label="Glass blur"
+                display={`${c.glassBlur ?? 14}px`}
+                min="0" max="30" step="1"
+                value={c.glassBlur ?? 14}
+                onChange={(e) => setMobileValues({ glassBlur: Number(e.target.value) })}
+              />
+              <div className="mapp-slider">
+                <div className="mapp-slider-head">
+                  <span>Tint</span>
+                  <span className="mapp-slider-value">
+                    {tintOpacity > 0 ? `${tintColor.toUpperCase()} · ${Math.round(tintOpacity * 100)}%` : 'Off'}
+                  </span>
+                </div>
+                <div className="mapp-tint-row">
+                  <label className="mapp-swatch mapp-swatch-sm" style={{ background: tintColor }}>
+                    <input type="color" value={tintColor} onChange={(e) => onTintColor(e.target.value)} aria-label="Tint color" />
+                  </label>
+                  <input
+                    type="range"
+                    className="mapp-range"
+                    min="0" max={MAX_BG_TINT_OPACITY} step="0.05"
+                    value={tintOpacity}
+                    onChange={(e) => setMobileValues({ bgTintOpacity: Number(e.target.value) })}
+                    aria-label="Tint strength"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </Section>
+
+
+        <Section title="Logo" custom={countOf(['logo'])} onReset={() => resetMobileKey('logo')}>
+          <Segmented
+            label="Logo tint"
+            options={LOGO_OPTIONS}
+            value={c.logo || 'auto'}
+            onChange={(v) => setMobileValues({ logo: v }, true)}
+          />
+        </Section>
+
+        {savedThemes.length > 0 && (
+          <Section title="Saved themes">
+            <p className="mapp-note mapp-note-top">Apply one of your themes to your phone only.</p>
+            <div className="mapp-themes">
+              {savedThemes.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className="mapp-theme"
+                  onClick={() => {
+                    applyThemeToMobile(t);
+                    setAppliedTheme(t.id);
+                    setTimeout(() => setAppliedTheme(id => (id === t.id ? null : id)), 1600);
+                  }}
+                >
+                  <span className="mapp-theme-swatches" aria-hidden="true">
+                    {t.colors?.background && (
+                      <span className="mapp-theme-img" style={{ backgroundImage: `url("${t.colors.background}")` }} />
+                    )}
+                    {['bg', 'accent', 'text'].map(k => (
+                      <span key={k} style={{ background: t.colors?.[k] || 'var(--bg-4)' }} />
+                    ))}
+                  </span>
+                  <span className="mapp-theme-name">{t.name}</span>
+                  <span className={`mapp-theme-action ${appliedTheme === t.id ? 'mapp-theme-action-done' : ''}`}>
+                    {appliedTheme === t.id ? 'Applied' : 'Apply'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </Section>
+        )}
+        </>
+      )}
 
       <Section title="Text" custom={countOf(TEXT_KEYS)} onReset={() => resetMobileKey(...TEXT_KEYS)}>
         <div className="mapp-field-label">Text size</div>
@@ -346,48 +423,6 @@ export default function MobileAppearance() {
           <Toggle on={!!c.bold} onClick={() => setMobileValues({ bold: !c.bold }, true)} label="Bold text" />
         </div>
       </Section>
-
-      <Section title="Logo" custom={countOf(['logo'])} onReset={() => resetMobileKey('logo')}>
-        <Segmented
-          label="Logo tint"
-          options={LOGO_OPTIONS}
-          value={c.logo || 'auto'}
-          onChange={(v) => setMobileValues({ logo: v }, true)}
-        />
-      </Section>
-
-      {savedThemes.length > 0 && (
-        <Section title="Saved themes">
-          <p className="mapp-note mapp-note-top">Apply one of your themes to your phone only.</p>
-          <div className="mapp-themes">
-            {savedThemes.map(t => (
-              <button
-                key={t.id}
-                type="button"
-                className="mapp-theme"
-                onClick={() => {
-                  applyThemeToMobile(t);
-                  setAppliedTheme(t.id);
-                  setTimeout(() => setAppliedTheme(id => (id === t.id ? null : id)), 1600);
-                }}
-              >
-                <span className="mapp-theme-swatches" aria-hidden="true">
-                  {t.colors?.background && (
-                    <span className="mapp-theme-img" style={{ backgroundImage: `url("${t.colors.background}")` }} />
-                  )}
-                  {['bg', 'accent', 'text'].map(k => (
-                    <span key={k} style={{ background: t.colors?.[k] || 'var(--bg-4)' }} />
-                  ))}
-                </span>
-                <span className="mapp-theme-name">{t.name}</span>
-                <span className={`mapp-theme-action ${appliedTheme === t.id ? 'mapp-theme-action-done' : ''}`}>
-                  {appliedTheme === t.id ? 'Applied' : 'Apply'}
-                </span>
-              </button>
-            ))}
-          </div>
-        </Section>
-      )}
     </div>
   );
 }

@@ -1,0 +1,1028 @@
+/* ══════════════════════════════════════════════════════════════
+   New UI — app shell
+   --------------------------------------------------------------
+   Covers: components/Layout.css, components/MobileMotion.css,
+   components/TopBar.css, components/TopBarMenu.css,
+   components/StreakBar.css, components/StreakRing.css,
+   components/LevelRing.css, components/LevelBar.css,
+   components/PetBadges.css, PageTransitions.css.
+
+   MobileMotion.css and PageTransitions.css are almost entirely motion
+   mechanics (view transitions, dock spring, sheet slides, skeleton sheen),
+   which are deliberately left alone. Only their visual knock-ons are
+   handled here (e.g. the dock label weight).
+
+   Sidebar is 248px expanded (was 240px). Every place that assumed 240px is
+   re-declared below, inside the desktop media query so the phone
+   (≤768px, sidebar hidden, margin 0) and the 64px collapsed rail keep
+   their original values.
+   ══════════════════════════════════════════════════════════════ */
+
+
+/* ══════════════════════════════════════════════════════════════
+   Layout.css
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Sidebar ─────────────────────────────────────────────────── */
+html.ui-modern .sidebar {
+  background: var(--m-sidebar);
+  border-right: 1px solid var(--border);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+html.ui-modern .sidebar-logo {
+  gap: 10px;
+  height: 56px;
+  padding: 0 18px;
+  border-bottom: none;
+}
+
+html.ui-modern .logo-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--m-r-sm);
+}
+
+html.ui-modern .logo-text {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* ── Team switcher (quiet select) ── */
+html.ui-modern .team-switcher {
+  padding: 4px 12px 0;
+  border-bottom: none;
+}
+
+html.ui-modern .team-switcher-trigger {
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--m-r);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  box-shadow: var(--m-shadow-sm);
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+html.ui-modern .team-switcher-trigger svg { color: var(--text-dim); flex-shrink: 0; }
+html.ui-modern .team-switcher-trigger:hover {
+  background: var(--bg-3);
+  border-color: var(--border-light);
+  color: var(--text);
+}
+html.ui-modern .team-switcher-trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--m-ring);
+}
+
+html.ui-modern .team-switcher-popover,
+html.ui-modern body.has-bg-image .team-switcher-popover {
+  left: 12px;
+  right: 12px;
+  background: var(--bg-solid, var(--bg-2));
+  border: 1px solid var(--border);
+  border-radius: var(--m-r-lg);
+  box-shadow: var(--m-shadow);
+  padding: 6px;
+  gap: 1px;
+}
+
+html.ui-modern .team-switcher-option {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: var(--m-r-sm);
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 400;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+html.ui-modern .team-switcher-option:hover { background: var(--bg-3); color: var(--text); }
+html.ui-modern .team-switcher-option-active { color: var(--text); font-weight: 500; }
+html.ui-modern .team-switcher-option-active svg { color: var(--accent); }
+
+html.ui-modern .team-switcher-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 4px;
+}
+
+html.ui-modern .team-switcher-manage {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+/* ── Collapse tab on the sidebar edge ── */
+html.ui-modern .nav-toggle-tab {
+  top: 72px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern .nav-toggle-tab:hover {
+  background: var(--bg-3);
+  border-color: var(--border-light);
+  color: var(--text);
+}
+html.ui-modern .nav-toggle-tab:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--m-ring);
+}
+
+/* ── Sidebar search trigger ── */
+html.ui-modern .nav-search-btn {
+  gap: 8px;
+  width: calc(100% - 24px);
+  height: 32px;
+  margin: 8px 12px 0;
+  padding: 0 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--m-r);
+  color: var(--text-dim);
+  box-shadow: var(--m-shadow-sm);
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+html.ui-modern .nav-search-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+html.ui-modern .nav-search-btn:hover {
+  background: var(--bg-2);
+  border-color: var(--border-light);
+  color: var(--text-muted);
+}
+html.ui-modern .nav-search-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--m-ring);
+}
+html.ui-modern .nav-search-label {
+  font-size: 13px;
+  font-weight: 400;
+  color: inherit;
+}
+html.ui-modern .nav-search-kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--text-dim);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+/* Phone header search icon */
+html.ui-modern .mobile-search-btn {
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: var(--m-r);
+  color: var(--text-muted);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+html.ui-modern .mobile-search-btn:hover { color: var(--text); }
+html.ui-modern .mobile-search-btn:active { background: var(--bg-3); }
+
+/* ── Nav list ── */
+html.ui-modern .sidebar-nav {
+  padding: 16px 12px 12px;
+  gap: 1px;
+}
+
+html.ui-modern .nav-item {
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--m-r);
+  color: var(--text-muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: normal;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+html.ui-modern .nav-item > svg {
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+html.ui-modern .nav-item:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+html.ui-modern .nav-item:focus-visible {
+  outline: none;
+  box-shadow: var(--m-ring);
+}
+
+html.ui-modern .nav-item.nav-item-active,
+html.ui-modern .nav-item.nav-item-active:hover {
+  background: var(--bg-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern .nav-item.nav-item-active > svg { color: var(--accent); }
+
+/* Collapsed-rail tooltip */
+html.ui-modern .nav-tip {
+  background: var(--bg-solid, var(--bg-2));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: normal;
+  padding: 5px 10px;
+  border-radius: var(--m-r);
+  box-shadow: var(--m-shadow);
+}
+
+/* ── Nav customization ── */
+html.ui-modern .nav-customize-btn {
+  justify-content: flex-start;
+  gap: 8px;
+  height: 30px;
+  margin-top: 6px;
+  padding: 0 10px;
+  background: none;
+  border: none;
+  border-radius: var(--m-r);
+  color: var(--text-dim);
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+html.ui-modern .nav-customize-btn:hover {
+  background: var(--bg-3);
+  color: var(--text-muted);
+}
+html.ui-modern .nav-customize-btn:focus-visible { outline: none; box-shadow: var(--m-ring); }
+
+html.ui-modern .nav-edit-row {
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 8px 0 6px;
+  border-radius: var(--m-r);
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+html.ui-modern .nav-edit-row > svg { width: 16px; height: 16px; flex-shrink: 0; }
+html.ui-modern .nav-edit-row:hover { background: var(--bg-3); color: var(--text); }
+html.ui-modern .nav-edit-row-insert-before { border-top-color: var(--accent); }
+html.ui-modern .nav-edit-row-insert-after  { border-bottom-color: var(--accent); }
+
+html.ui-modern .nav-edit-grip { color: var(--text-dim); }
+
+html.ui-modern .nav-edit-locked {
+  font-size: 11.5px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-dim);
+}
+
+html.ui-modern .nav-edit-toggle {
+  border-radius: var(--m-r-sm);
+  color: var(--text-dim);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+html.ui-modern .nav-edit-toggle:hover { background: var(--bg-4); color: var(--text); }
+html.ui-modern .nav-edit-row:not(.nav-edit-row-hidden) .nav-edit-toggle { color: var(--accent); }
+
+/* ── Unread badge (small accent pill) ── */
+html.ui-modern .nav-unread-badge {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-family: var(--font);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+}
+
+/* ── Footer ── */
+html.ui-modern .sidebar-footer {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border);
+  gap: 4px;
+}
+
+html.ui-modern .guest-link {
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--m-r);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+html.ui-modern .guest-link:hover {
+  background: var(--bg-3);
+  color: var(--text);
+  text-decoration: none;
+}
+html.ui-modern .guest-link:focus-visible { outline: none; box-shadow: var(--m-ring); }
+
+html.ui-modern .user-info {
+  gap: 10px;
+  padding: 6px 6px 0;
+}
+/* Avatar.js sets size/weight inline (34px, weight 700) — compact it here. */
+html.ui-modern .sidebar-footer .user-info > img:first-child,
+html.ui-modern .sidebar-footer .user-info > div:first-child {
+  width: 30px !important;
+  height: 30px !important;
+}
+html.ui-modern .user-info > div:first-child:not(.user-details) { font-weight: 600 !important; }
+html.ui-modern .sidebar-footer .user-info > div:first-child:not(.user-details) { font-size: 11px !important; }
+
+html.ui-modern .user-avatar,
+html.ui-modern .user-avatar-sm {
+  font-weight: 600;
+}
+
+html.ui-modern .user-details { gap: 1px; min-width: 0; }
+
+html.ui-modern .user-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+html.ui-modern .sign-out-btn {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  transition: color 0.12s ease;
+}
+html.ui-modern .sign-out-btn:hover { color: var(--danger); }
+
+/* ── Theme toggle (tidy small switch) ── */
+html.ui-modern .theme-toggle {
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--m-r);
+  transition: background-color 0.12s ease;
+}
+html.ui-modern .theme-toggle:hover {
+  background: var(--bg-3);
+  border-color: transparent;
+}
+html.ui-modern .theme-toggle:focus-visible { outline: none; box-shadow: var(--m-ring); }
+
+html.ui-modern .theme-icon-sun,
+html.ui-modern .theme-icon-moon { color: var(--text-dim); }
+html.ui-modern[data-theme="light"] .theme-icon-sun,
+html.ui-modern:not([data-theme="dark"]) .theme-icon-sun { color: var(--text); }
+html.ui-modern[data-theme="dark"] .theme-icon-moon { color: var(--text); }
+html.ui-modern[data-theme="dark"] .theme-icon-sun { color: var(--text-dim); }
+
+html.ui-modern .theme-track {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 20px;
+  background: var(--bg-4);
+  border: none;
+  border-radius: 999px;
+  transition: background-color 0.15s ease;
+}
+html.ui-modern[data-theme="dark"] .theme-track { background: var(--accent); }
+
+html.ui-modern .theme-thumb {
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff; /* switch thumb is white by spec */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+html.ui-modern .theme-thumb-light {
+  right: auto;
+  left: 2px;
+}
+
+/* ── Phone header ── */
+html.ui-modern .mobile-header {
+  padding: 8px 12px 8px 16px;
+  padding-top: calc(8px + env(safe-area-inset-top));
+  background: var(--bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+}
+
+html.ui-modern .mobile-logo-img { height: 26px; }
+
+html.ui-modern .mobile-header-left { gap: 10px; }
+
+html.ui-modern .hamburger span { background: var(--text-muted); }
+
+html.ui-modern .sidebar-overlay { background: var(--m-overlay); }
+
+/* ── Desktop: 248px sidebar + rail ───────────────────────────── */
+@media (min-width: 769px) {
+  html.ui-modern .sidebar { width: 248px; }
+  html.ui-modern .main-content { margin-left: 248px; }
+  html.ui-modern .nav-toggle-tab { left: 248px; }
+  html.ui-modern .page-content { padding: 28px 32px; }
+
+  /* Collapsed rail — re-asserted so the prefixed rules above don't beat the
+     originals' (lower-specificity) collapsed variants. */
+  html.ui-modern .sidebar.sidebar-collapsed { width: 64px; }
+  html.ui-modern .layout.nav-collapsed .main-content { margin-left: 64px; }
+  html.ui-modern .layout.nav-collapsed .nav-toggle-tab { left: 64px; }
+
+  html.ui-modern .sidebar-collapsed .sidebar-logo { justify-content: center; padding-left: 0; padding-right: 0; }
+  html.ui-modern .sidebar-collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+  html.ui-modern .sidebar-collapsed .nav-search-btn {
+    width: 40px;
+    margin: 8px auto 0;
+    padding: 0;
+    justify-content: center;
+  }
+  html.ui-modern .sidebar-collapsed .guest-link { justify-content: center; padding: 0 10px; }
+  html.ui-modern .sidebar-collapsed .user-info { justify-content: center; padding: 6px 0 0; }
+
+  /* TaskDetail's sticky header bleeds to the page edges by matching
+     .page-content's padding (TaskDetail.css:43-47, written for 32px 40px).
+     Keep it lined up with the new 28px 32px padding. */
+  html.ui-modern .task-detail-header {
+    top: -28px;
+    margin: -28px -32px 28px -32px;
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}
+
+/* ── Phone: dock ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  html.ui-modern .mobile-dock {
+    background: var(--bg-2);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-top: 1px solid var(--border);
+    box-shadow: none;
+  }
+
+  html.ui-modern .dock-indicator {
+    border-radius: 12px;
+    background: var(--bg-3);
+    border: 1px solid transparent;
+    box-shadow: none;
+  }
+
+  html.ui-modern .dock-item {
+    color: var(--text-muted);
+    font-family: var(--font);
+  }
+  html.ui-modern .dock-item svg { width: 21px; height: 21px; stroke-width: 1.9; }
+
+  html.ui-modern .dock-label {
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  html.ui-modern .dock-item.dock-item-active { color: var(--accent); }
+  html.ui-modern .dock-item.dock-item-active svg { stroke-width: 2.2; }
+
+  html.ui-modern .mobile-dock .nav-unread-badge {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 9.5px;
+    border: 2px solid var(--bg-2);
+  }
+
+  /* Phone padding re-asserted (the base rules above are desktop-scoped,
+     but keep this explicit so nothing here can leak a desktop value). */
+  html.ui-modern .main-content { margin-left: 0; }
+}
+
+/* ── Full-screen mobile menu ─────────────────────────────────── */
+html.ui-modern .mobile-menu { background: var(--bg); }
+
+html.ui-modern .mobile-menu-head {
+  gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top)) 12px 10px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+html.ui-modern .mobile-menu-logo { height: 24px; }
+html.ui-modern .mobile-menu-title {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+html.ui-modern .mobile-menu-close {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--m-r);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+html.ui-modern .mobile-menu-close:active { background: var(--bg-3); color: var(--text); }
+
+html.ui-modern .mobile-menu-body {
+  padding: 16px;
+  gap: 16px;
+}
+
+/* The team switcher lives in the menu body too — full width, phone-sized. */
+html.ui-modern .mobile-menu-body .team-switcher { padding: 0; }
+html.ui-modern .mobile-menu-body .team-switcher-trigger {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 15px;
+}
+html.ui-modern .mobile-menu-body .team-switcher-popover { left: 0; right: 0; }
+html.ui-modern .mobile-menu-body .team-switcher-option {
+  min-height: 44px;
+  font-size: 15px;
+  border-radius: var(--m-r);
+}
+
+html.ui-modern .mobile-menu-search {
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 400;
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern .mobile-menu-kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-3);
+  color: var(--text-dim);
+}
+
+/* 2-col tile grid → one card holding a single-column list of rows. */
+html.ui-modern .mobile-menu-nav {
+  grid-template-columns: 1fr;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--m-r-lg);
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern .mobile-menu-item {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  transition: background-color 0.12s ease;
+}
+html.ui-modern .mobile-menu-item svg {
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+html.ui-modern .mobile-menu-item:active {
+  transform: none;
+  background: var(--bg-3);
+}
+html.ui-modern .mobile-menu-item.mobile-menu-item-active {
+  background: var(--bg-3);
+  border-color: transparent;
+}
+html.ui-modern .mobile-menu-item.mobile-menu-item-active svg { color: var(--accent); }
+html.ui-modern .mobile-menu-item .nav-unread-badge {
+  position: static;
+  margin: 0 0 0 auto;
+}
+
+html.ui-modern .mobile-menu-footer {
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  gap: 4px;
+}
+html.ui-modern .mobile-menu-footer .theme-toggle,
+html.ui-modern .mobile-menu-footer .guest-link {
+  min-height: 44px;
+  font-size: 15px;
+}
+html.ui-modern .mobile-menu-footer .user-info { padding: 8px 4px 0; }
+html.ui-modern .mobile-menu-footer .user-name { font-size: 15px; }
+html.ui-modern .mobile-menu-footer .sign-out-btn { font-size: 13px; }
+
+
+/* ══════════════════════════════════════════════════════════════
+   MobileMotion.css — motion untouched. Only the dock's label weight is
+   visual, and it's handled with the dock above.
+   ══════════════════════════════════════════════════════════════ */
+
+
+/* ══════════════════════════════════════════════════════════════
+   TopBar.css
+   ══════════════════════════════════════════════════════════════ */
+html.ui-modern .app-topbar {
+  gap: 16px;
+  background: var(--bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+}
+@media (min-width: 901px) {
+  html.ui-modern .app-topbar {
+    min-height: 60px;
+    padding: 0 32px;
+  }
+}
+
+html.ui-modern .app-topbar-left { gap: 14px; }
+html.ui-modern .app-topbar-left > .sb {
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+  height: 20px;
+}
+
+/* Just the page name — the "TaskFlow ›" root is redundant next to the logo. */
+html.ui-modern .app-topbar-crumb-root,
+html.ui-modern .app-topbar-crumb-sep { display: none; }
+
+html.ui-modern .app-topbar-crumb-current {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+html.ui-modern .app-topbar-right { gap: 16px; }
+html.ui-modern .app-topbar-actions { gap: 8px; }
+html.ui-modern .app-topbar-actions::after {
+  height: 20px;
+  margin-left: 8px;
+  background: var(--border);
+}
+html.ui-modern .app-topbar-cluster { gap: 12px; }
+
+/* Status cluster: calmer, smaller */
+html.ui-modern .app-topbar .pet-badges-strip { gap: 6px; }
+html.ui-modern .app-topbar .rank-img {
+  width: 28px;
+  height: 28px;
+  filter: none;
+}
+
+html.ui-modern .app-topbar .level-ring {
+  width: 30px !important;
+  height: 30px !important;
+}
+html.ui-modern .app-topbar .level-ring-num { font-size: 11.5px; }
+
+/* The top-bar clock (DashboardClock, styled in Dashboard.css) */
+html.ui-modern .app-topbar .dash-datetime {
+  gap: 8px;
+  padding: 0 2px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  box-shadow: none;
+}
+html.ui-modern .app-topbar .dash-datetime svg { color: var(--text-dim); width: 14px; height: 14px; }
+html.ui-modern .app-topbar .dash-dt-sep { height: 12px; background: var(--border); }
+html.ui-modern .app-topbar .dash-dt-time { color: var(--text-muted); }
+
+@media (max-width: 900px) {
+  html.ui-modern .app-topbar {
+    gap: 12px;
+    padding: 14px 24px;
+    min-height: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  html.ui-modern .app-topbar { padding: 12px 16px; }
+  html.ui-modern .app-topbar-crumb-current {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   TopBarMenu.css
+   ══════════════════════════════════════════════════════════════ */
+html.ui-modern .tbm-trigger {
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--m-r);
+  background: none;
+  color: var(--text-muted);
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+html.ui-modern .tbm-trigger:hover,
+html.ui-modern .tbm-trigger.tbm-trigger-open {
+  color: var(--text);
+  background: var(--bg-3);
+  border-color: transparent;
+}
+html.ui-modern .tbm-trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--m-ring);
+}
+
+html.ui-modern .tbm-popover {
+  min-width: 220px;
+  padding: 6px;
+  background: var(--bg-solid, var(--bg-2));
+  border: 1px solid var(--border);
+  border-radius: var(--m-r-lg);
+  box-shadow: var(--m-shadow);
+}
+
+html.ui-modern .tbm-item {
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: var(--m-r-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 400;
+}
+html.ui-modern .tbm-item:hover,
+html.ui-modern .tbm-item:focus-visible { background: var(--bg-3); outline: none; }
+html.ui-modern .tbm-item-icon { color: var(--text-muted); }
+html.ui-modern .tbm-item:hover .tbm-item-icon { color: var(--text); }
+
+html.ui-modern .tbm-kbd {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 1px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+html.ui-modern .tbm-sep { margin: 4px 6px; background: var(--border); }
+
+/* The New Task "+" — same square as the ⋯ beside it, and as base .btn height. */
+html.ui-modern .btn-icon-only {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+@media (max-width: 768px) {
+  html.ui-modern .btn-icon-only { width: 42px; height: 42px; }
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   StreakBar.css
+   ══════════════════════════════════════════════════════════════ */
+html.ui-modern .sb-track { background: var(--bg-4); }
+
+/* Solid tier colour instead of a glowing gradient. */
+html.ui-modern .sb-fill {
+  background: var(--sb-c2);
+  box-shadow: none;
+}
+html.ui-modern .sb-record .sb-fill {
+  background: var(--sb-c2);
+  background-size: auto;
+  animation: none;
+}
+html.ui-modern .sb-paused .sb-fill { box-shadow: none; }
+
+html.ui-modern .sb-compact { gap: 6px; }
+html.ui-modern .sb-compact .sb-num {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+html.ui-modern .sb-compact .sb-track { width: 48px; height: 4px; }
+
+html.ui-modern .sb-full { gap: 10px; }
+html.ui-modern .sb-big {
+  font-family: var(--font);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+html.ui-modern .sb-unit { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+html.ui-modern .sb-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+html.ui-modern .sb-tag-record {
+  color: var(--sb-c2);
+  background: color-mix(in srgb, var(--sb-c2) 12%, transparent);
+}
+html.ui-modern .sb-tag-paused { color: var(--text-muted); background: var(--bg-3); }
+html.ui-modern .sb-full .sb-track { height: 6px; }
+html.ui-modern .sb-caption { font-size: 12.5px; color: var(--text-muted); }
+
+/* Flame keeps its motion (it marks a record run) but loses the glow. */
+html.ui-modern .sb-flame { filter: none; }
+html.ui-modern .sb-paused .sb-flame { filter: grayscale(0.7); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   StreakRing.css
+   ══════════════════════════════════════════════════════════════ */
+html.ui-modern .streak-ring-svg { filter: none; }
+html.ui-modern .streak-ring-count {
+  font-family: var(--font);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+html.ui-modern .streak-ring-paused .streak-ring-svg { filter: none; }
+html.ui-modern .streak-ring-pause {
+  background: var(--text-dim);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   LevelRing.css
+   ══════════════════════════════════════════════════════════════ */
+html.ui-modern .level-ring { background: none; }
+html.ui-modern .level-ring svg { width: 100%; height: 100%; }
+html.ui-modern .level-ring-track { stroke: var(--bg-4); }
+html.ui-modern .level-ring-fill {
+  stroke: var(--accent);
+  filter: none;
+}
+html.ui-modern .level-ring-num {
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: normal;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   LevelBar.css
+   ══════════════════════════════════════════════════════════════ */
+html.ui-modern .level-bar-row { gap: 6px; }
+html.ui-modern .level-bar-top {
+  font-size: 12.5px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-muted);
+}
+html.ui-modern .level-bar-lv {
+  font-family: var(--font);
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+html.ui-modern .level-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-4);
+}
+html.ui-modern .level-bar-fill { border-radius: 999px; }
+html.ui-modern .level-bar-pop {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   PetBadges.css (rank badges — top-bar strip + Settings grid)
+   ══════════════════════════════════════════════════════════════ */
+html.ui-modern .pet-badges-count {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  font-variant-numeric: tabular-nums;
+}
+html.ui-modern .pet-badges-section { margin-bottom: 12px; }
+html.ui-modern .pet-badges-sub {
+  font-size: 12.5px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-muted);
+  margin: 12px 0 4px;
+}
+html.ui-modern .pet-badges-grid { gap: 16px 12px; }
+
+html.ui-modern .pet-badge-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  margin-top: 6px;
+}
+html.ui-modern .pet-badge.locked .pet-badge-name { color: var(--text-dim); }
+html.ui-modern .pet-badge-req {
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+html.ui-modern .pet-badge-progress { margin-top: 4px; }
+html.ui-modern .pet-badge-progress-track { height: 4px; background: var(--bg-4); }
+html.ui-modern .pet-badge-progress-fill { background: var(--accent); }
+
+/* No heavy drop shadows; locked badges are a quiet grey silhouette. */
+html.ui-modern .rank-img { filter: none; }
+html.ui-modern .pet-badge.locked .rank-img {
+  filter: grayscale(1);
+  opacity: 0.4;
+}
+html.ui-modern .pet-badge-lock { filter: grayscale(1); opacity: 0.7; }
+
+html.ui-modern .pet-badge-check {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--m-r-sm);
+  border: 1.5px solid var(--border-light);
+  background: var(--bg-2);
+  color: var(--accent-contrast);
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern .pet-badge-check.on { background: var(--accent); border-color: var(--accent); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   PageTransitions.css — view-transition mechanics only; nothing visual
+   to restyle. The top bar is now solid (no frosted glass), which suits
+   the existing "old bar hidden, new bar live" handover as-is.
+   ══════════════════════════════════════════════════════════════ */

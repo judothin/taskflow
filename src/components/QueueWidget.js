@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import useRefresh from '../lib/useRefresh';
 import { useTeam } from '../context/TeamContext';
 import { WidgetHead } from './dashboardWidgets';
 import './QueuePanel.css';
@@ -20,29 +21,31 @@ export default function QueueWidget() {
   const [reorderingId, setReorderingId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
 
-  const fetchQueue = useCallback(async () => {
+  // Burst-coalesced and latest-only — see lib/useRefresh.
+  const { run: fetchQueue, refresh: refreshQueue } = useRefresh(async (isStale) => {
     if (!activeTeamId) { setQueue([]); return; }
     const { data } = await supabase
       .from('queue')
       .select('id, task_id, position, tasks(*)')
       .eq('team_id', activeTeamId)
       .order('position');
+    if (isStale()) return;
     setQueue((data || []).filter(q => q.tasks));
-  }, [activeTeamId]);
+  });
 
   useEffect(() => {
     fetchQueue();
     const channel = supabase
       .channel('queue-widget')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue' }, fetchQueue)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, fetchQueue)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue' }, refreshQueue)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, refreshQueue)
       .subscribe();
-    window.addEventListener('queue-changed', fetchQueue);
+    window.addEventListener('queue-changed', refreshQueue);
     return () => {
       supabase.removeChannel(channel);
-      window.removeEventListener('queue-changed', fetchQueue);
+      window.removeEventListener('queue-changed', refreshQueue);
     };
-  }, [fetchQueue]);
+  }, [activeTeamId, fetchQueue, refreshQueue]);
 
   const broadcast = () => window.dispatchEvent(new CustomEvent('queue-changed'));
 
@@ -146,7 +149,7 @@ export default function QueueWidget() {
                   <div className="queue-item-feedback">{task.feedback}</div>
                 </div>
 
-                <span className="queue-roi" style={{ background: roi.bg, color: roi.color, borderColor: roi.border }}>
+                <span className="queue-roi" data-roi={task.roi} style={{ background: roi.bg, color: roi.color, borderColor: roi.border }}>
                   {task.roi}
                 </span>
 

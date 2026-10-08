@@ -19,21 +19,39 @@
         try {
           var theme = localStorage.getItem('theme') || 'dark';
           var bg = theme === 'light' ? '#f4f4f8' : '#0a0a0f';
+          var r = document.documentElement;
           // Best-effort: honor a saved custom background colour so custom
-          // themes don't flash the default palette either.
+          // themes don't flash the default palette either — or, with the new
+          // UI on, its preset's background (keep in step with
+          // src/lib/uiPresets.js). Prefers a signed-in user's cache over the
+          // anonymous one, like applyCachedThemeEarly.
           try {
+            var best = null;
             for (var i = 0; i < localStorage.length; i++) {
               var k = localStorage.key(i);
               if (k && k.lastIndexOf('tf-theme-colors-', 0) === 0) {
                 var c = JSON.parse(localStorage.getItem(k) || '{}');
-                if (c && c.bg) {
-                  var h = String(c.bg).replace('#', '');
-                  if (/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(h)) { bg = '#' + h; break; }
+                if (c && (c.bg || c.modernUi)) {
+                  best = c;
+                  if (k.slice(-5) !== '-anon') break;
                 }
               }
             }
+            if (best && best.modernUi) {
+              var presets = {
+                slate:  ['#f7f7f8', '#111113'], ocean:  ['#f5f8fb', '#0d141b'],
+                forest: ['#f6f8f6', '#0e1411'], rose:   ['#faf7f8', '#151012'],
+                sand:   ['#f9f7f3', '#14120e'], violet: ['#f8f7fb', '#121019']
+              };
+              var id = presets[best.preset] ? best.preset : 'slate';
+              bg = presets[id][theme === 'light' ? 0 : 1];
+              r.classList.add('ui-modern');
+              r.setAttribute('data-preset', id);
+            } else if (best && best.bg) {
+              var h = String(best.bg).replace('#', '');
+              if (/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(h)) bg = '#' + h;
+            }
           } catch (e) {}
-          var r = document.documentElement;
           r.setAttribute('data-theme', theme);
           r.style.backgroundColor = bg;
           // Suppress CSS transitions during boot so the theme is simply THERE
@@ -68,7 +86,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

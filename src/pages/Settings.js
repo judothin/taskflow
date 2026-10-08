@@ -15,6 +15,8 @@ import { useSpecialBadges } from '../context/SpecialBadgesContext';
 import { loadShownBadges, saveShownBadges } from '../lib/badgePrefs';
 import ModalPortal from '../components/ModalPortal';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
+import { useTheme } from '../context/ThemeContext';
+import UiPresetPicker from '../components/UiPresetPicker';
 import {
   THEME_FIELDS, STATUS_FIELDS, FONT_SCALES,
   DEFAULT_BG_TINT, MAX_BG_TINT_OPACITY,
@@ -90,7 +92,9 @@ export default function Settings() {
     getColor, setColor, setColorValues, resetColor, resetAll, isCustom, colors,
     backgrounds, maxBackgrounds, setBackground, uploadBackground, deleteBackground,
     savedThemes, saveTheme, applyTheme, deleteTheme, backgroundUsage, mobileColors,
+    modernUi, preset, setModernUi, setPreset,
   } = useThemeCustomization();
+  const { theme, setTheme } = useTheme();
   const mobileOverrideCount = Object.keys(mobileColors || {}).length;
   const avatarRef = useRef();
   const bgInputRef = useRef();
@@ -532,192 +536,230 @@ export default function Settings() {
           {section === 'appearance' && (
             <>
               <div className="card">
-                <div className="settings-card-head">
-                  <h2 className="settings-card-title">Colors</h2>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={resetAll} disabled={!customCount}>
-                    {customCount ? `Reset all (${customCount})` : 'Reset all'}
-                  </button>
-                </div>
-                <p className="settings-card-sub">
-                  Changes apply instantly and sync across your devices. The secondary color also drives the activity chart.
-                </p>
-                {mobileOverrideCount > 0 && (
-                  <p className="settings-card-sub">
-                    Your phone has {mobileOverrideCount} setting{mobileOverrideCount === 1 ? '' : 's'} of its own, which stay
-                    as they are when you change them here. Reset them from Appearance on your phone.
-                  </p>
-                )}
+                <h2 className="settings-card-title">Design</h2>
+                <SettingRow
+                  label={<>New UI <span className="settings-new-chip">New</span></>}
+                  desc={modernUi
+                    ? 'A cleaner, calmer design with preset themes. Switch it off to go back to your own colors and background.'
+                    : 'Try a cleaner, calmer design with preset themes. Your current colors and background are kept for if you switch back.'}
+                >
+                  <Toggle on={modernUi} onClick={() => setModernUi(!modernUi)} label="New UI" />
+                </SettingRow>
+              </div>
 
-                <Group title="Interface" count={THEME_FIELDS.length}>
-                  <div className="theme-color-grid">
-                    {THEME_FIELDS.map(f => (
-                      <ColorRow key={f.key} field={f} value={getColor(f.key)} custom={isCustom(f.key)}
-                        onChange={(v) => setColor(f.key, v)} onReset={() => resetColor(f.key)} />
-                    ))}
-                  </div>
-                </Group>
-
-                <Group title="Status colors" count={STATUS_FIELDS.length} defaultOpen={false}>
-                  <div className="theme-color-grid">
-                    {STATUS_FIELDS.map(f => (
-                      <ColorRow key={f.key} field={f} value={getColor(f.key)} custom={isCustom(f.key)}
-                        onChange={(v) => setColor(f.key, v)} onReset={() => resetColor(f.key)} />
-                    ))}
-                  </div>
-                </Group>
-
-                <Group title="Logo" defaultOpen={false}>
-                  <SettingRow label="Logo tint" desc="Auto picks white or black to suit your theme.">
-                    <div className="theme-logo-seg">
-                      {[{ v: 'auto', label: 'Auto' }, { v: 'white', label: 'White' }, { v: 'black', label: 'Black' }].map(o => (
+              {modernUi ? (
+                <div className="card">
+                  <h2 className="settings-card-title">Theme</h2>
+                  <p className="settings-card-sub">Each theme has a light and a dark version. Syncs across your devices.</p>
+                  <UiPresetPicker value={preset} mode={theme} onChange={setPreset} />
+                  <SettingRow label="Mode" desc="Also on the switch at the bottom of the sidebar.">
+                    <div className="theme-logo-seg" role="radiogroup" aria-label="Mode">
+                      {[{ v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }].map(o => (
                         <button
                           key={o.v}
                           type="button"
-                          className={`theme-logo-btn ${logoChoice === o.v ? 'theme-logo-btn-active' : ''}`}
-                          onClick={() => (o.v === 'auto' ? resetColor('logo') : setColor('logo', o.v))}
+                          role="radio"
+                          aria-checked={theme === o.v}
+                          className={`theme-logo-btn ${theme === o.v ? 'theme-logo-btn-active' : ''}`}
+                          onClick={() => setTheme(o.v)}
                         >
                           {o.label}
                         </button>
                       ))}
                     </div>
                   </SettingRow>
-                </Group>
-              </div>
-
-              <div className="settings-two-col">
-                {/* Background images */}
+                </div>
+              ) : (
+                <>
                 <div className="card">
                   <div className="settings-card-head">
-                    <h2 className="settings-card-title">Background</h2>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      disabled={bgBusy || backgrounds.length >= maxBackgrounds}
-                      onClick={() => bgInputRef.current?.click()}
-                    >
-                      {bgBusy ? 'Uploading…' : 'Upload image'}
+                    <h2 className="settings-card-title">Colors</h2>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={resetAll} disabled={!customCount}>
+                      {customCount ? `Reset all (${customCount})` : 'Reset all'}
                     </button>
                   </div>
                   <p className="settings-card-sub">
-                    Use an image as the app background — synced to your account. {backgrounds.length}/{maxBackgrounds} saved.
+                    Changes apply instantly and sync across your devices. The secondary color also drives the activity chart.
                   </p>
-                  <input ref={bgInputRef} type="file" accept="image/*" onChange={handleBgUpload} style={{ display: 'none' }} />
-                  {bgError && <div className="error-msg settings-inline-err">⚠ {bgError}</div>}
-                  <div className="bg-grid">
-                    <button
-                      type="button"
-                      className={`bg-tile bg-tile-none ${!colors.background ? 'bg-tile-active' : ''}`}
-                      onClick={() => setBackground(null)}
-                    >
-                      None
-                    </button>
-                    {backgrounds.map(bg => (
-                      <div
-                        key={bg.id}
-                        className={`bg-tile ${colors.background === bg.url ? 'bg-tile-active' : ''}`}
-                        style={{ backgroundImage: `url("${bg.url}")` }}
-                        onClick={() => setBackground(bg.url)}
-                        title="Use as background"
-                      >
-                        <button className="bg-tile-del" onClick={(e) => { e.stopPropagation(); requestDeleteBg(bg); }} title="Delete background">✕</button>
-                      </div>
-                    ))}
-                  </div>
-
-                  {colors.background && (
-                    <div className="settings-sliders">
-                      <div className="settings-slider-head">
-                        <span>Glass opacity</span>
-                        <span className="settings-slider-value">{Math.round((colors.glassOpacity ?? 0.55) * 100)}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0.2" max="0.95" step="0.05"
-                        value={colors.glassOpacity ?? 0.55}
-                        onChange={(e) => setColor('glassOpacity', Number(e.target.value))}
-                        className="glass-opacity-range"
-                      />
-
-                      <div className="settings-slider-head">
-                        <span>Glass blur</span>
-                        <span className="settings-slider-value">{colors.glassBlur ?? 14}px</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0" max="30" step="1"
-                        value={colors.glassBlur ?? 14}
-                        onChange={(e) => setColor('glassBlur', Number(e.target.value))}
-                        className="glass-opacity-range"
-                      />
-                      <p className="settings-card-sub settings-card-sub-tight">
-                        Opacity &amp; blur of the frosted panels over your background.
-                      </p>
-
-                      <div className="settings-tint">
-                        <div className="settings-slider-head">
-                          <span>Tint</span>
-                          <span className="settings-slider-value">
-                            {tintOpacity > 0 ? `${tintColor.toUpperCase()} · ${Math.round(tintOpacity * 100)}%` : 'Off'}
-                          </span>
-                        </div>
-                        <div className="settings-tint-row">
-                          <input
-                            type="color"
-                            className="theme-color-input"
-                            value={tintColor}
-                            onChange={(e) => handleTintColor(e.target.value)}
-                            title="Tint color"
-                          />
-                          <input
-                            type="range"
-                            min="0" max={MAX_BG_TINT_OPACITY} step="0.05"
-                            value={tintOpacity}
-                            onChange={(e) => setColor('bgTintOpacity', Number(e.target.value))}
-                            className="glass-opacity-range"
-                            aria-label="Tint strength"
-                          />
-                        </div>
-                        <p className="settings-card-sub settings-card-sub-tight">
-                          Washes a color over the image — darken a busy photo so text stays readable. Drag to 0% to turn it off.
-                        </p>
-                      </div>
-                    </div>
+                  {mobileOverrideCount > 0 && (
+                    <p className="settings-card-sub">
+                      Your phone has {mobileOverrideCount} setting{mobileOverrideCount === 1 ? '' : 's'} of its own, which stay
+                      as they are when you change them here. Reset them from Appearance on your phone.
+                    </p>
                   )}
+
+                  <Group title="Interface" count={THEME_FIELDS.length}>
+                    <div className="theme-color-grid">
+                      {THEME_FIELDS.map(f => (
+                        <ColorRow key={f.key} field={f} value={getColor(f.key)} custom={isCustom(f.key)}
+                          onChange={(v) => setColor(f.key, v)} onReset={() => resetColor(f.key)} />
+                      ))}
+                    </div>
+                  </Group>
+
+                  <Group title="Status colors" count={STATUS_FIELDS.length} defaultOpen={false}>
+                    <div className="theme-color-grid">
+                      {STATUS_FIELDS.map(f => (
+                        <ColorRow key={f.key} field={f} value={getColor(f.key)} custom={isCustom(f.key)}
+                          onChange={(v) => setColor(f.key, v)} onReset={() => resetColor(f.key)} />
+                      ))}
+                    </div>
+                  </Group>
+
+                  <Group title="Logo" defaultOpen={false}>
+                    <SettingRow label="Logo tint" desc="Auto picks white or black to suit your theme.">
+                      <div className="theme-logo-seg">
+                        {[{ v: 'auto', label: 'Auto' }, { v: 'white', label: 'White' }, { v: 'black', label: 'Black' }].map(o => (
+                          <button
+                            key={o.v}
+                            type="button"
+                            className={`theme-logo-btn ${logoChoice === o.v ? 'theme-logo-btn-active' : ''}`}
+                            onClick={() => (o.v === 'auto' ? resetColor('logo') : setColor('logo', o.v))}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    </SettingRow>
+                  </Group>
                 </div>
 
-                {/* Saved themes */}
-                <div className="card">
-                  <h2 className="settings-card-title">Saved Themes</h2>
-                  <p className="settings-card-sub">
-                    Save your current colors, background &amp; text settings as a named theme.
-                  </p>
-                  <div className="settings-inline-form">
-                    <input className="input" placeholder="Theme name…" value={themeName} onChange={e => setThemeName(e.target.value)} />
-                    <button type="button" className="btn btn-primary btn-sm" disabled={!themeName.trim()} onClick={handleSaveTheme}>Save</button>
-                  </div>
-                  {savedThemes.length === 0 ? (
-                    <p className="settings-empty">No saved themes yet.</p>
-                  ) : (
-                    <div className="saved-theme-list">
-                      {savedThemes.map(t => (
-                        <div key={t.id} className="saved-theme-row">
-                          <div className="saved-theme-swatches">
-                            {t.colors?.background
-                              ? <span className="saved-theme-img" style={{ backgroundImage: `url("${t.colors.background}")` }} />
-                              : null}
-                            {['bg', 'accent', 'text'].map(k => (
-                              <span key={k} style={{ background: t.colors?.[k] || 'var(--bg-4)' }} />
-                            ))}
-                          </div>
-                          <span className="saved-theme-name">{t.name}</span>
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => applyTheme(t)}>Apply</button>
-                          <button type="button" className="theme-color-reset" onClick={() => deleteTheme(t.id)}>Delete</button>
+                <div className="settings-two-col">
+                  {/* Background images */}
+                  <div className="card">
+                    <div className="settings-card-head">
+                      <h2 className="settings-card-title">Background</h2>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={bgBusy || backgrounds.length >= maxBackgrounds}
+                        onClick={() => bgInputRef.current?.click()}
+                      >
+                        {bgBusy ? 'Uploading…' : 'Upload image'}
+                      </button>
+                    </div>
+                    <p className="settings-card-sub">
+                      Use an image as the app background — synced to your account. {backgrounds.length}/{maxBackgrounds} saved.
+                    </p>
+                    <input ref={bgInputRef} type="file" accept="image/*" onChange={handleBgUpload} style={{ display: 'none' }} />
+                    {bgError && <div className="error-msg settings-inline-err">⚠ {bgError}</div>}
+                    <div className="bg-grid">
+                      <button
+                        type="button"
+                        className={`bg-tile bg-tile-none ${!colors.background ? 'bg-tile-active' : ''}`}
+                        onClick={() => setBackground(null)}
+                      >
+                        None
+                      </button>
+                      {backgrounds.map(bg => (
+                        <div
+                          key={bg.id}
+                          className={`bg-tile ${colors.background === bg.url ? 'bg-tile-active' : ''}`}
+                          style={{ backgroundImage: `url("${bg.url}")` }}
+                          onClick={() => setBackground(bg.url)}
+                          title="Use as background"
+                        >
+                          <button className="bg-tile-del" onClick={(e) => { e.stopPropagation(); requestDeleteBg(bg); }} title="Delete background">✕</button>
                         </div>
                       ))}
                     </div>
-                  )}
+
+                    {colors.background && (
+                      <div className="settings-sliders">
+                        <div className="settings-slider-head">
+                          <span>Glass opacity</span>
+                          <span className="settings-slider-value">{Math.round((colors.glassOpacity ?? 0.55) * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.2" max="0.95" step="0.05"
+                          value={colors.glassOpacity ?? 0.55}
+                          onChange={(e) => setColor('glassOpacity', Number(e.target.value))}
+                          className="glass-opacity-range"
+                        />
+
+                        <div className="settings-slider-head">
+                          <span>Glass blur</span>
+                          <span className="settings-slider-value">{colors.glassBlur ?? 14}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0" max="30" step="1"
+                          value={colors.glassBlur ?? 14}
+                          onChange={(e) => setColor('glassBlur', Number(e.target.value))}
+                          className="glass-opacity-range"
+                        />
+                        <p className="settings-card-sub settings-card-sub-tight">
+                          Opacity &amp; blur of the frosted panels over your background.
+                        </p>
+
+                        <div className="settings-tint">
+                          <div className="settings-slider-head">
+                            <span>Tint</span>
+                            <span className="settings-slider-value">
+                              {tintOpacity > 0 ? `${tintColor.toUpperCase()} · ${Math.round(tintOpacity * 100)}%` : 'Off'}
+                            </span>
+                          </div>
+                          <div className="settings-tint-row">
+                            <input
+                              type="color"
+                              className="theme-color-input"
+                              value={tintColor}
+                              onChange={(e) => handleTintColor(e.target.value)}
+                              title="Tint color"
+                            />
+                            <input
+                              type="range"
+                              min="0" max={MAX_BG_TINT_OPACITY} step="0.05"
+                              value={tintOpacity}
+                              onChange={(e) => setColor('bgTintOpacity', Number(e.target.value))}
+                              className="glass-opacity-range"
+                              aria-label="Tint strength"
+                            />
+                          </div>
+                          <p className="settings-card-sub settings-card-sub-tight">
+                            Washes a color over the image — darken a busy photo so text stays readable. Drag to 0% to turn it off.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Saved themes */}
+                  <div className="card">
+                    <h2 className="settings-card-title">Saved Themes</h2>
+                    <p className="settings-card-sub">
+                      Save your current colors, background &amp; text settings as a named theme.
+                    </p>
+                    <div className="settings-inline-form">
+                      <input className="input" placeholder="Theme name…" value={themeName} onChange={e => setThemeName(e.target.value)} />
+                      <button type="button" className="btn btn-primary btn-sm" disabled={!themeName.trim()} onClick={handleSaveTheme}>Save</button>
+                    </div>
+                    {savedThemes.length === 0 ? (
+                      <p className="settings-empty">No saved themes yet.</p>
+                    ) : (
+                      <div className="saved-theme-list">
+                        {savedThemes.map(t => (
+                          <div key={t.id} className="saved-theme-row">
+                            <div className="saved-theme-swatches">
+                              {t.colors?.background
+                                ? <span className="saved-theme-img" style={{ backgroundImage: `url("${t.colors.background}")` }} />
+                                : null}
+                              {['bg', 'accent', 'text'].map(k => (
+                                <span key={k} style={{ background: t.colors?.[k] || 'var(--bg-4)' }} />
+                              ))}
+                            </div>
+                            <span className="saved-theme-name">{t.name}</span>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => applyTheme(t)}>Apply</button>
+                            <button type="button" className="theme-color-reset" onClick={() => deleteTheme(t.id)}>Delete</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+                </>
+              )}
             </>
           )}
 

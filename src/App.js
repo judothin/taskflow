@@ -38,7 +38,10 @@ import ProjectDetail from './pages/ProjectDetail';
 import Pomodoro from './pages/Pomodoro';
 import MobileAppearance from './pages/MobileAppearance';
 import GoLive from './pages/GoLive';
+import Review from './pages/Review';
 import Layout from './components/Layout';
+// Last, so the new UI's overrides follow every page's own stylesheet.
+import './modern';
 
 // A single, consistent boot loader for every gate. It's transparent (so the
 // already-painted theme background shows through) and its spinner only fades in
@@ -122,8 +125,8 @@ function HomeRedirect() {
 // stale bookmark, a deep link or a teammate's shared URL all land somewhere
 // usable instead.
 //
-// The mobile-ready set is: focus, active, completed, stats, quicklog, context
-// and a task's detail view. Everything else goes through here.
+// The mobile-ready set is: focus, active, completed, stats, quicklog, context,
+// review and a task's detail view. Everything else goes through here.
 function DesktopOnly({ children }) {
   const isPhone = useIsPhone();
   if (isPhone) return <Navigate to="/focus" replace />;
@@ -167,6 +170,8 @@ function AppRoutes() {
         <Route path="files" element={<DesktopOnly><Files /></DesktopOnly>} />
         <Route path="context" element={<Context />} />
         <Route path="go-live" element={<DesktopOnly><GoLive /></DesktopOnly>} />
+        {/* Works on a phone too, so reviewers can sign things off on the go. */}
+        <Route path="review" element={<Review />} />
         <Route path="pomodoro" element={<DesktopOnly><Pomodoro /></DesktopOnly>} />
         <Route path="projects" element={<DesktopOnly><Projects /></DesktopOnly>} />
         <Route path="projects/:id" element={<DesktopOnly><ProjectDetail /></DesktopOnly>} />

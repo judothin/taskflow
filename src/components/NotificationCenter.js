@@ -180,6 +180,16 @@ function NotificationDetail({ notif, onClose }) {
       ['Submitted', fmt(notif.createdAt)],
     ];
     action = { label: 'Review submissions', go: () => navigate('/submissions') };
+  } else if (d.kind === 'review') {
+    rows = [
+      ['Post', d.postTitle || notif.title],
+      ['What', notif.subtitle],
+      d.event?.note && ['Note', d.event.note],
+      d.comment && ['Comment', d.comment.content],
+      ['From', notif.from || '—'],
+      ['When', fmt(notif.createdAt)],
+    ].filter(Boolean);
+    action = { label: 'Open review', go: () => navigate(`/review?post=${d.postId}`) };
   } else if (d.kind === 'file') {
     rows = [
       ['File', d.file?.name || d.file?.title || '—'],
@@ -279,6 +289,25 @@ function NotificationSettings({ onClose }) {
               />
             </label>
           </div>
+
+          {(settings.types.review_request || settings.types.review_decision || settings.types.review_comment) && (
+            <>
+              <p className="label" style={{ margin: '20px 0 10px' }}>Ready for Review — which posts?</p>
+              <div className="nc-scope-row">
+                <button
+                  className={`nc-scope-btn ${settings.reviewScope !== 'all' ? 'nc-scope-active' : ''}`}
+                  onClick={() => updateSettings({ reviewScope: 'involved' })}
+                >Ones I'm on</button>
+                <button
+                  className={`nc-scope-btn ${settings.reviewScope === 'all' ? 'nc-scope-active' : ''}`}
+                  onClick={() => updateSettings({ reviewScope: 'all' })}
+                >Every post</button>
+              </div>
+              <p className="nc-set-hint" style={{ marginTop: 8 }}>
+                "Ones I'm on" means posts you wrote or were picked to review.
+              </p>
+            </>
+          )}
 
           {settings.types.task_completed && (
             <>

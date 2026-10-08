@@ -6,6 +6,7 @@ import {
   applyThemeColors, clearThemeColors, effectiveColor, loadThemeCache, saveThemeCache,
   cacheBackgroundImage, resolveForDevice, clearBgCache,
 } from '../lib/themeColors';
+import { DEFAULT_UI_PRESET } from '../lib/uiPresets';
 import useIsPhone from '../lib/useIsPhone';
 import { fetchUserPrefs, saveUserPrefs, saveUserPrefsDebounced } from '../lib/userPrefs';
 
@@ -119,8 +120,11 @@ export function ThemeCustomizationProvider({ children }) {
   // Desktop's reset leaves the phone's own overrides alone — they have their
   // own reset (resetMobileAll).
   const resetAll   = useCallback(() => {
-    const { mobile } = colorsRef.current;
-    commit(mobile ? { mobile } : {}, true);
+    const { mobile, modernUi: m, preset: p } = colorsRef.current;
+    const next = mobile ? { mobile } : {};
+    if (m) next.modernUi = m;
+    if (p) next.preset = p;
+    commit(next, true);
   }, [commit]);
 
   const getColor = useCallback((key) => effectiveColor(key, colors), [colors]);
@@ -153,6 +157,23 @@ export function ThemeCustomizationProvider({ children }) {
   const getPhoneColor = useCallback((key) => effectiveColor(key, phoneColors), [phoneColors]);
   const isMobileCustom = useCallback(
     (key) => Object.prototype.hasOwnProperty.call(mobileColors, key), [mobileColors]);
+
+  // ── New UI ───────────────────────────────────────────────
+  // Account-wide (never a phone override): the new UI is a different app
+  // skin, and half of it on one device would be confusing. Turning it off
+  // leaves `preset` behind so turning it back on restores the same theme.
+  const modernUi = !!colors.modernUi;
+  const preset = colors.preset || DEFAULT_UI_PRESET;
+  const setModernUi = useCallback((on) => {
+    const next = { ...colorsRef.current, modernUi: !!on };
+    if (!on) delete next.modernUi;
+    commit(next, true);
+    if (!on) {
+      const eff = resolveForDevice(next, isPhoneRef.current);
+      if (eff.background) cacheBackgroundImage(eff.background);
+    }
+  }, [commit]);
+  const setPreset = useCallback((id) => commit({ ...colorsRef.current, preset: id }, true), [commit]);
 
   // ── Background images ────────────────────────────────────
   const setBackground = useCallback((url) => {
@@ -242,15 +263,17 @@ export function ThemeCustomizationProvider({ children }) {
   const saveTheme = useCallback(async (name) => {
     if (!uid || !name.trim()) return;
     // A saved theme is one look; the phone's overrides aren't part of it.
-    const { mobile, ...themeColors } = colorsRef.current;
+    const { mobile, modernUi: _m, preset: _p, ...themeColors } = colorsRef.current;
     await supabase.from('user_themes').insert({ user_id: uid, name: name.trim(), colors: themeColors });
     await refreshThemes();
   }, [uid, refreshThemes]);
 
   const applyTheme = useCallback((themeRec) => {
     const { mobile: _ignored, ...themeColors } = themeRec?.colors || {};
-    const { mobile } = colorsRef.current;
-    const next = mobile ? { ...themeColors, mobile } : themeColors;
+    const { mobile, modernUi: m, preset: p } = colorsRef.current;
+    const next = mobile ? { ...themeColors, mobile } : { ...themeColors };
+    if (m) next.modernUi = m;
+    if (p) next.preset = p;
     commit(next, true);
     const eff = resolveForDevice(next, isPhoneRef.current);
     if (eff.background) cacheBackgroundImage(eff.background);
@@ -281,6 +304,7 @@ export function ThemeCustomizationProvider({ children }) {
       savedThemes, saveTheme, applyTheme, deleteTheme, backgroundUsage,
       activeColors, mobileColors, phoneColors, setMobileValues, resetMobileKey, resetMobileAll,
       getPhoneColor, isMobileCustom, applyThemeToMobile,
+      modernUi, preset, setModernUi, setPreset,
     }}>
       {children}
     </Ctx.Provider>

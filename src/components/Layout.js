@@ -22,6 +22,7 @@ import QuickContext, { OPEN_QUICK_CONTEXT } from './QuickContext';
 import { useStreak } from '../context/StreakContext';
 import { usePets } from '../context/PetContext';
 import { streakTier } from '../lib/streak';
+import { useWaitingOnMeCount } from '../lib/reviews';
 import './Layout.css';
 import './MobileMotion.css';
 
@@ -131,6 +132,19 @@ function ProjectsNavBadge({ userId, teamId }) {
 
   if (!count) return null;
   return <span className="nav-unread-badge">{count}</span>;
+}
+
+function ReviewNavBadge({ userId, teamId }) {
+  const count = useWaitingOnMeCount(teamId, userId);
+  if (!count) return null;
+  return <span className="nav-unread-badge" title={`${count} waiting on your review`}>{count}</span>;
+}
+
+// A nav item's count, by the item's `badge` kind (see lib/navLayout.js).
+function NavBadge({ kind, userId, teamId }) {
+  if (kind === 'review') return <ReviewNavBadge userId={userId} teamId={teamId} />;
+  if (kind === 'projects') return <ProjectsNavBadge userId={userId} teamId={teamId} />;
+  return null;
 }
 
 function TeamSwitcher() {
@@ -262,8 +276,10 @@ export default function Layout() {
     return next;
   });
   // A custom background/text = the user has set their own theme, so the
-  // light/dark toggle no longer applies. Otherwise it works as before.
-  const hasCustomTheme = Boolean(colors?.bg || colors?.text);
+  // light/dark toggle no longer applies. Otherwise it works as before. The
+  // new UI ignores custom colours, and there the toggle picks the preset's
+  // light or dark palette.
+  const hasCustomTheme = !colors?.modernUi && Boolean(colors?.bg || colors?.text);
 
   const handleSignOut = async () => {
     await signOut();
@@ -324,7 +340,7 @@ export default function Layout() {
                 >
                   <NavIcon d={item.icon} />
                   <span className="nav-label">{item.label}</span>
-                  {item.badge && <ProjectsNavBadge userId={user?.id} teamId={activeTeam?.id} />}
+                  {item.badge && <NavBadge kind={item.badge} userId={user?.id} teamId={activeTeam?.id} />}
                   <span className="nav-tip" aria-hidden="true">{item.label}</span>
                 </NavLink>
               );
@@ -526,7 +542,7 @@ export default function Layout() {
                   >
                     <NavIcon d={item.icon} />
                     <span>{item.label}</span>
-                    {item.badge && <ProjectsNavBadge userId={user?.id} teamId={activeTeam?.id} />}
+                    {item.badge && <NavBadge kind={item.badge} userId={user?.id} teamId={activeTeam?.id} />}
                   </NavLink>
                 );
               })}

@@ -12,13 +12,32 @@ export const NOTIF_TYPES = {
   comment:        { label: 'Project comment', color: '#a78bfa' },
   submission:     { label: 'Guest submission',color: '#f59e0b' },
   file_added:     { label: 'File added',      color: '#2dd4bf' },
+  review_request:  { label: 'Review request',  color: '#38bdf8' },
+  review_decision: { label: 'Review decision', color: '#4ade80' },
+  review_comment:  { label: 'Review comment',  color: '#c084fc' },
+};
+
+const REVIEW_TYPES = new Set(['review_request', 'review_decision', 'review_comment']);
+const REVIEW_EVENT_TYPE = {
+  submitted: 'review_request', resubmitted: 'review_request',
+  approved: 'review_decision', needs_work: 'review_decision',
+};
+const REVIEW_EVENT_SUBTITLE = {
+  submitted: () => 'Ready for review',
+  resubmitted: (e) => `Resubmitted for review · round ${e.round}`,
+  approved: () => 'Reviewed — ready for live',
+  needs_work: () => 'Reviewed — needs work',
 };
 
 const DEFAULT_SETTINGS = {
-  types: { task_completed: true, task_created: true, comment: true, submission: true, file_added: true },
+  types: {
+    task_completed: true, task_created: true, comment: true, submission: true, file_added: true,
+    review_request: true, review_decision: true, review_comment: true,
+  },
   completedScope: 'all',     // 'all' | 'selected'
   completedPeople: [],       // names matched against tasks.completed_by when scope === 'selected'
   includeSelf: false,        // notify me about things *I* do — off by default (people rarely want to be pinged for their own actions)
+  reviewScope: 'involved',   // 'involved' (posts I wrote or review) | 'all' — Ready for Review notifications
 };
 
 const WINDOW_DAYS = 30;
@@ -72,6 +91,9 @@ export function NotificationProvider({ children }) {
   const profileMetaRef = useRef({}); // lowercased "first last" -> { avatar_url, color }
   const projectsRef = useRef({});   // id -> title
   const seenRef     = useRef(new Set());
+  // Ready for Review: post id -> { title, created_by }, and the posts I review.
+  const reviewPostsRef = useRef({});
+  const myReviewsRef   = useRef(new Set());
 
   // Reload per-user persisted state when the signed-in user changes, then
   // reconcile settings with the server so they're identical across devices.
@@ -144,6 +166,30 @@ export function NotificationProvider({ children }) {
     return out;
   }, []);
 
+  const buildReviewEventNotif = useCallback((e) => {
+    const type = REVIEW_EVENT_TYPE[e.kind];
+    if (!type) return null; // 'reopened' (an undo) isn't worth a ping
+    const post = reviewPostsRef.current[e.post_id];
+    return {
+      id: `rv-${e.id}`, type, createdAt: e.created_at || new Date().toISOString(),
+      title: post?.title || 'A review post',
+      subtitle: REVIEW_EVENT_SUBTITLE[e.kind](e),
+      from: profilesRef.current[e.actor] || 'Someone',
+      data: { kind: 'review', postId: e.post_id, postTitle: post?.title, event: e, actorId: e.actor },
+    };
+  }, []);
+
+  const buildReviewCommentNotif = useCallback((c) => {
+    const post = reviewPostsRef.current[c.post_id];
+    return {
+      id: `rc-${c.id}`, type: 'review_comment', createdAt: c.created_at || new Date().toISOString(),
+      title: post?.title || 'A review post',
+      subtitle: 'New comment',
+      from: profilesRef.current[c.user_id] || 'Someone',
+      data: { kind: 'review', postId: c.post_id, postTitle: post?.title, comment: c, actorId: c.user_id },
+    };
+  }, []);
+
   // ── Initial backfill ─────────────────────────────────────
   const backfill = useCallback(async () => {
     if (!activeTeamId) return;
@@ -157,6 +203,14 @@ export function NotificationProvider({ children }) {
         .order('created_at', { ascending: false }).limit(30),
       supabase.from('file_entries').select('*').eq('team_id', activeTeamId).gte('created_at', since)
         .order('created_at', { ascending: false }).limit(30),
+      // Ready for Review (tables from supabase-review-migration.sql — if
+      // they're missing these just come back empty).
+      supabase.from('review_posts').select('id, title, created_by').eq('team_id', activeTeamId),
+      supabase.from('review_reviewers').select('post_id').eq('team_id', activeTeamId).eq('user_id', uid),
+      supabase.from('review_events').select('*').eq('team_id', activeTeamId).gte('created_at', since)
+        .order('created_at', { ascending: false }).limit(60),
+      supabase.from('review_comments').select('id, post_id, user_id, content, created_at').eq('team_id', activeTeamId)
+        .gte('created_at', since).order('created_at', { ascending: false }).limit(60),
     ]);
     const val = (i) => (results[i].status === 'fulfilled' ? results[i].value.data : null) || [];
 
@@ -203,9 +257,30 @@ export function NotificationProvider({ children }) {
       data: { kind: 'file', file: f },
     }));
 
+
+    const posts = {};
+    val(5).forEach(p => { posts[p.id] = p; });
+    reviewPostsRef.current = posts;
+    myReviewsRef.current = new Set(val(6).map(r => r.post_id));
+    val(7).forEach(e => { const n = buildReviewEventNotif(e); if (n) out.push(n); });
+    val(8).forEach(c => out.push(buildReviewCommentNotif(c)));
+
     out.forEach(n => seenRef.current.add(n.id));
     addItems(out);
-  }, [activeTeamId, addItems, buildTaskNotifs]);
+  }, [activeTeamId, uid, addItems, buildTaskNotifs, buildReviewEventNotif, buildReviewCommentNotif]);
+
+  // A realtime review event can be about a post this feed hasn't seen yet
+  // (created moments ago). Look it up, and whether I review it, before
+  // building the notification so it has a title and the right scope.
+  const ensureReviewPost = useCallback(async (postId) => {
+    if (reviewPostsRef.current[postId]) return;
+    const [{ data: post }, { data: mine }] = await Promise.all([
+      supabase.from('review_posts').select('id, title, created_by').eq('id', postId).maybeSingle(),
+      supabase.from('review_reviewers').select('post_id').eq('post_id', postId).eq('user_id', uid),
+    ]);
+    if (post) reviewPostsRef.current = { ...reviewPostsRef.current, [postId]: post };
+    if (mine?.length) myReviewsRef.current = new Set([...myReviewsRef.current, postId]);
+  }, [uid]);
 
   useEffect(() => {
     if (!uid || !activeTeamId) { setItems([]); return; }
@@ -242,6 +317,19 @@ export function NotificationProvider({ children }) {
             data: { kind: 'submission', submission: s },
           }]);
         })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'review_events', filter: teamFilter },
+        async (p) => {
+          await ensureReviewPost(p.new.post_id);
+          const n = buildReviewEventNotif(p.new);
+          if (n) addItems([n]);
+        })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'review_comments', filter: teamFilter },
+        async (p) => {
+          await ensureReviewPost(p.new.post_id);
+          addItems([buildReviewCommentNotif(p.new)]);
+        })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'review_reviewers', filter: teamFilter },
+        (p) => { if (p.new.user_id === uid) myReviewsRef.current = new Set([...myReviewsRef.current, p.new.post_id]); })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'file_entries', filter: teamFilter },
         (p) => {
           const f = p.new;
@@ -263,6 +351,7 @@ export function NotificationProvider({ children }) {
     window.addEventListener('tasks-changed', backfill);
     window.addEventListener('queue-changed', backfill);
     window.addEventListener('project-updated', backfill);
+    window.addEventListener('reviews-changed', backfill);
 
     return () => {
       supabase.removeChannel(channel);
@@ -272,8 +361,9 @@ export function NotificationProvider({ children }) {
       window.removeEventListener('tasks-changed', backfill);
       window.removeEventListener('queue-changed', backfill);
       window.removeEventListener('project-updated', backfill);
+      window.removeEventListener('reviews-changed', backfill);
     };
-  }, [uid, activeTeamId, backfill, addItems, buildTaskNotifs]);
+  }, [uid, activeTeamId, backfill, addItems, buildTaskNotifs, buildReviewEventNotif, buildReviewCommentNotif, ensureReviewPost]);
 
   // ── Settings ─────────────────────────────────────────────
   const updateSettings = useCallback((next) => {
@@ -318,6 +408,7 @@ export function NotificationProvider({ children }) {
     const d = n.data || {};
     if (n.type === 'comment') return !!uid && d.comment?.user_id === uid;
     if (n.type === 'task_created') return !!uid && d.task?.created_by === uid;
+    if (REVIEW_TYPES.has(n.type)) return !!uid && d.actorId === uid;
     if (n.type === 'task_completed') {
       if (!myName) return false;
       return (d.task?.completed_by || '')
@@ -330,13 +421,19 @@ export function NotificationProvider({ children }) {
   const passesSettings = useCallback((n) => {
     if (!settings.types[n.type]) return false;
     if (!settings.includeSelf && isSelf(n)) return false;
+    // Ready for Review: by default only posts I wrote or am a reviewer on.
+    if (REVIEW_TYPES.has(n.type) && settings.reviewScope !== 'all') {
+      const postId = n.data?.postId;
+      const post = reviewPostsRef.current[postId];
+      return (!!post && post.created_by === uid) || myReviewsRef.current.has(postId);
+    }
     if (n.type === 'task_completed' && settings.completedScope === 'selected') {
       const by = (n.data?.task?.completed_by || '').toLowerCase();
       if (!settings.completedPeople.length) return false;
       return settings.completedPeople.some(name => by.includes(name.toLowerCase()));
     }
     return true;
-  }, [settings, isSelf]);
+  }, [settings, isSelf, uid]);
 
   const visible = items.filter(passesSettings).map(n => ({ ...n, read: reads.has(n.id) }));
 

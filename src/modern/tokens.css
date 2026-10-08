@@ -1,0 +1,187 @@
+/* ══════════════════════════════════════════════════════════════
+   New UI — design tokens
+   --------------------------------------------------------------
+   The new UI is switched on per user from Settings › Appearance. When it
+   is on, <html> carries `class="ui-modern"` and `data-preset="<id>"`
+   (see applyThemeColors in lib/themeColors.js), and every file in this
+   folder takes over. Nothing here applies to the classic UI.
+
+   Every rule in src/modern/ is scoped under `html.ui-modern`, which
+   outranks the components' own single-class rules without !important.
+
+   Presets replace free-form colour picking: each is a light and a dark
+   palette, and the existing light/dark switch (data-theme) picks between
+   them. They redefine the same variables the whole app already reads
+   (--bg, --text, --accent…), plus a few new --m-* tokens that only the
+   new UI uses.
+   ══════════════════════════════════════════════════════════════ */
+
+html.ui-modern {
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --radius: 8px;
+  --radius-lg: 12px;
+  --m-r-sm: 6px;
+  --m-r: 8px;
+  --m-r-lg: 12px;
+  --m-r-xl: 16px;
+
+  --accent-contrast: #ffffff;
+  --accent-hover: color-mix(in srgb, var(--accent) 86%, #000);
+  --accent-glow: color-mix(in srgb, var(--accent) 12%, transparent);
+  --m-accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --m-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+
+  --m-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Light-mode defaults; dark blocks below override. */
+  --m-shadow-sm: 0 1px 2px rgba(16, 18, 24, 0.04), 0 1px 1px rgba(16, 18, 24, 0.03);
+  --m-shadow: 0 4px 16px -4px rgba(16, 18, 24, 0.10), 0 2px 4px -2px rgba(16, 18, 24, 0.06);
+  --m-shadow-lg: 0 24px 48px -12px rgba(16, 18, 24, 0.22), 0 8px 16px -8px rgba(16, 18, 24, 0.10);
+  --shadow: var(--m-shadow);
+  --shadow-lg: var(--m-shadow-lg);
+  --m-overlay: rgba(15, 17, 22, 0.32);
+
+  --success: #1f9d55;
+  --warning: #d97706;
+  --danger: #dc2f3c;
+  --info: #2f6fdf;
+
+  --st-critical: #dc2f3c;
+  --st-open: #2f6fdf;
+  --st-inprogress: #d48806;
+  --st-onhold: #7c5cdb;
+  --st-completed: #1f9d55;
+}
+
+html.ui-modern[data-theme="dark"] {
+  --accent-contrast: #ffffff;
+  --accent-hover: color-mix(in srgb, var(--accent) 84%, #fff);
+  --accent-glow: color-mix(in srgb, var(--accent) 16%, transparent);
+  --m-accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --m-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+
+  --m-shadow-sm: none;
+  --m-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.55);
+  --m-shadow-lg: 0 28px 64px -16px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --m-overlay: rgba(0, 0, 0, 0.55);
+
+  --success: #3cc47c;
+  --warning: #f0a83a;
+  --danger: #f2555f;
+  --info: #5b9bf5;
+
+  --st-critical: #f2555f;
+  --st-open: #5b9bf5;
+  --st-inprogress: #f0b43c;
+  --st-onhold: #a48bf2;
+  --st-completed: #3cc47c;
+}
+
+/* ── Slate (default) — neutral grey, indigo accent ─────────── */
+html.ui-modern,
+html.ui-modern[data-preset="slate"] {
+  --bg: #f7f7f8; --bg-2: #ffffff; --bg-3: #f1f1f3; --bg-4: #e7e7ea;
+  --m-sidebar: #f1f1f3;
+  --border: #e5e5e9; --border-light: #d6d6db;
+  --text: #18181b; --text-muted: #5d5d66; --text-dim: #97979f;
+  --accent: #4f5bd5;
+  --logo-filter: invert(1);
+}
+html.ui-modern[data-theme="dark"],
+html.ui-modern[data-preset="slate"][data-theme="dark"] {
+  --bg: #111113; --bg-2: #18181b; --bg-3: #202024; --bg-4: #2a2a2f;
+  --m-sidebar: #141416;
+  --border: #26262b; --border-light: #34343a;
+  --text: #ececef; --text-muted: #a1a1aa; --text-dim: #6b6b74;
+  --accent: #7b86f0;
+  --logo-filter: none;
+}
+
+/* ── Ocean — cool blue tint ─────────────────────────────────── */
+html.ui-modern[data-preset="ocean"] {
+  --bg: #f5f8fb; --bg-2: #ffffff; --bg-3: #edf2f7; --bg-4: #e1e9f1;
+  --m-sidebar: #edf2f7;
+  --border: #e0e7ee; --border-light: #cfd9e3;
+  --text: #0f1a24; --text-muted: #51606e; --text-dim: #91a0ad;
+  --accent: #0a74b8;
+}
+html.ui-modern[data-preset="ocean"][data-theme="dark"] {
+  --bg: #0d141b; --bg-2: #131c25; --bg-3: #1a2530; --bg-4: #23303c;
+  --m-sidebar: #0f171f;
+  --border: #1f2b37; --border-light: #2c3a48;
+  --text: #e6edf3; --text-muted: #9aabbb; --text-dim: #637383;
+  --accent: #3ea4e6;
+}
+
+/* ── Forest — soft green tint ───────────────────────────────── */
+html.ui-modern[data-preset="forest"] {
+  --bg: #f6f8f6; --bg-2: #ffffff; --bg-3: #eef3ef; --bg-4: #e2eae4;
+  --m-sidebar: #eef3ef;
+  --border: #e0e7e1; --border-light: #cfdad2;
+  --text: #142018; --text-muted: #546259; --text-dim: #94a299;
+  --accent: #1d8048;
+}
+html.ui-modern[data-preset="forest"][data-theme="dark"] {
+  --bg: #0e1411; --bg-2: #141b17; --bg-3: #1b241f; --bg-4: #243029;
+  --m-sidebar: #101713;
+  --border: #202b25; --border-light: #2d3a32;
+  --text: #e5ede8; --text-muted: #9bb0a2; --text-dim: #64786b;
+  --accent: #3fbf75;
+}
+
+/* ── Rose — warm pink tint ──────────────────────────────────── */
+html.ui-modern[data-preset="rose"] {
+  --bg: #faf7f8; --bg-2: #ffffff; --bg-3: #f5eef1; --bg-4: #ede2e6;
+  --m-sidebar: #f5eef1;
+  --border: #ece2e5; --border-light: #dfd0d6;
+  --text: #22161a; --text-muted: #6b5960; --text-dim: #a8969d;
+  --accent: #cc2f66;
+}
+html.ui-modern[data-preset="rose"][data-theme="dark"] {
+  --bg: #151012; --bg-2: #1c1518; --bg-3: #251c20; --bg-4: #30252a;
+  --m-sidebar: #181214;
+  --border: #2c2226; --border-light: #3a2d33;
+  --text: #f1e8eb; --text-muted: #b39fa6; --text-dim: #7a6870;
+  --accent: #ef6491;
+}
+
+/* ── Sand — warm paper, terracotta accent ───────────────────── */
+html.ui-modern[data-preset="sand"] {
+  --bg: #f9f7f3; --bg-2: #fffdf9; --bg-3: #f3efe7; --bg-4: #e9e3d6;
+  --m-sidebar: #f3efe7;
+  --border: #e9e3d8; --border-light: #dbd2c2;
+  --text: #241f17; --text-muted: #695f51; --text-dim: #a59b8b;
+  --accent: #b9520f;
+}
+html.ui-modern[data-preset="sand"][data-theme="dark"] {
+  --bg: #14120e; --bg-2: #1b1814; --bg-3: #24201a; --bg-4: #2f2a22;
+  --m-sidebar: #171511;
+  --border: #2b261f; --border-light: #3a342a;
+  --text: #f0ebe2; --text-muted: #b3a895; --text-dim: #7b725f;
+  --accent: #e98a42;
+}
+
+/* ── Violet — lavender tint ─────────────────────────────────── */
+html.ui-modern[data-preset="violet"] {
+  --bg: #f8f7fb; --bg-2: #ffffff; --bg-3: #f1eff8; --bg-4: #e6e2f1;
+  --m-sidebar: #f1eff8;
+  --border: #e6e2ef; --border-light: #d7d1e6;
+  --text: #1b1726; --text-muted: #5f5970; --text-dim: #9e98af;
+  --accent: #6a47dc;
+}
+html.ui-modern[data-preset="violet"][data-theme="dark"] {
+  --bg: #121019; --bg-2: #18151f; --bg-3: #211d2a; --bg-4: #2b2636;
+  --m-sidebar: #14121b;
+  --border: #27222f; --border-light: #353040;
+  --text: #ece9f3; --text-muted: #a8a1b8; --text-dim: #6f6880;
+  --accent: #9c7ef6;
+}
+
+/* Logo: dark mark on light palettes, white on dark ones. */
+html.ui-modern:not([data-theme="dark"]) { --logo-filter: invert(1); }
+html.ui-modern[data-theme="dark"] { --logo-filter: none; }
+
+/* Pale accents in dark mode need dark text on top to stay readable. */
+html.ui-modern[data-theme="dark"] { --accent-contrast: #0b0b0e; }
