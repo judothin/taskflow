@@ -45,6 +45,12 @@ create table if not exists public.review_posts (
 create index if not exists review_posts_team_idx
   on public.review_posts (team_id, status, updated_at desc);
 
+-- The team's shared order for the list (lower = higher up), set by owners
+-- and admins dragging posts around — see review_reorder(). Added after the
+-- first release, so it's an ALTER; existing posts are seeded newest-first
+-- (just after the guard trigger below, which lets the seed through).
+alter table public.review_posts add column if not exists position int;
+
 -- Who may sign a post off. team_id is copied from the post so realtime can
 -- filter by team and RLS needn't join.
 create table if not exists public.review_reviewers (
@@ -147,10 +153,23 @@ begin
     raise exception 'Only a reviewer can change a review''s status';
   end if;
 
+  -- The shared order belongs to owners/admins (review_reorder), not authors.
+  if coalesce(current_setting('taskflow.review_rpc', true), '') <> 'on'
+     and new.position is distinct from old.position then
+    raise exception 'Only a team owner or admin can reorder reviews';
+  end if;
+
   new.team_id    := old.team_id;
   new.created_by := old.created_by;
   new.created_at := old.created_at;
-  new.updated_at := now();
+  -- Moving a post isn't editing it: a reorder alone leaves "updated" alone.
+  if (new.title, new.url, new.description, new.screenshots, new.status, new.round)
+     is not distinct from (old.title, old.url, old.description, old.screenshots, old.status, old.round)
+     and new.position is distinct from old.position then
+    new.updated_at := old.updated_at;
+  else
+    new.updated_at := now();
+  end if;
   return new;
 end;
 $$;
@@ -159,6 +178,19 @@ drop trigger if exists review_posts_guard on public.review_posts;
 create trigger review_posts_guard
   before insert or update on public.review_posts
   for each row execute function public.review_posts_guard();
+
+-- Seed the shared order for posts from before it existed, newest first. Runs
+-- with the RPC flag so the guard allows it, and a position-only change keeps
+-- each post's updated_at.
+select set_config('taskflow.review_rpc', 'on', false);
+update public.review_posts r
+set position = s.rn
+from (
+  select id, row_number() over (partition by team_id order by updated_at desc) as rn
+  from public.review_posts
+) s
+where r.id = s.id and r.position is null;
+select set_config('taskflow.review_rpc', '', false);
 
 
 -- ============================================================
@@ -198,9 +230,11 @@ begin
   end if;
 
   perform set_config('taskflow.review_rpc', 'on', true);
-  insert into public.review_posts (team_id, title, url, description, screenshots, created_by)
+  -- New posts go to the top of the team's order.
+  insert into public.review_posts (team_id, title, url, description, screenshots, created_by, position)
   values (p_team_id, trim(p_title), coalesce(trim(p_url), ''), coalesce(p_description, ''),
-          coalesce(p_screenshots, '{}'), auth.uid())
+          coalesce(p_screenshots, '{}'), auth.uid(),
+          coalesce((select min(position) from public.review_posts where team_id = p_team_id), 1) - 1)
   returning id into v_id;
 
   insert into public.review_reviewers (post_id, user_id, team_id)
@@ -322,6 +356,37 @@ begin
   where id = p_post_id;
   insert into public.review_events (post_id, team_id, round, kind, actor, note)
   values (p_post_id, v_post.team_id, v_post.round + 1, 'resubmitted', auth.uid(), coalesce(trim(p_note), ''));
+  perform set_config('taskflow.review_rpc', '', true);
+end;
+$$;
+
+
+-- Set the team's shared order (owners and admins). `p_ids` is the whole list
+-- top to bottom; ids from another team are ignored, and any of this team's
+-- posts left out keep their place after the ones given.
+create or replace function public.review_reorder(p_team_id uuid, p_ids uuid[])
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not public.is_team_admin(p_team_id) then
+    raise exception 'Only a team owner or admin can reorder reviews';
+  end if;
+
+  perform set_config('taskflow.review_rpc', 'on', true);
+  update public.review_posts r
+  set position = o.pos
+  from (
+    select id, row_number() over (order by given, rest_order) as pos
+    from (
+      select p.id,
+             coalesce(array_position(p_ids, p.id), 2147483647) as given,
+             row_number() over (order by p.position nulls first, p.updated_at desc) as rest_order
+      from public.review_posts p
+      where p.team_id = p_team_id
+    ) x
+  ) o
+  where r.id = o.id and r.position is distinct from o.pos;
   perform set_config('taskflow.review_rpc', '', true);
 end;
 $$;

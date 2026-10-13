@@ -42,12 +42,15 @@ export const normalizeUrl = (s) => {
   return /^[\w-]+(\.[\w-]+)+/.test(t) ? `https://${t}` : t;
 };
 
-// Everything the list needs for one team: posts (newest activity first),
+// Everything the list needs for one team: posts in the team's order,
 // each with its reviewer ids and comment count.
 export async function fetchReviewPosts(teamId) {
   if (!teamId) return [];
   const [{ data: posts, error }, { data: reviewers }, { data: comments }] = await Promise.all([
-    supabase.from('review_posts').select(POST_SELECT).eq('team_id', teamId).order('updated_at', { ascending: false }),
+    // The team's shared order (set by owners/admins); unplaced posts first.
+    supabase.from('review_posts').select(POST_SELECT).eq('team_id', teamId)
+      .order('position', { ascending: true, nullsFirst: true })
+      .order('updated_at', { ascending: false }),
     supabase.from('review_reviewers').select('post_id, user_id').eq('team_id', teamId),
     supabase.from('review_comments').select('post_id').eq('team_id', teamId),
   ]);
@@ -88,6 +91,9 @@ export const decideReview = (postId, verdict, note) =>
   rpc('review_decide', { p_post_id: postId, p_verdict: verdict, p_note: note || '' });
 export const reopenReview = (postId) => rpc('review_reopen', { p_post_id: postId });
 export const resubmitReview = (postId, note) => rpc('review_resubmit', { p_post_id: postId, p_note: note || '' });
+// Owners/admins only (checked server-side). `ids` is the full list, top first.
+export const reorderReviews = (teamId, ids) =>
+  rpc('review_reorder', { p_team_id: teamId, p_ids: ids });
 export const setReviewers = (postId, reviewers) =>
   rpc('review_set_reviewers', { p_post_id: postId, p_reviewers: reviewers });
 

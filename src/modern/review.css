@@ -269,3 +269,9 @@ html.ui-modern .rv-detail-body { padding: 20px 24px 24px; }
 @media (max-width: 768px) {
   html.ui-modern .rv-detail-body { padding: 4px 16px 18px; }
 }
+
+/* Reorder handle (owners/admins) */
+html.ui-modern .rv-grip,
+html.ui-modern .rv-move { border-radius: var(--m-r); }
+html.ui-modern .rv-grip:focus-visible { box-shadow: var(--m-ring); }
+html.ui-modern .rv-order-hint { font-size: 13px; }

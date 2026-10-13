@@ -77,6 +77,30 @@
 .rv-skeleton { height: 92px; border-radius: var(--radius-lg); background: var(--bg-2); border: 1px solid var(--border); }
 .rv-empty { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-lg); }
 
+/* A row plus, for owners/admins, its reorder handle. */
+.rv-item { display: flex; align-items: stretch; gap: 6px; }
+.rv-item > .rv-row { flex: 1; min-width: 0; }
+.rv-item-dragging { opacity: 0.45; }
+.rv-item.flip-sliding > .rv-row { background: var(--bg-2); }
+.rv-order { display: flex; flex-direction: column; justify-content: center; }
+.rv-grip, .rv-move {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-dim);
+}
+.rv-grip { height: 100%; min-height: 40px; cursor: grab; touch-action: none; fill: currentColor; }
+.rv-grip svg { fill: currentColor; }
+.rv-grip:hover:not(:disabled) { background: var(--bg-3); color: var(--text); }
+.rv-grip:active:not(:disabled) { cursor: grabbing; }
+.rv-grip:disabled { opacity: 0.35; cursor: not-allowed; }
+.rv-grip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-glow); color: var(--accent); }
+.rv-move { display: none; height: 34px; }
+.rv-move:hover:not(:disabled) { background: var(--bg-3); color: var(--text); }
+.rv-move:disabled { opacity: 0.3; }
+.rv-order-hint { font-size: 12.5px; color: var(--text-dim); margin: -6px 0 -4px; }
+
 .rv-row {
   display: flex; align-items: center; gap: 16px;
   width: 100%;
@@ -467,6 +491,9 @@ a.rv-link-card:hover { border-color: var(--accent); text-decoration: none; }
   .rv-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .rv-search-input { width: 100%; }
   .rv-row { flex-direction: column; align-items: stretch; gap: 10px; padding: 14px; }
+  /* No drag-and-drop on touch: arrows instead of the handle. */
+  .rv-grip { display: none; }
+  .rv-move { display: flex; width: 34px; }
   .rv-row-title { white-space: normal; }
   .rv-row-side { flex-direction: row; justify-content: space-between; align-items: center; }
   .rv-row-url { max-width: 100%; }

@@ -7,13 +7,14 @@ import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { searchRank } from '../lib/fuzzySearch';
 import Avatar from '../components/Avatar';
+import useFlipRows from '../lib/useFlipRows';
 import ModalPortal from '../components/ModalPortal';
 import {
   REVIEW_STATUS, REVIEWS_CHANGED, useReviewPosts, fetchReviewThread, isWaitingOn,
   createReview, updateReview, deleteReview, decideReview, reopenReview, resubmitReview,
   setReviewers, addReviewComment, deleteReviewComment, uploadReviewScreenshot,
   fetchDefaultReviewers, saveDefaultReviewers, fullName, initialsOf, isUrl, shortUrl, normalizeUrl,
-  REVIEW_PRECHECK,
+  REVIEW_PRECHECK, reorderReviews,
 } from '../lib/reviews';
 import './Review.css';
 
@@ -60,6 +61,9 @@ const ICONS = {
   upload: <><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></>,
   refresh: <><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" /></>,
   text: <><line x1="17" y1="10" x2="3" y2="10" /><line x1="21" y1="6" x2="3" y2="6" /><line x1="21" y1="14" x2="3" y2="14" /><line x1="17" y1="18" x2="3" y2="18" /></>,
+  grip: <><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></>,
+  up: <polyline points="18 15 12 9 6 15" />,
+  down: <polyline points="6 9 12 15 18 9" />,
   list: <><path d="M9 11l3 3L22 4" /><line x1="3" y1="6" x2="5" y2="6" /><line x1="3" y1="12" x2="5" y2="12" /><line x1="3" y1="18" x2="5" y2="18" /><line x1="9" y1="18" x2="17" y2="18" /></>,
 };
 const Svg = ({ name, size = 15, width = 2 }) => (
@@ -728,7 +732,49 @@ function DetailModal({ post, members, uid, isAdmin, teamId, onClose, onEdit }) {
 }
 
 // ── List row ──────────────────────────────────────────────────
-function PostRow({ post, members, uid, onOpen }) {
+// Owners and admins get a handle beside each row: drag it (or Alt+↑/↓ on
+// it) on desktop, or tap the arrows on a phone, where drag-and-drop doesn't
+// exist. `drag` is null for everyone else.
+function PostRow({ post, members, uid, onOpen, rowRef, drag, isFirst, isLast }) {
+  return (
+    <div
+      ref={rowRef}
+      className={`rv-item ${drag?.dragging ? 'rv-item-dragging' : ''}`}
+      draggable={!!drag && drag.armed}
+      onDragStart={drag?.onDragStart}
+      onDragOver={drag?.onDragOver}
+      onDragEnd={drag?.onDragEnd}
+    >
+      {drag && (
+        <div className="rv-order">
+          <button
+            type="button"
+            className="rv-grip"
+            title={drag.enabled ? 'Drag to reorder (or Alt + ↑/↓)' : 'Clear the search to reorder'}
+            aria-label="Reorder: drag, or Alt + arrow keys"
+            disabled={!drag.enabled}
+            onPointerDown={drag.arm}
+            onPointerUp={drag.disarm}
+            onKeyDown={drag.onKey}
+          >
+            <Svg name="grip" size={16} width={0} />
+          </button>
+          <button type="button" className="rv-move" aria-label="Move up"
+            disabled={!drag.enabled || isFirst} onClick={() => drag.move(-1)}>
+            <Svg name="up" size={16} width={2.5} />
+          </button>
+          <button type="button" className="rv-move" aria-label="Move down"
+            disabled={!drag.enabled || isLast} onClick={() => drag.move(1)}>
+            <Svg name="down" size={16} width={2.5} />
+          </button>
+        </div>
+      )}
+      <PostRowBody post={post} members={members} uid={uid} onOpen={onOpen} />
+    </div>
+  );
+}
+
+function PostRowBody({ post, members, uid, onOpen }) {
   const waiting = isWaitingOn(post, uid);
   const author = members[post.author?.id] || post.author;
   return (
@@ -787,6 +833,22 @@ export default function Review() {
   }, [activeTeamId]);
   const members = useMemo(() => Object.fromEntries(memberList.map(m => [m.id, m])), [memberList]);
 
+  // ── Shared order (owners/admins) ──
+  // The list follows the team's saved order. While a new order is saving,
+  // `localOrder` (every post id, top first) holds it so the list doesn't jump
+  // back; it's dropped once the saved order arrives from the server.
+  const [localOrder, setLocalOrder] = useState(null);
+  const [orderError, setOrderError] = useState('');
+  const savingOrder = useRef(false);
+  useEffect(() => { if (!savingOrder.current) setLocalOrder(null); }, [posts]);
+  const ordered = useMemo(() => {
+    if (!localOrder) return posts;
+    const byId = new Map(posts.map(p => [p.id, p]));
+    const placed = localOrder.map(id => byId.get(id)).filter(Boolean);
+    const placedIds = new Set(localOrder);
+    return [...placed, ...posts.filter(p => !placedIds.has(p.id))];
+  }, [posts, localOrder]);
+
   const counts = useMemo(() => ({
     mine: posts.filter(p => isWaitingOn(p, uid)).length,
     open: posts.filter(p => p.status === 'pending').length,
@@ -800,7 +862,7 @@ export default function Review() {
   const setTab = (id) => { const next = new URLSearchParams(params); next.set('tab', id); setParams(next, { replace: true }); };
 
   const shown = useMemo(() => {
-    let list = posts;
+    let list = ordered;
     if (tab === 'mine') list = list.filter(p => isWaitingOn(p, uid));
     else if (tab === 'open') list = list.filter(p => p.status === 'pending');
     else if (tab !== 'all') list = list.filter(p => p.status === tab);
@@ -810,7 +872,99 @@ export default function Review() {
       { text: p.description },
       { text: fullName(p.author) },
     ]);
-  }, [posts, tab, search, uid]);
+  }, [ordered, tab, search, uid]);
+
+  // A tab shows some of the posts. Reordering them puts the visible posts in
+  // their new order into the slots they already held in the full list, so
+  // the posts in other tabs keep their places.
+  const saveOrder = async (visibleIds) => {
+    const visible = new Set(visibleIds);
+    const queue = [...visibleIds];
+    const full = ordered.map(p => (visible.has(p.id) ? queue.shift() : p.id));
+    if (full.join() === ordered.map(p => p.id).join()) return;
+    setOrderError('');
+    setLocalOrder(full);
+    savingOrder.current = true;
+    try {
+      await reorderReviews(activeTeamId, full);
+    } catch (e) {
+      setLocalOrder(null);
+      setOrderError(e.message || "Couldn't save the new order.");
+    } finally {
+      savingOrder.current = false;
+    }
+  };
+
+  const { rowRef, capture } = useFlipRows();
+  const [dragOrder, setDragOrder] = useState(null);
+  const dragOrderRef = useRef(null);
+  const [dragId, setDragId] = useState(null);
+  const [armedId, setArmedId] = useState(null);
+  // A search hides posts in between, so "move above this one" would be
+  // ambiguous — reordering waits until the search is cleared.
+  const canReorder = !search.trim();
+  useEffect(() => {
+    const disarm = () => setArmedId(null);
+    window.addEventListener('pointerup', disarm);
+    return () => window.removeEventListener('pointerup', disarm);
+  }, []);
+  const setDragIds = (ids) => { capture(); dragOrderRef.current = ids; setDragOrder(ids); };
+
+  const dragFor = (post) => (!isAdmin ? null : {
+    enabled: canReorder,
+    armed: armedId === post.id,
+    dragging: dragId === post.id,
+    arm: () => setArmedId(post.id),
+    disarm: () => setArmedId(null),
+    onDragStart: (e) => {
+      setDragId(post.id);
+      const ids = shown.map(p => p.id);
+      dragOrderRef.current = ids;
+      setDragOrder(ids);
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', post.id);
+    },
+    onDragOver: (e) => {
+      if (!dragId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dragId === post.id) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height / 2;
+      const current = dragOrderRef.current || [];
+      const ids = current.filter(id => id !== dragId);
+      ids.splice(ids.indexOf(post.id) + (after ? 1 : 0), 0, dragId);
+      if (ids.join() !== current.join()) setDragIds(ids);
+    },
+    onDragEnd: () => {
+      const ids = dragOrderRef.current;
+      dragOrderRef.current = null;
+      setDragId(null);
+      setArmedId(null);
+      setDragOrder(null);
+      if (ids) saveOrder(ids);
+    },
+    // One place up or down: the phone's arrows, and Alt+↑/↓ on the handle.
+    move: (delta) => {
+      if (!canReorder) return;
+      const ids = shown.map(p => p.id);
+      const from = ids.indexOf(post.id);
+      const to = from + delta;
+      if (to < 0 || to >= ids.length) return;
+      [ids[from], ids[to]] = [ids[to], ids[from]];
+      capture();
+      saveOrder(ids);
+    },
+    onKey: (e) => {
+      if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+      e.preventDefault();
+      dragFor(post).move(e.key === 'ArrowUp' ? -1 : 1);
+    },
+  });
+
+  const listed = dragOrder
+    ? dragOrder.map(id => shown.find(p => p.id === id)).filter(Boolean)
+    : shown;
 
   const openPost = (id) => { const next = new URLSearchParams(params); next.set('post', id); setParams(next); };
   const closePost = () => { const next = new URLSearchParams(params); next.delete('post'); setParams(next, { replace: true }); };
@@ -873,6 +1027,15 @@ export default function Review() {
         </div>
       )}
 
+      {orderError && <div className="card error-msg">⚠ {orderError}</div>}
+      {isAdmin && !loading && shown.length > 1 && (
+        <p className="rv-order-hint">
+          {canReorder
+            ? 'You can reorder posts — drag the handle (or use the arrows on a phone). Everyone on the team sees the same order.'
+            : 'Clear the search to reorder posts.'}
+        </p>
+      )}
+
       {loading ? (
         <div className="rv-list">{[0, 1, 2].map(i => <div key={i} className="rv-skeleton loading-pulse" />)}</div>
       ) : shown.length === 0 ? (
@@ -885,7 +1048,19 @@ export default function Review() {
         </div>
       ) : (
         <div className="rv-list">
-          {shown.map(p => <PostRow key={p.id} post={p} members={members} uid={uid} onOpen={openPost} />)}
+          {listed.map((p, i) => (
+            <PostRow
+              key={p.id}
+              post={p}
+              members={members}
+              uid={uid}
+              onOpen={openPost}
+              rowRef={rowRef(p.id)}
+              drag={dragFor(p)}
+              isFirst={i === 0}
+              isLast={i === listed.length - 1}
+            />
+          ))}
         </div>
       )}
 
