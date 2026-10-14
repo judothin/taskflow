@@ -112,6 +112,7 @@
   color: var(--text-muted);
   font-size: 11.5px; font-weight: 600;
 }
+.nscan-flag-done { background: color-mix(in srgb, var(--st-completed) 14%, transparent); color: var(--st-completed); }
 .nscan-flag-warn { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
 .nscan-text { resize: vertical; line-height: 1.45; font-family: var(--font); }
 

@@ -39,6 +39,7 @@ html.ui-modern .nscan-approve.nscan-on { background: var(--bg-2); color: var(--s
 html.ui-modern .nscan-deny.nscan-on { background: var(--bg-2); color: var(--danger); box-shadow: var(--m-shadow-sm); }
 html.ui-modern .nscan-remove { border-radius: var(--m-r); }
 html.ui-modern .nscan-flag { font-weight: 500; font-size: 12px; background: var(--bg-3); }
+html.ui-modern .nscan-flag-done { background: color-mix(in srgb, var(--st-completed) 14%, transparent); color: var(--st-completed); }
 html.ui-modern .nscan-flag-warn { background: color-mix(in srgb, var(--warning) 14%, transparent); color: color-mix(in srgb, var(--warning) 85%, var(--text)); }
 
 html.ui-modern .nscan-add {

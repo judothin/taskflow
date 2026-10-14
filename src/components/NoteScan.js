@@ -14,14 +14,13 @@ import './NoteScan.css';
 // Scan a notebook page → quick logs (phone only)
 // --------------------------------------------------------------
 // Photograph a handwritten checklist; every checkbox line becomes a
-// quick-log candidate (read on the device — see lib/noteScan.js). Nothing
+// quick-log candidate (read by a vision model — see lib/noteScan.js). Nothing
 // is saved until the review screen: each line can be approved or denied,
 // reworded, and given its own Page / Area (left blank it's logged as
 // "Note scan"). Completed by starts as whoever is signed in.
 // ══════════════════════════════════════════════════════════════
 
 const DEFAULT_AREA = 'Note scan';
-const LOW_CONFIDENCE = 60;
 
 const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nameOf = (u) => `${u?.first_name || ''} ${u?.last_name || ''}`.trim();
@@ -140,7 +139,7 @@ function ReviewSheet({ initialItems, photoUrl, teamId, userId, myName, onClose, 
 
   const update = (id, patch) => setItems(prev => prev.map(it => (it.id === id ? { ...it, ...patch } : it)));
   const remove = (id) => setItems(prev => prev.filter(it => it.id !== id));
-  const addItem = () => setItems(prev => [...prev, { ...newScanItem('', true), approved: true }]);
+  const addItem = () => setItems(prev => [...prev, newScanItem()]);
   const setAll = (approved) => setItems(prev => prev.map(it => ({ ...it, approved })));
   const applyArea = () => setItems(prev => prev.map(it => ({ ...it, area: areaForAll })));
   const togglePerson = (name) =>
@@ -203,7 +202,7 @@ function ReviewSheet({ initialItems, photoUrl, teamId, userId, myName, onClose, 
               <p className="nscan-sub">
                 {items.length
                   ? `${approved.length} of ${items.length} line${items.length === 1 ? '' : 's'} will be logged`
-                  : 'No lines were found — add them below.'}
+                  : 'No checklist items were found — add them below.'}
               </p>
             </div>
             <button type="button" className="nscan-icon-btn" onClick={requestClose} aria-label="Close">
@@ -274,10 +273,11 @@ function ReviewSheet({ initialItems, photoUrl, teamId, userId, myName, onClose, 
                         <Icon d={CLOSE} size={14} />
                       </button>
                     </div>
-                    {(!it.hasBox || it.confidence < LOW_CONFIDENCE) && (
+                    {(it.checked !== null || it.unclear) && (
                       <div className="nscan-flags">
-                        {!it.hasBox && <span className="nscan-flag">No checkbox found</span>}
-                        {it.confidence < LOW_CONFIDENCE && <span className="nscan-flag nscan-flag-warn">Hard to read — check the wording</span>}
+                        {it.checked === true && <span className="nscan-flag nscan-flag-done">Ticked</span>}
+                        {it.checked === false && <span className="nscan-flag">Not ticked</span>}
+                        {it.unclear && <span className="nscan-flag nscan-flag-warn">Hard to read — check the wording</span>}
                       </div>
                     )}
                     <textarea className="input nscan-text" rows={2} value={it.text}
