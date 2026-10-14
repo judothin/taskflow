@@ -11,3 +11,4 @@ import './pages.css';
 import './misc.css';
 import './appearance.css';
 import './review.css';
+import './notescan.css';

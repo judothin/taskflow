@@ -1,0 +1,50 @@
+/* New UI — Scan a notebook page (components/NoteScan.css). */
+
+html.ui-modern .nscan-icon { border-radius: var(--m-r-lg); background: var(--m-accent-soft); }
+html.ui-modern .nscan-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+html.ui-modern .nscan-sub { font-size: 13.5px; }
+html.ui-modern .nscan-progress-label { font-weight: 500; }
+html.ui-modern .nscan-bar { height: 4px; background: var(--bg-3); }
+
+html.ui-modern .nscan-icon-btn { border-radius: var(--m-r); }
+html.ui-modern .nscan-photo-toggle { border-radius: var(--m-r); background: var(--bg-3); }
+html.ui-modern .nscan-photo { border-radius: var(--m-r-lg); }
+
+html.ui-modern .nscan-person { background: var(--bg-2); color: var(--text); }
+html.ui-modern .nscan-person-on { background: var(--m-accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+html.ui-modern .nscan-bulk button { border-radius: var(--m-r-sm); font-weight: 500; }
+
+html.ui-modern .nscan-item {
+  border-color: var(--border);
+  border-radius: var(--m-r-lg);
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern .nscan-item-off { background: var(--bg-3); box-shadow: none; }
+html.ui-modern .nscan-verdict {
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--m-r);
+  background: var(--bg-3);
+}
+html.ui-modern .nscan-approve,
+html.ui-modern .nscan-deny {
+  min-height: 36px;
+  border: none;
+  border-radius: var(--m-r-sm);
+  background: transparent;
+  font-weight: 500;
+}
+html.ui-modern .nscan-approve.nscan-on { background: var(--bg-2); color: var(--st-completed); box-shadow: var(--m-shadow-sm); }
+html.ui-modern .nscan-deny.nscan-on { background: var(--bg-2); color: var(--danger); box-shadow: var(--m-shadow-sm); }
+html.ui-modern .nscan-remove { border-radius: var(--m-r); }
+html.ui-modern .nscan-flag { font-weight: 500; font-size: 12px; background: var(--bg-3); }
+html.ui-modern .nscan-flag-warn { background: color-mix(in srgb, var(--warning) 14%, transparent); color: color-mix(in srgb, var(--warning) 85%, var(--text)); }
+
+html.ui-modern .nscan-add {
+  border: 1px solid var(--border);
+  border-radius: var(--m-r-lg);
+  background: var(--bg-2);
+  color: var(--text);
+}
+html.ui-modern .nscan-add:hover { background: var(--bg-3); border-color: var(--border-light); color: var(--text); }

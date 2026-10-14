@@ -1,5 +1,7 @@
 import React from 'react';
 import { QuickLogForm } from './QuickLog';
+import NoteScan from '../components/NoteScan';
+import useIsPhone from '../lib/useIsPhone';
 import './QuickLog.css';
 import './Dashboard.css';
 import './Companion.css';
@@ -8,8 +10,11 @@ import './Companion.css';
 // one write surface. Everything else the companion shows is read-only, so
 // this is deliberately the one place with a submit button.
 export default function QuickLogPage() {
+  const isPhone = useIsPhone();
   return (
     <div className="dashboard fade-in">
+      {/* Phone only: photograph a notebook checklist and log it in a batch. */}
+      {isPhone && <NoteScan />}
       <div className="card companion-quicklog">
         <div className="quicklog-header">
           <div className="quicklog-header-icon">
