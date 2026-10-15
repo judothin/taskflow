@@ -82,3 +82,42 @@ from (
 where g.id = r.id and g.position is null;
 
 notify pgrst, 'reload schema';
+
+-- ── Hidden posts, per person (added later; safe to re-run) ─────────
+-- Anyone can hide a Go Live item from their own list without touching
+-- anyone else's: one row per (person, item). Hiding follows you across
+-- devices, and deleting the item removes its rows.
+create table if not exists public.golive_hidden (
+  user_id    uuid references public.profiles(id) on delete cascade not null default auth.uid(),
+  item_id    uuid references public.golive_items(id) on delete cascade not null,
+  created_at timestamptz default now(),
+  primary key (user_id, item_id)
+);
+
+alter table public.golive_hidden enable row level security;
+
+do $$
+declare
+  pol record;
+begin
+  for pol in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public' and tablename = 'golive_hidden'
+  loop
+    execute format('drop policy %I on %I.%I', pol.policyname, pol.schemaname, pol.tablename);
+  end loop;
+end $$;
+
+-- Only ever your own rows, and only for items on a team you're in.
+create policy "golive_hidden_select_own" on public.golive_hidden
+  for select using (user_id = auth.uid());
+create policy "golive_hidden_insert_own" on public.golive_hidden
+  for insert with check (
+    user_id = auth.uid()
+    and exists (select 1 from public.golive_items g where g.id = item_id and public.is_team_member(g.team_id))
+  );
+create policy "golive_hidden_delete_own" on public.golive_hidden
+  for delete using (user_id = auth.uid());
+
+notify pgrst, 'reload schema';

@@ -1578,3 +1578,8 @@ html.ui-modern .sub-card-declined .input[readonly] {
   html.ui-modern .sub-card-footer { padding: 12px 16px; flex-wrap: wrap; }
   html.ui-modern .sub-reviewed { padding: 12px 16px; }
 }
+
+/* Go Live — per-person hide (button + "Hidden by you" icon). */
+html.ui-modern .gl-hide-btn { border-radius: var(--m-r); }
+html.ui-modern .gl-hide-btn:focus-visible { box-shadow: var(--m-ring); }
+html.ui-modern .gl-hidden-icon { background: var(--bg-3); color: var(--text-muted); }

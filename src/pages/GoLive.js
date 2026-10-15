@@ -23,6 +23,10 @@ import './GoLive.css';
 // Cards are collapsed by default — page, first line, counts — and open for
 // the full notes and files. The list's order is shared: drag a card by its
 // grip (or Alt+↑/↓ on it) and everyone on the team sees the new order.
+//
+// Hiding is per person: a hidden card leaves your list (into "Hidden by you"
+// at the bottom) and nobody else's. It's stored per user in golive_hidden,
+// so it follows you between devices.
 // ══════════════════════════════════════════════════════════════
 
 const EMPTY = { page: '', description: '', files: '' };
@@ -98,6 +102,8 @@ const Icon = {
   undo: <><path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 102.13-9.36L1 10" /></>,
   chevron: <polyline points="9 18 15 12 9 6" />,
   grip: <><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></>,
+  eyeOff: <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></>,
+  eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>,
   link: <><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></>,
 };
 const Svg = ({ name, size = 15, width = 2 }) => (
@@ -192,7 +198,7 @@ function PageLabel({ page }) {
 // Collapsed: grip, page, the description's first line, counts and Mark live.
 // Open: the full description and files, plus edit / delete.
 function ItemCard({
-  item, index, open, onToggle, onSave, onMarkLive, onDelete, rowRef, drag,
+  item, index, open, onToggle, onSave, onMarkLive, onDelete, onHide, rowRef, drag,
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(EMPTY);
@@ -285,6 +291,11 @@ function ItemCard({
           </span>
         </div>
 
+        <button type="button" className="gl-hide-btn" onClick={() => onHide(item)}
+          title="Hide from your list (only for you)" aria-label={`Hide ${item.page} from your list`}>
+          <Svg name="eyeOff" size={15} />
+        </button>
+
         <button type="button" className="gl-live-btn" onClick={() => onMarkLive(item)}>
           <Svg name="check" size={14} width={3} />
           Mark live
@@ -358,6 +369,8 @@ export default function GoLive() {
   const composerPageRef = useRef(null);
 
   const [showLive, setShowLive] = useState(false);
+  const [hiddenIds, setHiddenIds] = useState(() => new Set());
+  const [showHidden, setShowHidden] = useState(false);
   const [toast, setToast] = useState(null); // { text, undo }
   const toastTimer = useRef(null);
   const [copiedAll, setCopiedAll] = useState(false);
@@ -379,6 +392,17 @@ export default function GoLive() {
   }, [activeTeamId]);
 
   useEffect(() => { setLoading(true); load(); }, [load]);
+
+  // Your hidden items (RLS only ever returns your own rows). If the table
+  // isn't there yet nothing is hidden, and hiding says why.
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let live = true;
+    supabase.from('golive_hidden').select('item_id').then(({ data }) => {
+      if (live && data) setHiddenIds(new Set(data.map(r => r.item_id)));
+    });
+    return () => { live = false; };
+  }, [user?.id]);
   // Someone else may have reordered or ticked things off — pick that up when
   // you come back to the tab.
   useEffect(() => {
@@ -402,11 +426,16 @@ export default function GoLive() {
       .sort((a, b) => new Date(b.went_live_at || 0) - new Date(a.went_live_at || 0)),
     [items]);
 
-  const filtered = useMemo(() => searchRank(pending, search, i => [
+  // What's on your list vs. what you've hidden. The shared order still
+  // covers both — see persistOrder.
+  const visiblePending = useMemo(() => pending.filter(i => !hiddenIds.has(i.id)), [pending, hiddenIds]);
+  const hiddenPending = useMemo(() => pending.filter(i => hiddenIds.has(i.id)), [pending, hiddenIds]);
+
+  const filtered = useMemo(() => searchRank(visiblePending, search, i => [
     { text: i.page, weight: 3 },
     { text: i.description, weight: 1.5 },
     { text: i.files, weight: 1.5 },
-  ]), [pending, search]);
+  ]), [visiblePending, search]);
 
   // "N" opens the composer from anywhere on the page, like the rest of the
   // app's single-key shortcuts — but never while you're typing.
@@ -510,6 +539,33 @@ export default function GoLive() {
     showToast(`"${item.page}" deleted`, () => restoreDeleted(item));
   };
 
+  // ── Hide (just for you) ──
+  const setHidden = async (item, hide) => {
+    const flip = (on) => setHiddenIds(prev => {
+      const next = new Set(prev);
+      if (on) next.add(item.id); else next.delete(item.id);
+      return next;
+    });
+    flip(hide);
+    const { error } = hide
+      ? await supabase.from('golive_hidden').insert({ item_id: item.id })
+      : await supabase.from('golive_hidden').delete().eq('item_id', item.id).eq('user_id', user?.id);
+    if (error && !/duplicate key/i.test(error.message)) {
+      flip(!hide);
+      showToast(/golive_hidden/.test(error.message)
+        ? 'Hiding needs the latest supabase-golive-migration.sql — run it in the Supabase SQL editor.'
+        : `Couldn't ${hide ? 'hide' : 'unhide'}: ${error.message}`);
+      return false;
+    }
+    return true;
+  };
+  const hideItem = async (item) => {
+    if (await setHidden(item, true)) {
+      showToast(`"${item.page}" hidden from your list`, () => { setHidden(item, false); setToast(null); });
+    }
+  };
+  const unhideItem = (item) => setHidden(item, false);
+
   // ── Open / closed ──
   // Everything starts collapsed; which cards you've opened is just yours.
   const [openIds, setOpenIds] = useState(() => new Set());
@@ -538,7 +594,12 @@ export default function GoLive() {
     return () => window.removeEventListener('pointerup', disarm);
   }, []);
 
-  const persistOrder = async (ids) => {
+  // `ids` is the order of the cards you can see. Hidden ones keep their
+  // slots in the team's order: the visible cards fill the slots they held.
+  const persistOrder = async (visibleIds) => {
+    const visible = new Set(visibleIds);
+    const queue = [...visibleIds];
+    const ids = pending.map(i => (visible.has(i.id) ? queue.shift() : i.id));
     const pos = new Map(ids.map((id, i) => [id, i + 1]));
     const changed = pending.filter(i => i.position !== pos.get(i.id));
     if (!changed.length) return;
@@ -559,7 +620,7 @@ export default function GoLive() {
     disarm: () => setArmedId(null),
     onDragStart: (e) => {
       setDragId(item.id);
-      const ids = pending.map(i => i.id);
+      const ids = visiblePending.map(i => i.id);
       dragOrderRef.current = ids;
       setDragOrder(ids);
       e.dataTransfer.effectAllowed = 'move';
@@ -592,7 +653,7 @@ export default function GoLive() {
     onKey: (e) => {
       if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || !canReorder) return;
       e.preventDefault();
-      const ids = pending.map(i => i.id);
+      const ids = visiblePending.map(i => i.id);
       const from = ids.indexOf(item.id);
       const to = from + (e.key === 'ArrowUp' ? -1 : 1);
       if (to < 0 || to >= ids.length) return;
@@ -607,7 +668,7 @@ export default function GoLive() {
     : filtered;
 
   const copyAll = async () => {
-    const text = pending.map(itemAsText).join('\n\n');
+    const text = visiblePending.map(itemAsText).join('\n\n');
     if (await copyText(text)) { setCopiedAll(true); setTimeout(() => setCopiedAll(false), 1600); }
   };
 
@@ -625,7 +686,7 @@ export default function GoLive() {
           <h1 className="gl-head-title">Go Live</h1>
           <div className="gl-head-sub">
             {loading ? 'Loading…' : pending.length
-              ? `${pending.length} change${pending.length === 1 ? '' : 's'} on dev waiting to go live${totalFiles ? ` · ${totalFiles} file${totalFiles === 1 ? '' : 's'}` : ''}`
+              ? `${pending.length} change${pending.length === 1 ? '' : 's'} on dev waiting to go live${totalFiles ? ` · ${totalFiles} file${totalFiles === 1 ? '' : 's'}` : ''}${hiddenPending.length ? ` · ${hiddenPending.length} hidden by you` : ''}`
               : 'Everything on dev is live'}
           </div>
         </div>
@@ -704,6 +765,11 @@ export default function GoLive() {
             that need pushing. Tick it off with <strong>Mark live</strong> once it's up.
           </p>
         </div>
+      ) : visiblePending.length === 0 ? (
+        <div className="gl-empty">
+          <p>You've hidden everything that's waiting to go live.</p>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowHidden(true)}>Show hidden</button>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="gl-empty">
           <p>Nothing matches <strong>"{search}"</strong>.</p>
@@ -721,11 +787,42 @@ export default function GoLive() {
               onSave={saveItem}
               onMarkLive={markLive}
               onDelete={remove}
+              onHide={hideItem}
               rowRef={rowRef(item.id)}
               drag={dragFor(item)}
             />
           ))}
         </div>
+      )}
+
+      {/* ── Hidden by you ── */}
+      {hiddenPending.length > 0 && (
+        <section className="gl-live gl-hidden">
+          <button type="button" className="gl-live-toggle" onClick={() => setShowHidden(v => !v)} aria-expanded={showHidden}>
+            <span className={`gl-live-chev ${showHidden ? 'gl-live-chev-open' : ''}`}><Svg name="chevron" size={14} width={2.5} /></span>
+            Hidden by you
+            <span className="gl-live-count">{hiddenPending.length}</span>
+          </button>
+          {showHidden && (
+            <div className="gl-live-list">
+              {hiddenPending.map(item => (
+                <div key={item.id} className="gl-live-row">
+                  <span className="gl-live-tick gl-hidden-icon"><Svg name="eyeOff" size={12} width={2.4} /></span>
+                  <div className="gl-live-text">
+                    <PageLabel page={item.page} />
+                    {item.description && <span className="gl-live-desc">{item.description.split('\n')[0]}</span>}
+                  </div>
+                  <button type="button" className="gl-row-btn" onClick={() => unhideItem(item)}>
+                    <Svg name="eye" size={12} width={2.4} /> Unhide
+                  </button>
+                  <button type="button" className="gl-row-btn" onClick={() => markLive(item)}>
+                    <Svg name="check" size={12} width={3} /> Mark live
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {/* ── Went live ── */}
