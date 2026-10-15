@@ -15,6 +15,7 @@ export const REVIEW_STATUS = {
   pending:    { label: 'Waiting for review', short: 'Open',           tone: 'open' },
   approved:   { label: 'Reviewed — ready for live', short: 'Ready for live', tone: 'approved' },
   needs_work: { label: 'Reviewed — needs work', short: 'Needs work',  tone: 'needs-work' },
+  live:       { label: 'Live', short: 'Live', tone: 'live' },
 };
 
 // Fired after any change made from this tab, so lists elsewhere on screen
@@ -90,6 +91,9 @@ export const createReview = ({ teamId, title, url, description, screenshots, rev
 export const decideReview = (postId, verdict, note) =>
   rpc('review_decide', { p_post_id: postId, p_verdict: verdict, p_note: note || '' });
 export const reopenReview = (postId) => rpc('review_reopen', { p_post_id: postId });
+// Ready for live → live (it leaves the active lists for everyone), and back.
+export const markReviewLive = (postId) => rpc('review_mark_live', { p_post_id: postId });
+export const unmarkReviewLive = (postId) => rpc('review_unmark_live', { p_post_id: postId });
 export const resubmitReview = (postId, note) => rpc('review_resubmit', { p_post_id: postId, p_note: note || '' });
 // Owners/admins only (checked server-side). `ids` is the full list, top first.
 export const reorderReviews = (teamId, ids) =>

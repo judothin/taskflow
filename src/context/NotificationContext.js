@@ -20,13 +20,14 @@ export const NOTIF_TYPES = {
 const REVIEW_TYPES = new Set(['review_request', 'review_decision', 'review_comment']);
 const REVIEW_EVENT_TYPE = {
   submitted: 'review_request', resubmitted: 'review_request',
-  approved: 'review_decision', needs_work: 'review_decision',
+  approved: 'review_decision', needs_work: 'review_decision', went_live: 'review_decision',
 };
 const REVIEW_EVENT_SUBTITLE = {
   submitted: () => 'Ready for review',
   resubmitted: (e) => `Resubmitted for review · round ${e.round}`,
   approved: () => 'Reviewed — ready for live',
   needs_work: () => 'Reviewed — needs work',
+  went_live: () => 'Marked live',
 };
 
 const DEFAULT_SETTINGS = {

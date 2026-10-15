@@ -14,7 +14,7 @@ import {
   createReview, updateReview, deleteReview, decideReview, reopenReview, resubmitReview,
   setReviewers, addReviewComment, deleteReviewComment, uploadReviewScreenshot,
   fetchDefaultReviewers, saveDefaultReviewers, fullName, initialsOf, isUrl, shortUrl, normalizeUrl,
-  REVIEW_PRECHECK, reorderReviews,
+  REVIEW_PRECHECK, reorderReviews, markReviewLive, unmarkReviewLive,
 } from '../lib/reviews';
 import './Review.css';
 
@@ -61,6 +61,8 @@ const ICONS = {
   upload: <><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></>,
   refresh: <><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" /></>,
   text: <><line x1="17" y1="10" x2="3" y2="10" /><line x1="21" y1="6" x2="3" y2="6" /><line x1="21" y1="14" x2="3" y2="14" /><line x1="17" y1="18" x2="3" y2="18" /></>,
+  rocket: <><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z" /><path d="M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" /><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" /></>,
+  chevron: <polyline points="9 18 15 12 9 6" />,
   grip: <><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></>,
   up: <polyline points="18 15 12 9 6 15" />,
   down: <polyline points="6 9 12 15 18 9" />,
@@ -409,6 +411,8 @@ const EVENT_TEXT = {
   approved:    () => 'marked it reviewed — ready for live',
   needs_work:  () => 'marked it reviewed — needs work',
   reopened:    () => 'undid the decision',
+  went_live:   () => 'marked it live',
+  live_undone: () => 'undid going live',
 };
 
 function Timeline({ events, comments, members, uid, onDeleteComment }) {
@@ -429,7 +433,7 @@ function Timeline({ events, comments, members, uid, onDeleteComment }) {
           return (
             <li key={`e-${e.id}`} className={`rv-tl-event rv-tl-${e.kind}`}>
               <span className="rv-tl-marker" aria-hidden="true">
-                <Svg name={e.kind === 'approved' ? 'check' : e.kind === 'needs_work' ? 'alert' : e.kind === 'reopened' ? 'undo' : e.kind === 'resubmitted' ? 'refresh' : 'send'} size={12} width={2.5} />
+                <Svg name={e.kind === 'approved' ? 'check' : e.kind === 'needs_work' ? 'alert' : e.kind === 'went_live' ? 'rocket' : (e.kind === 'reopened' || e.kind === 'live_undone') ? 'undo' : e.kind === 'resubmitted' ? 'refresh' : 'send'} size={12} width={2.5} />
               </span>
               <div className="rv-tl-body">
                 <div className="rv-tl-line">
@@ -643,9 +647,28 @@ function DetailModal({ post, members, uid, isAdmin, teamId, onClose, onEdit }) {
               {post.status !== 'pending' && (
                 <p className="rv-decision-text">
                   <strong>{fullName(decider) || 'A reviewer'}</strong>{' '}
-                  {post.status === 'approved' ? 'reviewed this — ready for live' : 'reviewed this — it needs work'}
+                  {post.status === 'needs_work' ? 'reviewed this — it needs work' : 'reviewed this — ready for live'}
                   {post.decided_at && <span className="rv-tl-time"> · {ago(post.decided_at)}</span>}
                 </p>
+              )}
+              {post.status === 'live' && (
+                <p className="rv-decision-text">
+                  <strong>{fullName(members[post.went_live_by]) || 'Someone'}</strong> marked it live
+                  {post.went_live_at && <span className="rv-tl-time"> · {ago(post.went_live_at)}</span>}
+                </p>
+              )}
+
+              {post.status === 'approved' && (isReviewer || canManage) && (
+                <div className="rv-decision-actions">
+                  <button className="btn rv-btn-live" disabled={busy} onClick={() => act(() => markReviewLive(post.id))}>
+                    <Svg name="rocket" size={15} /> Mark as live
+                  </button>
+                </div>
+              )}
+              {post.status === 'live' && (isReviewer || canManage) && (
+                <button className="rv-text-btn" disabled={busy} onClick={() => act(() => unmarkReviewLive(post.id))}>
+                  <Svg name="undo" size={13} /> Undo — not live yet
+                </button>
               )}
 
               {post.status === 'needs_work' && canManage && mode !== 'resubmit' && (
@@ -671,7 +694,7 @@ function DetailModal({ post, members, uid, isAdmin, teamId, onClose, onEdit }) {
                   </div>
                 </>
               )}
-              {post.status !== 'pending' && (isReviewer || canManage) && mode !== 'resubmit' && (
+              {(post.status === 'approved' || post.status === 'needs_work') && (isReviewer || canManage) && mode !== 'resubmit' && (
                 <button className="rv-text-btn" disabled={busy} onClick={() => act(() => reopenReview(post.id))}>
                   <Svg name="undo" size={13} /> Undo decision
                 </button>
@@ -735,7 +758,7 @@ function DetailModal({ post, members, uid, isAdmin, teamId, onClose, onEdit }) {
 // Owners and admins get a handle beside each row: drag it (or Alt+↑/↓ on
 // it) on desktop, or tap the arrows on a phone, where drag-and-drop doesn't
 // exist. `drag` is null for everyone else.
-function PostRow({ post, members, uid, onOpen, rowRef, drag, isFirst, isLast }) {
+function PostRow({ post, members, uid, onOpen, rowRef, drag, isFirst, isLast, onMarkLive }) {
   return (
     <div
       ref={rowRef}
@@ -770,6 +793,11 @@ function PostRow({ post, members, uid, onOpen, rowRef, drag, isFirst, isLast }) 
         </div>
       )}
       <PostRowBody post={post} members={members} uid={uid} onOpen={onOpen} />
+      {onMarkLive && post.status === 'approved' && (
+        <button type="button" className="rv-row-live" onClick={() => onMarkLive(post)} title="Mark as live — it leaves the list">
+          <Svg name="rocket" size={14} /> <span>Mark live</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -854,15 +882,43 @@ export default function Review() {
     open: posts.filter(p => p.status === 'pending').length,
     needs_work: posts.filter(p => p.status === 'needs_work').length,
     approved: posts.filter(p => p.status === 'approved').length,
-    all: posts.length,
+    all: posts.filter(p => p.status !== 'live').length,
   }), [posts, uid]);
+
+  // Posts that went live leave every tab (including All) for "Went live"
+  // at the bottom, most recent first.
+  const wentLive = useMemo(() => posts.filter(p => p.status === 'live')
+    .sort((a, b) => new Date(b.went_live_at || 0) - new Date(a.went_live_at || 0)), [posts]);
+  const [showLive, setShowLive] = useState(false);
+  const [toast, setToast] = useState(null); // { text, undo }
+  const toastTimer = useRef(null);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  const showToast = (text, undo) => {
+    clearTimeout(toastTimer.current);
+    setToast({ text, undo });
+    toastTimer.current = setTimeout(() => setToast(null), 6000);
+  };
+  const canGoLive = (p) => isAdmin || p.created_by === uid || p.reviewers.includes(uid);
+  const markLive = async (p) => {
+    try {
+      await markReviewLive(p.id);
+      showToast(`"${p.title}" marked live`, async () => {
+        setToast(null);
+        try { await unmarkReviewLive(p.id); } catch (e) { showToast(e.message); }
+      });
+    } catch (e) { showToast(e.message || "Couldn't mark it live."); }
+  };
+  const undoLive = async (p) => {
+    try { await unmarkReviewLive(p.id); showToast(`"${p.title}" is back in Ready for live`); }
+    catch (e) { showToast(e.message || "Couldn't undo."); }
+  };
 
   // Land on "Waiting on me" when there's something there, otherwise "Open".
   const tab = TABS.some(t => t.id === tabParam) ? tabParam : (counts.mine ? 'mine' : 'open');
   const setTab = (id) => { const next = new URLSearchParams(params); next.set('tab', id); setParams(next, { replace: true }); };
 
   const shown = useMemo(() => {
-    let list = ordered;
+    let list = ordered.filter(p => p.status !== 'live');
     if (tab === 'mine') list = list.filter(p => isWaitingOn(p, uid));
     else if (tab === 'open') list = list.filter(p => p.status === 'pending');
     else if (tab !== 'all') list = list.filter(p => p.status === tab);
@@ -1059,8 +1115,46 @@ export default function Review() {
               drag={dragFor(p)}
               isFirst={i === 0}
               isLast={i === listed.length - 1}
+              onMarkLive={canGoLive(p) ? markLive : null}
             />
           ))}
+        </div>
+      )}
+
+      {/* ── Went live ── */}
+      {wentLive.length > 0 && (
+        <section className="rv-live">
+          <button type="button" className="rv-live-toggle" onClick={() => setShowLive(v => !v)} aria-expanded={showLive}>
+            <span className={`rv-live-chev ${showLive ? 'rv-live-chev-open' : ''}`}><Svg name="chevron" size={14} width={2.5} /></span>
+            Went live
+            <span className="rv-tab-count">{wentLive.length}</span>
+          </button>
+          {showLive && (
+            <div className="rv-live-list">
+              {wentLive.map(p => (
+                <div key={p.id} className="rv-live-row">
+                  <span className="rv-live-icon"><Svg name="rocket" size={13} /></span>
+                  <button type="button" className="rv-live-title" onClick={() => openPost(p.id)}>{p.title}</button>
+                  <span className="rv-live-when" title={p.went_live_at ? fmt(p.went_live_at) : undefined}>
+                    {fullName(members[p.went_live_by]) ? `${fullName(members[p.went_live_by])} · ` : ''}{ago(p.went_live_at)}
+                  </span>
+                  {canGoLive(p) && (
+                    <button type="button" className="rv-text-btn" onClick={() => undoLive(p)}>
+                      <Svg name="undo" size={13} /> Undo
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {toast && (
+        <div className="rv-toast" role="status">
+          <span>{toast.text}</span>
+          {toast.undo && <button type="button" className="rv-toast-undo" onClick={toast.undo}>Undo</button>}
+          <button type="button" className="rv-toast-x" onClick={() => setToast(null)} aria-label="Dismiss"><Svg name="x" size={12} width={2.5} /></button>
         </div>
       )}
 

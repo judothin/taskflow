@@ -275,3 +275,30 @@ html.ui-modern .rv-grip,
 html.ui-modern .rv-move { border-radius: var(--m-r); }
 html.ui-modern .rv-grip:focus-visible { box-shadow: var(--m-ring); }
 html.ui-modern .rv-order-hint { font-size: 13px; }
+
+/* ── Live ── */
+html.ui-modern .rv-btn-live { color: var(--accent-contrast); font-weight: 500; border: 1px solid transparent; box-shadow: var(--m-shadow-sm); }
+html.ui-modern .rv-tl-went_live .rv-tl-marker { background: var(--m-accent-soft); }
+html.ui-modern .rv-row-live {
+  border-color: var(--border);
+  border-radius: var(--m-r);
+  background: var(--bg-2);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: var(--m-shadow-sm);
+}
+html.ui-modern .rv-row-live > svg { color: var(--accent); }
+html.ui-modern .rv-row-live:hover { background: var(--bg-3); color: var(--text); }
+html.ui-modern .rv-live-toggle { border-radius: var(--m-r-sm); font-weight: 500; }
+html.ui-modern .rv-live-list { border-radius: var(--m-r-lg); box-shadow: var(--m-shadow-sm); }
+html.ui-modern .rv-live-icon { background: var(--m-accent-soft); }
+html.ui-modern .rv-live-when { font-variant-numeric: tabular-nums; }
+html.ui-modern .rv-toast {
+  border-radius: var(--m-r-lg);
+  background: var(--text);
+  color: var(--bg);
+  border: none;
+  box-shadow: var(--m-shadow-lg);
+}
+html.ui-modern .rv-toast-undo { color: var(--bg); font-weight: 600; text-decoration: underline; }
+html.ui-modern .rv-toast-x { color: color-mix(in srgb, var(--bg) 70%, transparent); }

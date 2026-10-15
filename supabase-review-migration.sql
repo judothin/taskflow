@@ -33,7 +33,7 @@ create table if not exists public.review_posts (
   url          text not null default '',
   description  text not null default '',
   screenshots  text[] not null default '{}',
-  status       text not null default 'pending' check (status in ('pending', 'approved', 'needs_work')),
+  status       text not null default 'pending',
   round        int  not null default 1,
   decided_by   uuid references public.profiles(id) on delete set null,
   decided_at   timestamptz,
@@ -50,6 +50,15 @@ create index if not exists review_posts_team_idx
 -- first release, so it's an ALTER; existing posts are seeded newest-first
 -- (just after the guard trigger below, which lets the seed through).
 alter table public.review_posts add column if not exists position int;
+
+-- "Live": an approved post that's been pushed live. It leaves the active
+-- lists for everyone (into "Went live"). Added after the first release, so
+-- the status check is recreated to allow it.
+alter table public.review_posts add column if not exists went_live_at timestamptz;
+alter table public.review_posts add column if not exists went_live_by uuid references public.profiles(id) on delete set null;
+alter table public.review_posts drop constraint if exists review_posts_status_check;
+alter table public.review_posts add constraint review_posts_status_check
+  check (status in ('pending', 'approved', 'needs_work', 'live'));
 
 -- Who may sign a post off. team_id is copied from the post so realtime can
 -- filter by team and RLS needn't join.
@@ -69,11 +78,15 @@ create table if not exists public.review_events (
   post_id     uuid references public.review_posts(id) on delete cascade not null,
   team_id     uuid references public.teams(id) on delete cascade not null,
   round       int  not null,
-  kind        text not null check (kind in ('submitted', 'approved', 'needs_work', 'resubmitted', 'reopened')),
+  kind        text not null,
   actor       uuid references public.profiles(id) on delete set null,
   note        text not null default '',
   created_at  timestamptz default now()
 );
+
+alter table public.review_events drop constraint if exists review_events_kind_check;
+alter table public.review_events add constraint review_events_kind_check
+  check (kind in ('submitted', 'approved', 'needs_work', 'resubmitted', 'reopened', 'went_live', 'live_undone'));
 
 create index if not exists review_events_post_idx
   on public.review_events (post_id, created_at);
@@ -149,6 +162,8 @@ begin
     or new.round      is distinct from old.round
     or new.decided_by is distinct from old.decided_by
     or new.decided_at is distinct from old.decided_at
+    or new.went_live_at is distinct from old.went_live_at
+    or new.went_live_by is distinct from old.went_live_by
   ) then
     raise exception 'Only a reviewer can change a review''s status';
   end if;
@@ -321,7 +336,7 @@ begin
     raise exception 'Not allowed';
   end if;
   select * into v_post from public.review_posts where id = p_post_id for update;
-  if v_post.status = 'pending' then return; end if;
+  if v_post.status not in ('approved', 'needs_work') then return; end if;
 
   perform set_config('taskflow.review_rpc', 'on', true);
   update public.review_posts
@@ -360,6 +375,57 @@ begin
 end;
 $$;
 
+
+-- An approved post went live: it leaves the active lists for the whole team.
+-- Its reviewers, its author or a team admin can do this.
+create or replace function public.review_mark_live(p_post_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_post public.review_posts;
+begin
+  if not (public.is_review_reviewer(p_post_id) or public.can_manage_review(p_post_id)) then
+    raise exception 'Only a reviewer, the author or a team admin can mark this live';
+  end if;
+  select * into v_post from public.review_posts where id = p_post_id for update;
+  if v_post.status <> 'approved' then
+    raise exception 'Only posts reviewed as ready for live can be marked live';
+  end if;
+
+  perform set_config('taskflow.review_rpc', 'on', true);
+  update public.review_posts
+  set status = 'live', went_live_at = now(), went_live_by = auth.uid()
+  where id = p_post_id;
+  insert into public.review_events (post_id, team_id, round, kind, actor)
+  values (p_post_id, v_post.team_id, v_post.round, 'went_live', auth.uid());
+  perform set_config('taskflow.review_rpc', '', true);
+end;
+$$;
+
+-- Undo "went live": back to reviewed — ready for live.
+create or replace function public.review_unmark_live(p_post_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_post public.review_posts;
+begin
+  if not (public.is_review_reviewer(p_post_id) or public.can_manage_review(p_post_id)) then
+    raise exception 'Not allowed';
+  end if;
+  select * into v_post from public.review_posts where id = p_post_id for update;
+  if v_post.status <> 'live' then return; end if;
+
+  perform set_config('taskflow.review_rpc', 'on', true);
+  update public.review_posts
+  set status = 'approved', went_live_at = null, went_live_by = null
+  where id = p_post_id;
+  insert into public.review_events (post_id, team_id, round, kind, actor)
+  values (p_post_id, v_post.team_id, v_post.round, 'live_undone', auth.uid());
+  perform set_config('taskflow.review_rpc', '', true);
+end;
+$$;
 
 -- Set the team's shared order (owners and admins). `p_ids` is the whole list
 -- top to bottom; ids from another team are ignored, and any of this team's
