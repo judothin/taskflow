@@ -49,3 +49,16 @@ html.ui-modern .nscan-add {
   color: var(--text);
 }
 html.ui-modern .nscan-add:hover { background: var(--bg-3); border-color: var(--border-light); color: var(--text); }
+
+html.ui-modern .nscan-time { border-radius: var(--m-r); background: var(--bg-2); }
+html.ui-modern .nscan-time button { border-radius: var(--m-r-sm); }
+
+html.ui-modern .scan-note {
+  border-color: var(--border);
+  border-radius: var(--m-r-lg);
+  box-shadow: var(--m-shadow-lg);
+}
+html.ui-modern .scan-note-icon { border-radius: var(--m-r); background: var(--m-accent-soft); }
+html.ui-modern .scan-note-body b { font-weight: 600; }
+html.ui-modern .scan-note-view { border-radius: var(--m-r); color: var(--accent-contrast); font-weight: 500; }
+html.ui-modern .scan-note-x { border-radius: var(--m-r); }

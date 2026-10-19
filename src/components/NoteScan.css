@@ -126,3 +126,85 @@
   font-size: 14px; font-weight: 500;
 }
 .nscan-add:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ── Date and times in the review ── */
+.nscan-day { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nscan-day .input { width: auto; min-width: 170px; }
+.nscan-hint { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; margin: 0; }
+.nscan-item-meta { display: flex; gap: 8px; }
+.nscan-item-meta .nscan-area { flex: 1; min-width: 0; }
+.nscan-time {
+  display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  color: var(--text-muted);
+}
+.nscan-time:focus-within { border-color: var(--accent); }
+.nscan-time input {
+  width: 96px; min-height: 40px;
+  border: none; background: none; outline: none;
+  color: var(--text); font: inherit; font-size: 14px;
+}
+.nscan-time-empty input { color: var(--text-dim); }
+.nscan-time button {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 32px; height: 32px; padding: 0 8px;
+  border-radius: var(--radius);
+  background: none; color: var(--text-muted);
+  font-size: 13px; font-weight: 600;
+}
+.nscan-time .nscan-now { color: var(--accent); }
+.nscan-time button:hover { background: var(--bg-4); color: var(--text); }
+.nscan-view { margin-left: auto; color: var(--accent); font-weight: 600; text-decoration: none; }
+.nscan-view:hover { text-decoration: underline; }
+@media (max-width: 420px) {
+  .nscan-item-meta { flex-direction: column; }
+  .nscan-time input { flex: 1; width: auto; }
+}
+
+/* ── "Scan added N tasks" notice on your other open tabs (ScanNotifier.js) ── */
+.scan-note {
+  position: fixed; right: 20px; bottom: 20px; z-index: 1200;
+  display: flex; align-items: center; gap: 12px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 10px 8px 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-2);
+  color: var(--text);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  animation: scan-note-in 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.scan-note-out { animation: scan-note-out 0.18s ease forwards; }
+@keyframes scan-note-in { from { opacity: 0; transform: translateY(14px) scale(0.97); } }
+@keyframes scan-note-out { to { opacity: 0; transform: translateY(8px) scale(0.98); } }
+.scan-note-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: var(--radius);
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+.scan-note-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.scan-note-body b { font-size: 14px; font-weight: 650; }
+.scan-note-sample { font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scan-note-view {
+  flex-shrink: 0; height: 32px; padding: 0 12px;
+  border-radius: var(--radius);
+  background: var(--accent); color: #fff;
+  font-size: 13px; font-weight: 600;
+}
+.scan-note-view:hover { filter: brightness(1.08); }
+.scan-note-x {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; flex-shrink: 0;
+  border-radius: var(--radius);
+  background: none; color: var(--text-dim);
+}
+.scan-note-x:hover { background: var(--bg-3); color: var(--text); }
+@media (max-width: 768px) {
+  .scan-note { left: 16px; right: 16px; width: auto; bottom: calc(var(--dock-clear, 0px) + 12px); }
+}
+@media (prefers-reduced-motion: reduce) { .scan-note, .scan-note-out { animation: none; } }

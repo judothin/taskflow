@@ -5,7 +5,9 @@ import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { awardTaskCreatedXp, awardTaskCompletedXp } from '../lib/xp';
 import { bumpTeamStreak } from '../lib/streak';
-import { scanNotebookPage, newScanItem } from '../lib/noteScan';
+import { Link } from 'react-router-dom';
+import { scanNotebookPage, newScanItem, localDay, localTime, scanStamp } from '../lib/noteScan';
+import { announceScan } from '../lib/scanBroadcast';
 import Avatar from './Avatar';
 import ModalPortal from './ModalPortal';
 import './NoteScan.css';
@@ -18,6 +20,11 @@ import './NoteScan.css';
 // is saved until the review screen: each line can be approved or denied,
 // reworded, and given its own Page / Area (left blank it's logged as
 // "Note scan"). Completed by starts as whoever is signed in.
+//
+// Each line is stamped with when it was done: the page's written date (or
+// today) plus a time read beside the line, or one set in the review. Once
+// logged, the person's other open TaskFlow tabs and the WordPress panel get
+// a notice (lib/scanBroadcast.js).
 // ══════════════════════════════════════════════════════════════
 
 const DEFAULT_AREA = 'Note scan';
@@ -36,6 +43,7 @@ const IMAGE = 'M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z
 const CLOSE = 'M18 6L6 18 M6 6l12 12';
 const PLUS = 'M12 5v14 M5 12h14';
 const CHECK = 'M20 6L9 17l-5-5';
+const CLOCK = 'M12 22a10 10 0 100-20 10 10 0 000 20z M12 6v6l4 2';
 
 export default function NoteScan() {
   const { user, profile } = useAuth();
@@ -44,8 +52,22 @@ export default function NoteScan() {
   const libraryRef = useRef(null);
   const [status, setStatus] = useState(null); // { stage, progress } while scanning
   const [error, setError] = useState('');
-  const [review, setReview] = useState(null); // { items, photoUrl }
+  const [review, setReview] = useState(null); // { items, date, photoUrl }
   const [logged, setLogged] = useState(0);
+  // Page names the team already uses, handed to the scanner so a page written
+  // beside a line (or as a heading over a group) maps onto an existing one.
+  const knownPages = useRef([]);
+  useEffect(() => {
+    if (!activeTeamId) return;
+    supabase.from('tasks').select('page').eq('team_id', activeTeamId)
+      .order('date_received', { ascending: false }).limit(400)
+      .then(({ data }) => {
+        const seen = new Set();
+        knownPages.current = (data || []).map(r => (r.page || '').trim())
+          .filter(p => p && p !== DEFAULT_AREA && p.length <= 120 && !seen.has(p.toLowerCase()) && seen.add(p.toLowerCase()))
+          .slice(0, 80);
+      });
+  }, [activeTeamId]);
 
   const onFile = async (e) => {
     const file = e.target.files?.[0];
@@ -55,8 +77,8 @@ export default function NoteScan() {
     setError(''); setLogged(0);
     setStatus({ stage: 'Preparing the photo…', progress: 0 });
     try {
-      const { items } = await scanNotebookPage(file, setStatus);
-      setReview({ items, photoUrl: URL.createObjectURL(file) });
+      const { items, date } = await scanNotebookPage(file, setStatus, { pages: knownPages.current });
+      setReview({ items, date, photoUrl: URL.createObjectURL(file) });
     } catch (err) {
       setError(err?.message || "Couldn't read that page. Try a brighter, straighter photo.");
     } finally {
@@ -75,7 +97,7 @@ export default function NoteScan() {
         <span className="nscan-icon"><Icon d={CAMERA} /></span>
         <div>
           <h2 className="nscan-title">Scan a notebook page</h2>
-          <p className="nscan-sub">Photograph a checklist and each checkbox line becomes a quick log. You'll review everything before it's saved.</p>
+          <p className="nscan-sub">Photograph a checklist and each checkbox line becomes a quick log. Write the page beside a line after a dash (“Fix hero - Homepage”) or as a heading over a group, and times next to lines, and they're picked up too. You'll review everything before it's saved.</p>
         </div>
       </div>
 
@@ -101,13 +123,15 @@ export default function NoteScan() {
       {logged > 0 && (
         <div className="quicklog-success nscan-msg">
           <Icon d={CHECK} size={14} width={2.5} />
-          {logged === 1 ? '1 task logged' : `${logged} tasks logged`} from your scan. Marked as completed.
+          <span>{logged === 1 ? '1 task logged' : `${logged} tasks logged`} from your scan, marked as completed.</span>
+          <Link to="/completed" className="nscan-view">View</Link>
         </div>
       )}
 
       {review && (
         <ReviewSheet
           initialItems={review.items}
+          initialDate={review.date}
           photoUrl={review.photoUrl}
           teamId={activeTeamId}
           userId={user?.id}
@@ -120,8 +144,10 @@ export default function NoteScan() {
   );
 }
 
-function ReviewSheet({ initialItems, photoUrl, teamId, userId, myName, onClose, onLogged }) {
+function ReviewSheet({ initialItems, initialDate, photoUrl, teamId, userId, myName, onClose, onLogged }) {
   const [items, setItems] = useState(initialItems);
+  const today = localDay();
+  const [day, setDay] = useState(initialDate && initialDate <= today ? initialDate : today);
   const [members, setMembers] = useState([]);
   const [completedBy, setCompletedBy] = useState(myName ? [myName] : []);
   const [areaForAll, setAreaForAll] = useState('');
@@ -141,11 +167,17 @@ function ReviewSheet({ initialItems, photoUrl, teamId, userId, myName, onClose, 
   const remove = (id) => setItems(prev => prev.filter(it => it.id !== id));
   const addItem = () => setItems(prev => [...prev, newScanItem()]);
   const setAll = (approved) => setItems(prev => prev.map(it => ({ ...it, approved })));
-  const applyArea = () => setItems(prev => prev.map(it => ({ ...it, area: areaForAll })));
+  const applyArea = () => setItems(prev => prev.map(it => ({ ...it, area: areaForAll, areaFromScan: false })));
   const togglePerson = (name) =>
     setCompletedBy(prev => (prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]));
 
+  const fillBlankTimes = () => {
+    const t = localTime();
+    setItems(prev => prev.map(it => (it.time ? it : { ...it, time: t })));
+  };
+
   const approved = items.filter(it => it.approved);
+  const timed = items.filter(it => it.time).length;
   const blank = approved.some(it => !it.text.trim());
   const canLog = approved.length > 0 && completedBy.length > 0 && !blank && !saving;
 
@@ -162,20 +194,24 @@ function ReviewSheet({ initialItems, photoUrl, teamId, userId, myName, onClose, 
     setSaving(true); setError('');
     const now = new Date().toISOString();
     const who = completedBy.join(', ');
-    const rows = approved.map(it => ({
-      team_id: teamId,
-      page: it.area.trim() || DEFAULT_AREA,
-      feedback: `<p>${escapeHtml(it.text.trim())}</p>`,
-      noticed_by: who,
-      completed_by: who,
-      status: 'completed',
-      roi: 'medium',
-      complexity: 'medium',
-      date_received: now,
-      date_completed: now,
-      updated_at: now,
-      created_by: userId || null,
-    }));
+    // Each line keeps its own moment: the page's day plus its time.
+    const rows = approved.map(it => {
+      const at = scanStamp(day, it.time).toISOString();
+      return {
+        team_id: teamId,
+        page: it.area.trim() || DEFAULT_AREA,
+        feedback: `<p>${escapeHtml(it.text.trim())}</p>`,
+        noticed_by: who,
+        completed_by: who,
+        status: 'completed',
+        roi: 'medium',
+        complexity: 'medium',
+        date_received: at,
+        date_completed: at,
+        updated_at: now,
+        created_by: userId || null,
+      };
+    });
     const { error: err } = await supabase.from('tasks').insert(rows);
     if (err) { setError(err.message); setSaving(false); return; }
     // One at a time: each award reads the user's XP and writes it back, so
@@ -189,6 +225,7 @@ function ReviewSheet({ initialItems, photoUrl, teamId, userId, myName, onClose, 
     })().catch(() => {});
     bumpTeamStreak(teamId);
     window.dispatchEvent(new CustomEvent('tasks-changed'));
+    announceScan(userId, { count: rows.length, teamId, sample: approved.slice(0, 3).map(it => it.text.trim().slice(0, 80)) });
     onLogged(rows.length);
   };
 
@@ -235,6 +272,19 @@ function ReviewSheet({ initialItems, photoUrl, teamId, userId, myName, onClose, 
             </section>
 
             <section className="nscan-section">
+              <label className="label" htmlFor="nscan-day">Done on</label>
+              <div className="nscan-day">
+                <input id="nscan-day" type="date" className="input" value={day} max={today}
+                  onChange={e => setDay(e.target.value || today)} />
+                {initialDate && day === initialDate && <span className="nscan-flag nscan-flag-done">Read from the page</span>}
+              </div>
+              <p className="nscan-hint">
+                Each line is stamped with this date and its own time.
+                {day === today ? ' A line without a time is stamped when you log it.' : ' A line without a time is stamped at midday.'}
+              </p>
+            </section>
+
+            <section className="nscan-section">
               <label className="label" htmlFor="nscan-area-all">Page / Area for every line</label>
               <div className="nscan-area-all">
                 <input id="nscan-area-all" className="input" value={areaForAll}
@@ -248,6 +298,7 @@ function ReviewSheet({ initialItems, photoUrl, teamId, userId, myName, onClose, 
                 <span className="label">Lines</span>
                 {items.length > 0 && (
                   <span className="nscan-bulk">
+                    {timed < items.length && <button type="button" onClick={fillBlankTimes}>Time blanks now</button>}
                     <button type="button" onClick={() => setAll(true)}>Approve all</button>
                     <button type="button" onClick={() => setAll(false)}>Deny all</button>
                   </span>
@@ -273,19 +324,32 @@ function ReviewSheet({ initialItems, photoUrl, teamId, userId, myName, onClose, 
                         <Icon d={CLOSE} size={14} />
                       </button>
                     </div>
-                    {(it.checked !== null || it.unclear) && (
+                    {(it.checked !== null || it.unclear || it.fromPage || (it.areaFromScan && it.area)) && (
                       <div className="nscan-flags">
                         {it.checked === true && <span className="nscan-flag nscan-flag-done">Ticked</span>}
                         {it.checked === false && <span className="nscan-flag">Not ticked</span>}
+                        {it.areaFromScan && it.area && <span className="nscan-flag">Page from the scan</span>}
+                        {it.fromPage && <span className="nscan-flag">Time from the page</span>}
                         {it.unclear && <span className="nscan-flag nscan-flag-warn">Hard to read — check the wording</span>}
                       </div>
                     )}
                     <textarea className="input nscan-text" rows={2} value={it.text}
                       onChange={e => update(it.id, { text: e.target.value })}
                       placeholder="What was done" aria-label="What was done" />
-                    <input className="input nscan-area" value={it.area}
-                      onChange={e => update(it.id, { area: e.target.value })}
-                      placeholder={DEFAULT_AREA} aria-label="Page / Area" />
+                    <div className="nscan-item-meta">
+                      <input className="input nscan-area" value={it.area}
+                        onChange={e => update(it.id, { area: e.target.value, areaFromScan: false })}
+                        placeholder={DEFAULT_AREA} aria-label="Page / Area" />
+                      <div className={`nscan-time ${it.time ? '' : 'nscan-time-empty'}`}>
+                        <Icon d={CLOCK} size={15} />
+                        <input type="time" value={it.time}
+                          onChange={e => update(it.id, { time: e.target.value, fromPage: false })}
+                          aria-label="Time it was done" />
+                        {it.time
+                          ? <button type="button" onClick={() => update(it.id, { time: '', fromPage: false })} aria-label="Clear time"><Icon d={CLOSE} size={13} /></button>
+                          : <button type="button" className="nscan-now" onClick={() => update(it.id, { time: localTime(), fromPage: false })}>Now</button>}
+                      </div>
+                    </div>
                   </li>
                 ))}
               </ul>

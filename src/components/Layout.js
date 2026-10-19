@@ -13,6 +13,7 @@ import QueuePanel from './QueuePanel';
 import Avatar from './Avatar';
 import GlobalSearch, { OPEN_EVENT } from './GlobalSearch';
 import GlobalShortcuts from './GlobalShortcuts';
+import ScanNotifier from './ScanNotifier';
 import TopBar from './TopBar';
 import { HeaderActionsProvider } from '../context/HeaderActionsContext';
 import ErrorBoundary from './ErrorBoundary';
@@ -592,6 +593,7 @@ export default function Layout() {
 
       <GlobalSearch />
       <GlobalShortcuts />
+      <ScanNotifier />
       {/* The Context sheet, opened by event — from the dock on a phone and
           the top bar's ⋯ menu on desktop. Mounted once, here, so one event
           can't open two sheets. */}
