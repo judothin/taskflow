@@ -39,6 +39,7 @@ import Pomodoro from './pages/Pomodoro';
 import MobileAppearance from './pages/MobileAppearance';
 import GoLive from './pages/GoLive';
 import Review from './pages/Review';
+import TeamActivity from './pages/TeamActivity';
 import Layout from './components/Layout';
 // Last, so the new UI's overrides follow every page's own stylesheet.
 import './modern';
@@ -172,6 +173,7 @@ function AppRoutes() {
         <Route path="go-live" element={<DesktopOnly><GoLive /></DesktopOnly>} />
         {/* Works on a phone too, so reviewers can sign things off on the go. */}
         <Route path="review" element={<Review />} />
+        <Route path="team-activity" element={<DesktopOnly><TeamActivity /></DesktopOnly>} />
         <Route path="pomodoro" element={<DesktopOnly><Pomodoro /></DesktopOnly>} />
         <Route path="projects" element={<DesktopOnly><Projects /></DesktopOnly>} />
         <Route path="projects/:id" element={<DesktopOnly><ProjectDetail /></DesktopOnly>} />

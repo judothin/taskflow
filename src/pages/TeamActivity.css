@@ -1,0 +1,184 @@
+/* ══════════════════════════════════════════════════════════════
+   Team Activity (pages/TeamActivity.js) — owners and admins.
+   Built on the shared tokens, so it follows both the classic and the
+   new UI; the few new-UI touches are at the bottom.
+   ══════════════════════════════════════════════════════════════ */
+
+.ta-page { display: flex; flex-direction: column; gap: 16px; }
+
+/* ── Header ── */
+.ta-head { display: flex; align-items: center; gap: 14px; }
+.ta-head-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; flex-shrink: 0;
+  border-radius: 14px;
+  background: var(--accent-glow); color: var(--accent);
+}
+.ta-head-text { flex: 1; min-width: 0; }
+.ta-head-title { font-size: 21px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }
+.ta-head-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* ── Period toolbar ── */
+.ta-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+.ta-seg {
+  display: flex; gap: 3px; padding: 3px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+.ta-seg-btn {
+  padding: 6px 16px; border-radius: var(--radius);
+  background: none; color: var(--text-muted);
+  font-size: 13px; font-weight: 600;
+}
+.ta-seg-btn:hover { color: var(--text); }
+.ta-seg-on, .ta-seg-on:hover { background: var(--accent-glow); color: var(--accent); }
+
+.ta-nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ta-icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: var(--radius);
+  background: var(--bg-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.ta-icon-btn:hover:not(:disabled) { color: var(--text); border-color: var(--border-light); }
+.ta-icon-btn:disabled { opacity: 0.35; cursor: default; }
+/* The label reads as text; the native date input sits invisibly on top so a
+   click anywhere opens the picker. */
+.ta-period {
+  position: relative; display: flex; align-items: center;
+  height: 32px; padding: 0 12px; min-width: 200px; justify-content: center;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2);
+  font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.ta-period:hover { border-color: var(--border-light); }
+.ta-period input {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer; border: 0; padding: 0;
+}
+.ta-period input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+.ta-today { height: 32px; padding: 0 12px; font-size: 13px; }
+
+/* ── Team totals ── */
+.ta-totals { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.ta-total {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 14px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+.ta-total-n { font-size: 22px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.ta-total-l { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ta-total-zero .ta-total-n { color: var(--text-dim); }
+
+/* ── People ── */
+.ta-list { display: flex; flex-direction: column; gap: 8px; }
+.ta-list-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 2px 0;
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim);
+}
+.ta-link { background: none; color: var(--accent); font-size: 12.5px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.ta-link:hover { text-decoration: underline; }
+.ta-skeleton { height: 64px; border-radius: var(--radius-lg); background: var(--bg-2); }
+
+.ta-person {
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.ta-person-open { border-color: var(--border-light); }
+.ta-person-head {
+  display: flex; align-items: center; gap: 16px; width: 100%;
+  padding: 12px 14px; background: none; text-align: left; color: var(--text);
+}
+.ta-person-head:hover:not(:disabled) { background: var(--bg-3); }
+.ta-person-head:disabled { cursor: default; }
+.ta-person-idle .ta-who, .ta-person-idle .ta-counts { opacity: 0.55; }
+
+.ta-who { display: flex; align-items: center; gap: 10px; flex: 0 1 260px; min-width: 0; }
+.ta-who-blank {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--bg-4); color: var(--text-muted); font-size: 13px; font-weight: 700;
+}
+.ta-who-text { display: flex; flex-direction: column; min-width: 0; }
+.ta-who-text b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ta-who-sub { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+
+/* week sparkline: actions per day */
+.ta-spark { display: flex; align-items: flex-end; gap: 3px; height: 38px; flex-shrink: 0; }
+.ta-spark-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; width: 12px; height: 100%; }
+.ta-spark-bar { width: 100%; border-radius: 3px; background: var(--accent); opacity: 0.85; min-height: 0; }
+.ta-spark-col:has(.ta-spark-bar[style*="height: 0%"])::before {
+  content: ''; width: 100%; height: 2px; border-radius: 2px; background: var(--bg-4);
+}
+.ta-spark-day { font-size: 9px; line-height: 1; color: var(--text-dim); }
+
+.ta-counts { display: flex; gap: 4px; flex: 1; justify-content: flex-end; flex-wrap: wrap; }
+.ta-count {
+  display: flex; flex-direction: column; align-items: center; min-width: 62px;
+  padding: 4px 6px; border-radius: var(--radius);
+}
+.ta-count b { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ta-count span { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; }
+.ta-count-zero b { color: var(--text-dim); font-weight: 500; }
+.ta-chevron { display: flex; align-items: center; justify-content: flex-end; width: 84px; flex-shrink: 0; color: var(--text-dim); }
+.ta-chevron svg { transition: transform 0.18s ease; }
+.ta-person-open .ta-chevron svg { transform: rotate(180deg); }
+.ta-none { font-size: 12px; white-space: nowrap; }
+
+/* ── Timeline ── */
+.ta-timeline { border-top: 1px solid var(--border); padding: 6px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.ta-tl-day {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 8px 0 2px; font-size: 12.5px; font-weight: 700; color: var(--text);
+}
+.ta-tl-day span { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.ta-tl { list-style: none; margin: 0; padding: 0; }
+.ta-tl-item { display: grid; grid-template-columns: 68px 14px 1fr; gap: 10px; align-items: start; padding: 7px 0; position: relative; }
+.ta-tl-item + .ta-tl-item { border-top: 1px dashed var(--border); }
+.ta-tl-time { font-size: 12px; color: var(--text-muted); text-align: right; padding-top: 1px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ta-tl-dot { width: 9px; height: 9px; margin: 5px auto 0; border-radius: 50%; background: var(--tone, var(--text-dim)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone, var(--text-dim)) 18%, transparent); }
+.ta-tl-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ta-tl-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ta-tl-kind { font-size: 12px; font-weight: 700; color: var(--tone, var(--text-muted)); }
+.ta-tl-page {
+  font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px;
+  background: var(--bg-3); color: var(--text-muted);
+}
+.ta-tl-text { font-size: 13.5px; color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+.ta-tl-text:hover { color: var(--accent); text-decoration: underline; }
+.ta-tl-note { font-size: 12.5px; color: var(--text-muted); font-style: italic; overflow-wrap: anywhere; }
+
+.ta-tone-done    { --tone: var(--st-completed); }
+.ta-tone-add     { --tone: var(--st-open); }
+.ta-tone-review  { --tone: var(--accent); }
+.ta-tone-ok      { --tone: var(--success); }
+.ta-tone-warn    { --tone: var(--warning); }
+.ta-tone-live    { --tone: var(--st-onhold); }
+.ta-tone-comment { --tone: var(--info); }
+.ta-tone-context { --tone: var(--text-muted); }
+
+.ta-locked { margin-top: 40px; color: var(--text-muted); }
+.ta-locked p { max-width: 420px; margin: 6px auto 0; }
+
+/* ── Narrow screens ── */
+@media (max-width: 1100px) {
+  .ta-person-head { flex-wrap: wrap; row-gap: 10px; }
+  .ta-who { flex: 1 1 200px; }
+  .ta-counts { order: 3; flex-basis: 100%; justify-content: flex-start; }
+  .ta-chevron { width: auto; }
+}
+@media (max-width: 760px) {
+  .ta-totals { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ta-period { min-width: 0; flex: 1; }
+  .ta-nav { flex: 1; }
+  .ta-count { min-width: 54px; }
+  .ta-tl-item { grid-template-columns: 56px 12px 1fr; gap: 8px; }
+}
+
+/* ── New UI ── */
+html.ui-modern .ta-page { gap: 20px; }
+html.ui-modern .ta-head-icon { width: 40px; height: 40px; border-radius: var(--m-r-lg); background: var(--m-accent-soft); }
+html.ui-modern .ta-head-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+html.ui-modern .ta-seg { background: var(--bg-3); border: none; border-radius: var(--m-r); }
+html.ui-modern .ta-seg-btn { border-radius: var(--m-r-sm); font-weight: 500; }
+html.ui-modern .ta-seg-on, html.ui-modern .ta-seg-on:hover { background: var(--bg-2); color: var(--text); box-shadow: var(--m-shadow-sm); }
+html.ui-modern .ta-total, html.ui-modern .ta-person { box-shadow: var(--m-shadow-sm); }

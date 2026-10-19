@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
-import { NAV_ITEMS } from '../lib/navLayout';
+import { NAV_ITEMS, navItemAllowed } from '../lib/navLayout';
 import { SETTINGS_SECTIONS, sectionPath } from '../lib/settingsSections';
 import { searchRank } from '../lib/fuzzySearch';
 import ModalPortal from './ModalPortal';
@@ -44,7 +44,7 @@ const CLOSE_MS = 170;
 
 export default function GlobalSearch() {
   const navigate = useNavigate();
-  const { activeTeamId } = useTeam();
+  const { activeTeamId, isAdmin } = useTeam();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
@@ -126,6 +126,7 @@ export default function GlobalSearch() {
     // called "checkout" outranks one that merely mentions checkout.
     const pages = searchRank([
       ...Object.entries(NAV_ITEMS)
+        .filter(([, item]) => navItemAllowed(item, isAdmin))
         .map(([id, item]) => ({ type: 'page', id, title: item.label, subtitle: item.to, to: item.to })),
       ...SETTINGS_SECTIONS.map(sec => ({
         type: 'page', id: `settings-${sec.id}`, title: sec.label,
@@ -178,7 +179,7 @@ export default function GlobalSearch() {
     return GROUP_ORDER
       .map(type => ({ type, items: (byType[type] || []).slice(0, PER_GROUP) }))
       .filter(g => g.items.length > 0);
-  }, [query, data]);
+  }, [query, data, isAdmin]);
 
   // Flatten for keyboard navigation.
   const flat = useMemo(() => groups.flatMap(g => g.items), [groups]);

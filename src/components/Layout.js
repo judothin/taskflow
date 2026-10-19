@@ -6,7 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
 import { supabase } from '../lib/supabase';
 import { fetchUserPrefs, saveUserPrefs, saveUserPrefsDebounced } from '../lib/userPrefs';
-import { NAV_ITEMS, MOBILE_NAV_IDS, sanitizeNavLayout, loadNavLayoutCache, saveNavLayoutCache } from '../lib/navLayout';
+import { NAV_ITEMS, MOBILE_NAV_IDS, navItemAllowed, sanitizeNavLayout, loadNavLayoutCache, saveNavLayoutCache } from '../lib/navLayout';
 import CreateMenu from './CreateMenu';
 import ScrollMemory from './ScrollMemory';
 import QueuePanel from './QueuePanel';
@@ -198,7 +198,7 @@ function TeamSwitcher() {
 export default function Layout() {
   const { profile, user, signOut } = useAuth();
   const uid = user?.id;
-  const { activeTeam } = useTeam();
+  const { activeTeam, isAdmin } = useTeam();
   const { theme, toggle } = useTheme();
   const { activeColors: colors } = useThemeCustomization();
   const streak = useStreak();
@@ -295,7 +295,8 @@ export default function Layout() {
   // filtered out of BOTH the visible list and the customize/edit list, so
   // there's nothing to toggle back on for something the user can't reach
   // anyway (going to /pets directly also redirects away, see Pets.js).
-  const effectiveNavLayout = navLayout;
+  // Admin-only items (Team Activity) are left out for everyone else.
+  const effectiveNavLayout = navLayout.filter(b => navItemAllowed(NAV_ITEMS[b.id], isAdmin));
   const visibleNavLayout = effectiveNavLayout.filter(b => b.visible);
 
   return (

@@ -42,6 +42,11 @@ export const NAV_ITEMS = {
     icon: 'M9 11l3 3L22 4 M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
     badge: 'review', // posts waiting on your verdict
   },
+  activity: {
+    to: '/team-activity', label: 'Team Activity',
+    icon: 'M18 20V10 M12 20V4 M6 20v-6',
+    adminOnly: true, // team owners and admins only (see navItemAllowed)
+  },
   pomodoro: {
     to: '/pomodoro', label: 'Pomodoro',
     icon: 'M12 8v4l3 2 M12 2a10 10 0 100 20 10 10 0 000-20z M9 2h6',
@@ -64,6 +69,9 @@ export const NAV_ITEMS = {
 // only these; App.js redirects the rest to /focus. Keeping the two lists in
 // step is the point of putting this here rather than inline in Layout.
 export const MOBILE_NAV_IDS = new Set(['active', 'completed', 'context', 'review']);
+
+// Whether the signed-in person gets this item at all on the active team.
+export const navItemAllowed = (item, isAdmin) => !!item && (!item.adminOnly || !!isAdmin);
 
 export const DEFAULT_NAV_LAYOUT = Object.keys(NAV_ITEMS).map(id => ({ id, visible: true }));
 
