@@ -68,7 +68,7 @@ export const NAV_ITEMS = {
 // Nav items whose pages are actually built for a phone. The mobile menu shows
 // only these; App.js redirects the rest to /focus. Keeping the two lists in
 // step is the point of putting this here rather than inline in Layout.
-export const MOBILE_NAV_IDS = new Set(['active', 'completed', 'context', 'review']);
+export const MOBILE_NAV_IDS = new Set(['active', 'completed', 'context', 'review', 'activity']);
 
 // Whether the signed-in person gets this item at all on the active team.
 export const navItemAllowed = (item, isAdmin) => !!item && (!item.adminOnly || !!isAdmin);

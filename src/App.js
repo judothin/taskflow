@@ -173,7 +173,7 @@ function AppRoutes() {
         <Route path="go-live" element={<DesktopOnly><GoLive /></DesktopOnly>} />
         {/* Works on a phone too, so reviewers can sign things off on the go. */}
         <Route path="review" element={<Review />} />
-        <Route path="team-activity" element={<DesktopOnly><TeamActivity /></DesktopOnly>} />
+        <Route path="team-activity" element={<TeamActivity />} />
         <Route path="pomodoro" element={<DesktopOnly><Pomodoro /></DesktopOnly>} />
         <Route path="projects" element={<DesktopOnly><Projects /></DesktopOnly>} />
         <Route path="projects/:id" element={<DesktopOnly><ProjectDetail /></DesktopOnly>} />

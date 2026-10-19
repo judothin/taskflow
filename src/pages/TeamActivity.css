@@ -165,12 +165,47 @@
   .ta-counts { order: 3; flex-basis: 100%; justify-content: flex-start; }
   .ta-chevron { width: auto; }
 }
-@media (max-width: 760px) {
-  .ta-totals { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .ta-period { min-width: 0; flex: 1; }
-  .ta-nav { flex: 1; }
-  .ta-count { min-width: 54px; }
-  .ta-tl-item { grid-template-columns: 56px 12px 1fr; gap: 8px; }
+/* Phone: everything stacks, tap targets grow, totals scroll sideways
+   instead of squeezing seven numbers into one row. */
+@media (max-width: 768px) {
+  .ta-page { gap: 12px; }
+  .ta-head-icon { width: 38px; height: 38px; border-radius: 12px; }
+  .ta-head-title { font-size: 19px; }
+
+  .ta-toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .ta-seg { align-self: stretch; }
+  .ta-seg-btn { flex: 1; padding: 9px 0; font-size: 14px; }
+  .ta-nav { flex-wrap: nowrap; }
+  .ta-icon-btn { width: 40px; height: 40px; flex-shrink: 0; }
+  .ta-period { flex: 1; min-width: 0; height: 40px; padding: 0 8px; font-size: 13.5px; }
+  .ta-period span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ta-today { height: 40px; flex-shrink: 0; }
+
+  .ta-totals {
+    display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x proximity;
+    margin: 0 -16px; padding: 0 16px 2px; scrollbar-width: none;
+  }
+  .ta-totals::-webkit-scrollbar { display: none; }
+  .ta-total { flex: 0 0 auto; min-width: 96px; padding: 10px 12px; scroll-snap-align: start; }
+  .ta-total-n { font-size: 20px; }
+
+  .ta-person-head { padding: 12px; gap: 10px; }
+  .ta-person-head:hover:not(:disabled) { background: none; }
+  .ta-person-head:active:not(:disabled) { background: var(--bg-3); }
+  .ta-who { flex: 1 1 0; }
+  .ta-spark { order: 2; height: 32px; }
+  .ta-spark-col { width: 10px; }
+  .ta-chevron { order: 2; width: auto; }
+  /* only what they actually did; the zeros are noise at this size */
+  .ta-counts { order: 3; flex-basis: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .ta-count { min-width: 0; padding: 6px 2px; background: var(--bg-3); }
+  .ta-count-zero { display: none; }
+  .ta-person-idle .ta-counts { display: none; }
+
+  .ta-timeline { padding: 4px 12px 12px; }
+  .ta-tl-item { grid-template-columns: 52px 10px 1fr; gap: 8px; padding: 9px 0; }
+  .ta-tl-time { font-size: 11.5px; }
+  .ta-tl-text, .ta-tl-text:hover { font-size: 14px; }
 }
 
 /* ── New UI ── */
