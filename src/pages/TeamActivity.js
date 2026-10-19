@@ -406,10 +406,12 @@ function PersonRow({ row, mode, days, open, onToggle }) {
 }
 
 function Timeline({ entries, mode, days }) {
-  // Week: grouped by day, newest day first. Day: one list.
+  // Everything the person did, in the order they did it, whatever it was.
+  // A week is split by day (Monday first); a day is one list.
+  const inOrder = [...entries].reverse();
   const groups = mode === 'week'
-    ? [...days].reverse().map(d => ({ d, list: entries.filter(e => isSameDay(new Date(e.at), d)) })).filter(g => g.list.length)
-    : [{ d: null, list: entries }];
+    ? days.map(d => ({ d, list: inOrder.filter(e => isSameDay(new Date(e.at), d)) })).filter(g => g.list.length)
+    : [{ d: null, list: inOrder }];
   return (
     <div className="ta-timeline">
       {groups.map(({ d, list }) => (
