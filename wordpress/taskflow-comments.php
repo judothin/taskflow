@@ -1755,6 +1755,24 @@ class DevComments {
 .collapsed .cundo:hover{color:var(--text-soft)}
 .collapsed .cchev{display:none}
 
+/* two or more done threads in a row fold into one "N marked done" row */
+.dgrp{border-bottom:1px solid var(--line-soft);width:calc(100% + 44px);margin:0 -22px;box-sizing:border-box}
+.dgrp-h{display:flex;align-items:center;gap:11px;width:100%;box-sizing:border-box;padding:11px 22px;text-align:left;
+  cursor:pointer;opacity:.72;transition:opacity .15s ease}
+.dgrp-h:hover{opacity:1}
+.dgrp-h .cv{flex:none;width:31px;height:31px;display:flex;align-items:center;justify-content:center}
+.dgrp-h .cv svg{width:14px;height:14px;stroke:var(--faint);fill:none;stroke-width:2.2}
+.dgrp-h .dg-t{flex:none;font-size:12.5px;font-weight:600;color:var(--faint)}
+.dgrp-h .dg-who{flex:1;min-width:0;font-size:12.5px;color:var(--fainter);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dgrp-h .dg-chev{flex:none;width:14px;height:14px;stroke:var(--fainter);fill:none;stroke-width:2.2;transition:transform .2s var(--ease-out)}
+.dgrp.open .dgrp-h .dg-chev{transform:rotate(90deg)}
+.dgrp-b{display:none}
+.dgrp.open .dgrp-b{display:block}
+.dgrp .collapsed{width:100%;margin:0;border-bottom:0;border-top:1px solid var(--line-soft);padding-left:34px}
+.panel.has-bg .dgrp-h{opacity:1}
+.panel.has-bg .dgrp-h .dg-t{color:var(--text-soft)}
+.panel.has-bg .dgrp-h .dg-who{color:var(--dim)}
+
 /* peeked open: no card, just a small label above the thread */
 .dbar{display:flex;align-items:center;gap:12px;padding:10px 0 0;
   font-size:11px;color:var(--fainter)}
@@ -2693,6 +2711,10 @@ class DevComments {
   .collapsed{width:calc(100% + 28px + env(safe-area-inset-left,0px) + env(safe-area-inset-right,0px));
     margin:0 calc(-14px - env(safe-area-inset-right,0px)) 0 calc(-14px - env(safe-area-inset-left,0px));
     padding:11px calc(14px + env(safe-area-inset-right,0px)) 11px calc(14px + env(safe-area-inset-left,0px))}
+  .dgrp{width:calc(100% + 28px + env(safe-area-inset-left,0px) + env(safe-area-inset-right,0px));
+    margin:0 calc(-14px - env(safe-area-inset-right,0px)) 0 calc(-14px - env(safe-area-inset-left,0px))}
+  .dgrp-h{padding:11px calc(14px + env(safe-area-inset-right,0px)) 11px calc(14px + env(safe-area-inset-left,0px))}
+  .dgrp .collapsed{width:100%;margin:0;padding-left:calc(26px + env(safe-area-inset-left,0px))}
   .meava{width:38px;height:38px}
   .inputrow{min-height:44px;gap:4px}
   .fmtbar{margin-left:46px}
@@ -4611,6 +4633,7 @@ a.tfpage:hover{text-decoration:underline}
   const hiC={page:0,general:0}; /* rendered watermark for entrance animation */
 
   const expandedDone=new Set();   /* peeked-open done threads, this view only */
+  const openDoneRuns=new Set();   /* expanded "N marked done" groups, by first thread id */
   /* Both forms of a thread are always in the DOM; switching is one class flip
      and a CSS grid-rows transition, so nothing re-renders mid-animation (that
      was the source of the jumping). State is applied first, the list is
@@ -4657,7 +4680,7 @@ a.tfpage:hover{text-decoration:underline}
     /* Every payload used to rebuild list.innerHTML wholesale. A typing
        heartbeat fires one every couple of seconds, so any hover state you
        were holding got torn down and rebuilt — that is the blinking. */
-    const sig=ctx+'|'+(ME?ME.id:0)+'|'+divideAt+'|'+[...picked].sort().join('.')+'|'+rows.map(r=>
+    const sig=ctx+'|'+(ME?ME.id:0)+'|'+divideAt+'|'+[...picked].sort().join('.')+'|'+[...openDoneRuns].join('.')+'|'+rows.map(r=>
       r.id+':'+r.parent_id+':'+(+r.pinned||0)+':'+r.likes.length+':'+(r.checks?r.checks.length:0)+':'+(r.downs?r.downs.length:0)+':'+(r.dones?r.dones.length:0)+':'+(expandedDone.has(String(r.id))?'x':'')+':'+r.content.length+':'+nameOf(r)
       +':'+avatarUrlOf(r.user_id)+':'+JSON.stringify(nameStyleOf(r.user_id))+':'+(r.task_id?r.task_id+tfTaskStatus(r.task_id):'')).join(',');
     if(searchQ){renderSearch();return;}   /* search mode owns the list */
@@ -4758,25 +4781,45 @@ a.tfpage:hover{text-decoration:underline}
       const ta=document.createElement('textarea');ta.innerHTML=r.content;
       return stripTok(ta.value).replace(/\[img\][^\[]*\[\/img\]/g,' [image] ').replace(/\s+/g,' ').trim()||'[image]';
     };
+    /* A run of two or more collapsed done threads is gathered under one
+       "N marked done" row (closed until clicked). Each thread is buffered
+       while a run might still be growing, and flushed when it ends. */
+    let run=[];
+    const flushRun=()=>{
+      if(run.length===1)h+=run[0].html;
+      else if(run.length>1){
+        const key=String(run[0].id), on=openDoneRuns.has(key);
+        const who=[...new Set(run.map(x=>x.name))];
+        h+=`<div class="dgrp${on?' open':''}"><button class="dgrp-h" data-dgrp="${key}" aria-expanded="${on}">
+          <span class="cv"><svg viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg></span>
+          <span class="dg-t">${run.length} marked done</span>
+          <span class="dg-who">${escHtml(who.slice(0,3).join(', ')+(who.length>3?` +${who.length-3}`:''))}</span>
+          <svg class="dg-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+          <div class="dgrp-b">${run.map(x=>x.html).join('')}</div></div>`;
+      }
+      run=[];
+    };
     roots.forEach(root=>{
       const ch=kids[root.id]||[];
       /* done threads collapse to one line for everyone; clicking peeks them
          open locally without changing the shared state */
       const done=isDone(root), open=!done||expandedDone.has(String(root.id));
-      h+=maybeDivide(root)+`<div class="tgroup" data-root="${root.id}">`;
-      /* Only one form is rendered. Keeping both in the DOM and sizing them with
-         a grid-rows trick collapsed the row to zero height in some layouts,
-         which made done comments vanish instead of showing inline. */
+      const div=maybeDivide(root);
+      if(open||div)flushRun();   /* the NEW line never hides inside a group */
       if(!open){
-        h+=`<button class="collapsed" data-id="${root.id}">
+        run.push({id:root.id,name:nameOf(root),html:div+`<div class="tgroup" data-root="${root.id}"><button class="collapsed" data-id="${root.id}">
           <span class="cv"><svg viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg></span>
           <span class="cname">${escHtml(nameOf(root))}</span>
           <span class="ctxt">${escHtml(plain(root))}</span>
           ${ch.length?`<span class="ccount">+${ch.length}</span>`:''}
           ${ME?`<span class="cundo" data-undo="${root.id}">Undone</span>`:''}
-          <svg class="cchev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button></div>`;
+          <svg class="cchev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button></div>`});
         return;
       }
+      h+=div+`<div class="tgroup" data-root="${root.id}">`;
+      /* Only one form is rendered. Keeping both in the DOM and sizing them with
+         a grid-rows trick collapsed the row to zero height in some layouts,
+         which made done comments vanish instead of showing inline. */
       if(done){
         h+=`<div class="dwrap" data-wrap="${root.id}">
           <div class="dbar"><span>Done</span><span class="db-sp"></span>
@@ -4796,6 +4839,7 @@ a.tfpage:hover{text-decoration:underline}
       if(done)h+='</div>';        /* /dwrap */
       h+='</div>';                /* /tgroup */
     });
+    flushRun();
     const atBottom=list.scrollHeight-list.scrollTop-list.clientHeight<60;
     list.innerHTML=h;
     hiC[ctx]=rows.reduce((m,r)=>Math.max(m,parseInt(r.id,10)||0),hiC[ctx]);
@@ -7336,6 +7380,14 @@ function qrMatrix(text){
       const id=undo.dataset.undo;
       toggleDone(id);
       undoable('Thread reopened',()=>toggleDone(id));
+      return;
+    }
+    const dg=e.composedPath().find(n=>n.dataset&&n.dataset.dgrp);
+    if(dg){
+      const k=dg.dataset.dgrp;
+      if(openDoneRuns.has(k))openDoneRuns.delete(k);else openDoneRuns.add(k);
+      lastSig=null;
+      if(cache[ctx])render(cache[ctx]);
       return;
     }
     const coll=e.composedPath().find(n=>n.classList&&n.classList.contains('collapsed'));
