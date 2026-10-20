@@ -705,6 +705,7 @@ class DevComments {
     /* the readable part of a comment: no pin/meta tokens, images as a marker */
     private static function preview($content) {
         $b = preg_replace('/\[(pin|meta)\][^\[]*\[\/\1\]/', '', $content);
+        $b = preg_replace('/\[file\][^\[]*\[\/file\]/', ' [PDF] ', $b);
         $b = trim(preg_replace('/\[img\][^\[]*\[\/img\]/', ' [image] ', $b));
         if ($b === '') $b = '[image]';
         return function_exists('mb_substr') ? mb_substr($b, 0, 400) : substr($b, 0, 400);
@@ -916,12 +917,19 @@ class DevComments {
     public static function ajax_upload() {
         check_ajax_referer('dc_nonce', 'nonce');
         self::require_user();
-        $types = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+        $types = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/gif' => 'gif', 'application/pdf' => 'pdf'];
         $type  = sanitize_text_field(wp_unslash($_POST['type'] ?? ''));
-        if (!isset($types[$type])) wp_send_json_error(['msg' => 'Unsupported image type.']);
+        if (!isset($types[$type])) wp_send_json_error(['msg' => 'Only images and PDFs can be attached.']);
+        $pdf = $type === 'application/pdf';
+        $max = $pdf ? 10 : 6;
         $raw = base64_decode($_POST['data'] ?? '', true);
-        if ($raw === false || strlen($raw) > 6 * 1024 * 1024) wp_send_json_error(['msg' => 'Image too large (6MB max).']);
-        $file = wp_upload_bits('dc-' . time() . '-' . wp_generate_password(6, false) . '.' . $types[$type], null, $raw);
+        if ($raw === false || strlen($raw) > $max * 1024 * 1024)
+            wp_send_json_error(['msg' => ($pdf ? 'PDF' : 'Image') . ' too large (' . $max . 'MB max).']);
+        /* the type is only what the browser claimed: a PDF has to start like one */
+        if ($pdf && strncmp($raw, '%PDF-', 5) !== 0) wp_send_json_error(['msg' => 'That file isn\'t a PDF.']);
+        /* PDFs keep a readable slice of their own name, so a download is recognisable */
+        $stem = $pdf ? substr(sanitize_file_name(pathinfo((string) wp_unslash($_POST['name'] ?? ''), PATHINFO_FILENAME)), 0, 60) : '';
+        $file = wp_upload_bits('dc-' . time() . '-' . wp_generate_password(6, false) . ($stem !== '' ? '-' . $stem : '') . '.' . $types[$type], null, $raw);
         if (!empty($file['error'])) wp_send_json_error(['msg' => $file['error']]);
         wp_send_json_success(['url' => $file['url']]);
     }
@@ -1598,6 +1606,22 @@ class DevComments {
   .annot.show,.annot.show .anwrap,.annot.closing,.annot.closing .anwrap,.pickveil.show,.pickveil.show .picklabel,
   .sres,.snone,.chip,.pinlayer .pdot,.pindot.show{animation:none}
   .searchrow,.pindot,.pineye,.pickhl{transition:none}}
+/* wheel zooms toward the cursor; once zoomed, drag to pan */
+.lightbox{overflow:hidden}
+/* Zoomed, the picture is drawn by hand onto a canvas that matches the
+   screen's real pixels one to one, straight from the full-size file. No CSS
+   scaling, no compositor resampling and no half-pixel offsets, so nothing
+   can soften it; past actual size every file pixel is a hard square. */
+.lightbox .lbcv{position:absolute;left:0;top:0;display:none;cursor:grab;touch-action:none}
+.lightbox.zoomed .lbcv{display:block}
+.lightbox.zoomed img{visibility:hidden}
+.lightbox.zoomed{cursor:default}
+.lightbox.panning .lbcv{cursor:grabbing}
+.lightbox .lbclose,.lightbox .lbzoom{z-index:2}
+.lightbox .lbzoom{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);padding:4px 10px;border-radius:999px;
+  font-size:11px;font-weight:600;color:var(--text);background:var(--surface2);border:1px solid var(--line-strong);
+  opacity:0;pointer-events:none;transition:opacity .15s ease}
+.lightbox .lbzoom.show{opacity:1}
 .lightbox .lbclose{position:absolute;top:12px;right:12px;width:32px;height:32px;
   display:flex;align-items:center;justify-content:center;border-radius:var(--r-md);
   color:var(--text);font-size:15px;background:var(--surface2);border:1px solid var(--line-strong)}
@@ -1800,6 +1824,37 @@ class DevComments {
   border-radius:var(--r-md);transition:background-color .15s ease,border-color .15s ease,color .15s ease}
 .pinchip:hover{background:var(--surface2);border-color:rgba(var(--glow),.4);color:var(--text)}
 .pinchip svg{width:11px;height:11px;stroke:var(--acc-soft);fill:none;stroke-width:2;flex:none}
+/* an attached PDF: a quiet chip like the pin one; it opens in the viewer */
+.filechip{display:flex;width:max-content;max-width:100%;align-items:center;gap:8px;margin-top:8px;padding:6px 10px 6px 8px;
+  font-size:12px;font-weight:550;color:var(--text);background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r-md);text-align:left;transition:background-color .15s ease,border-color .15s ease}
+.filechip:hover{background:var(--surface2);border-color:rgba(var(--glow),.4)}
+.filechip svg{flex:none;width:16px;height:16px;stroke:var(--heart);fill:none;stroke-width:1.9}
+.filechip span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filechip em{flex:none;font-style:normal;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--faint)}
+.chip.file{width:auto;max-width:230px;display:flex;align-items:center;gap:7px;padding:0 28px 0 10px;cursor:pointer;
+  font-size:11.5px;color:var(--text-soft);background:var(--surface)}
+.chip.file svg{flex:none;width:16px;height:16px;stroke:var(--heart);fill:none;stroke-width:1.9}
+.chip.file span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip.file .x{top:50%;transform:translateY(-50%)}
+/* PDF viewer: over the whole page, so a document gets real room to read */
+.pdfview{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:28px;
+  background:rgba(8,8,8,.62);backdrop-filter:blur(3px);pointer-events:auto;font-family:var(--font)}
+.pdfview.show{display:flex;animation:dcLbFade .2s ease}
+.pdfcard{display:flex;flex-direction:column;width:min(1100px,100%);height:100%;overflow:hidden;
+  background:var(--bg);border:1px solid var(--line-strong);border-radius:var(--r-lg);box-shadow:0 24px 70px rgba(0,0,0,.5);
+  animation:dcLbIn .22s var(--ease-out)}
+.pdfhead{flex:none;display:flex;align-items:center;gap:8px;padding:10px 10px 10px 14px;border-bottom:1px solid var(--line)}
+.pdfhead>svg{flex:none;width:17px;height:17px;stroke:var(--heart);fill:none;stroke-width:1.9}
+.pdfname{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdfhead a,.pdfx{flex:none;height:30px;padding:0 11px;border-radius:var(--r-md);display:inline-flex;align-items:center;
+  font-size:12px;font-weight:550;color:var(--text-soft);text-decoration:none;border:1px solid var(--line-strong);background:var(--surface);
+  transition:background-color .15s ease,color .15s ease}
+.pdfhead a:hover,.pdfx:hover{background:var(--surface2);color:var(--text-strong)}
+.pdfx{width:30px;padding:0;justify-content:center}
+.pdfframe{flex:1;width:100%;border:0;background:#525659}
+@media (max-width:640px){.pdfview{padding:0}.pdfcard{border-radius:0;border:0}.pdfhead .pdfdl{display:none}}
+@media (prefers-reduced-motion:reduce){.pdfview.show,.pdfcard{animation:none}}
 .pickveil{position:fixed;inset:0;z-index:60;display:none;cursor:crosshair;pointer-events:auto;
   background:rgba(8,8,8,.12)}
 .pickveil.show{display:block;animation:dcLbFade .2s ease}
@@ -3220,6 +3275,18 @@ a.tfpage:hover{text-decoration:underline}
 <div class="dctoast"></div>
 <div class="scannote" role="status" aria-live="polite"></div>
 <div class="undotoast" role="status" aria-live="polite"></div>
+<div class="pdfview" role="dialog" aria-modal="true" aria-label="PDF viewer">
+  <div class="pdfcard">
+    <div class="pdfhead">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>
+      <b class="pdfname"></b>
+      <a class="pdfopen" target="_blank" rel="noopener">Open in new tab</a>
+      <a class="pdfdl" download>Download</a>
+      <button class="pdfx" aria-label="Close">&#10005;</button>
+    </div>
+    <iframe class="pdfframe" title="PDF"></iframe>
+  </div>
+</div>
 
 <div class="overlay"></div>
 
@@ -3374,7 +3441,9 @@ a.tfpage:hover{text-decoration:underline}
   <div class="likepop" role="tooltip"></div>
   <div class="lightbox" role="dialog" aria-label="Image preview">
     <button class="lbclose" aria-label="Close">&#10005;</button>
-    <img alt="">
+    <img alt="" draggable="false">
+    <canvas class="lbcv"></canvas>
+    <span class="lbzoom" aria-live="polite"></span>
   </div>
   <div class="notifask" role="dialog" aria-label="Notification setup">
     <div class="nacard">
@@ -3654,10 +3723,10 @@ a.tfpage:hover{text-decoration:underline}
         <button class="pinbtn" aria-label="Pin an element on the page" title="Pin an element on the page">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-5.1-7-11a7 7 0 0 1 14 0c0 5.9-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
         </button>
-        <button class="imgbtn" aria-label="Attach an image" title="Attach an image (or paste / drop one)">
+        <button class="imgbtn" aria-label="Attach an image or PDF" title="Attach an image or PDF (or paste / drop one)">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8 8"/></svg>
         </button>
-        <input class="imgfile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
+        <input class="imgfile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple hidden>
         <button class="gifbtn" aria-label="Add a GIF" title="Add a GIF">GIF</button>
         <textarea class="text" rows="1" placeholder="Write a comment…" maxlength="5000"></textarea>
         <button class="send" aria-label="Send">
@@ -4571,7 +4640,12 @@ a.tfpage:hover{text-decoration:underline}
   const b64e=v=>btoa(unescape(encodeURIComponent(v))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   const b64d=v=>{try{return decodeURIComponent(escape(atob(v.replace(/-/g,'+').replace(/_/g,'/'))));}catch(e){return'';}};
   const TOKRE=/\s*\[(pin|meta)\][^\[]*\[\/\1\]/g;   /* both invisible tokens */
-  const stripTok=c=>c.replace(TOKRE,'');
+  /* an attached PDF: [file]url|base64url name[/file] */
+  const FILETOK=/\[file\](https?:[^\s\[\]<>"'|]+)\|([A-Za-z0-9\-_]*)\[\/file\]/g;
+  const PDFICO='<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>';
+  const stripTok=c=>c.replace(TOKRE,'').replace(/\[file\][^\[]*\[\/file\]/g,' [PDF] ');
+  /* for text that leaves the panel (a TaskFlow task): the name and the link */
+  const fileText=c=>c.replace(FILETOK,(m,u,n)=>(b64d(n)||'PDF')+': '+u);
   /* [img]url[/img] (paste-upload) -> thumbnail; [pin] -> chip; [meta] hidden.
      content is server-escaped */
   const rich=c=>c
@@ -4580,6 +4654,7 @@ a.tfpage:hover{text-decoration:underline}
       '<button class="pinchip" data-sel="$1" data-x="$2" data-y="$3" data-app="$4">'
       +'<svg viewBox="0 0 24 24"><path d="M12 21s-7-5.1-7-11a7 7 0 0 1 14 0c0 5.9-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>'
       +'Pinned element</button>')
+    .replace(FILETOK,(m,u,n)=>`<button class="filechip" data-pdf="${u}" data-name="${n}">${PDFICO}<span>${escHtml(b64d(n)||'Document.pdf')}</span><em>PDF</em></button>`)
     .replace(/\[img\](https?:[^\s\[\]<>"']+)\[\/img\]/g,
       '<img src="$1" loading="lazy">')   /* click -> lightbox (delegated) */
     .trim()
@@ -4704,7 +4779,7 @@ a.tfpage:hover{text-decoration:underline}
       const p=byId[r.parent_id];
       if(!p)return '';
       const ta=document.createElement('textarea');ta.innerHTML=p.content;
-      let txt=ta.value.replace(/\[img\][^\[]*\[\/img\]/g,' <i>[image]</i> ').replace(/\[pin\][^\[]*\[\/pin\]/g,' <i>[pin]</i> ').replace(/\[meta\][^\[]*\[\/meta\]/g,'').trim();
+      let txt=ta.value.replace(/\[img\][^\[]*\[\/img\]/g,' <i>[image]</i> ').replace(/\[file\][^\[]*\[\/file\]/g,' <i>[PDF]</i> ').replace(/\[pin\][^\[]*\[\/pin\]/g,' <i>[pin]</i> ').replace(/\[meta\][^\[]*\[\/meta\]/g,'').trim();
       if(!txt)txt='<i>[image]</i>';
       return `<button class="quote" data-goto="${p.id}">
         <span class="qmeta"><span class="qname">${nameOf(p)}</span>
@@ -6395,6 +6470,8 @@ function qrMatrix(text){
     }
     const pc=path.find(n=>n.classList&&n.classList.contains('pinchip'));
     if(pc){close();showPin(b64d(pc.dataset.sel),pc.dataset.x,pc.dataset.y,pc.dataset.app||'');return;}
+    const fc=path.find(n=>n.classList&&n.classList.contains('filechip'));
+    if(fc){close();openPdf(fc.dataset.pdf,b64d(fc.dataset.name||''));return;}
     const im=path.find(n=>n.tagName==='IMG'&&n.closest&&n.closest('.content'));
     if(im)openLightbox(im.dataset.gif||im.dataset.full||im.src);
   }
@@ -6997,8 +7074,109 @@ function qrMatrix(text){
   const needsModOk=rec=>!!(rec&&isMod()&&!isMine(rec));
 
   /* ---- lightbox: image/GIF popups inside the panel ---- */
-  const lb=$('.lightbox'), lbImg=lb.querySelector('img');
-  function openLightbox(src){lb.classList.remove('closing');lbImg.src=src;lb.classList.add('show');}
+  const lb=$('.lightbox'), lbImg=lb.querySelector('img'), lbZoom=lb.querySelector('.lbzoom');
+  /* zoom state: scale and offset, with the transform origin at the image's
+     top-left so the point under the cursor stays put while zooming */
+  const lbCv=lb.querySelector('.lbcv'), lbCx=lbCv.getContext?lbCv.getContext('2d'):null;
+  /* zoom in file pixels: k = CSS px per file pixel, (tx,ty) = where the
+     file's top-left corner sits inside the lightbox. k0 is the fitted view. */
+  const LZ={on:false,k:1,want:1,k0:1,tx:0,ty:0,pan:null,moved:false,hint:null,raf:null};
+  const DPR=()=>window.devicePixelRatio||1;
+  /* Past actual size only whole multiples are used (2x, 3x, 4x…), so every
+     file pixel becomes an equal square of screen pixels and letters keep hard
+     edges. A fractional enlargement is what smears text. */
+  function lzSnap(k){
+    const d=DPR(), r=k*d;
+    if(r<=1)return k;
+    let n=Math.max(1,Math.round(r));
+    if(n/d<LZ.k0)n=Math.ceil(r);              /* never step back below the fitted view */
+    return n/d;
+  }
+  function lzDraw(){
+    LZ.raf=null;
+    if(!LZ.on||!lbCx)return;
+    const d=DPR(), W=Math.round(lb.clientWidth*d), H=Math.round(lb.clientHeight*d);
+    if(lbCv.width!==W||lbCv.height!==H){lbCv.width=W;lbCv.height=H;}
+    lbCv.style.width=W/d+'px';lbCv.style.height=H/d+'px';
+    const nw=lbImg.naturalWidth, nh=lbImg.naturalHeight, r=LZ.k*d;
+    const X=Math.round(LZ.tx*d), Y=Math.round(LZ.ty*d);   /* whole device pixels */
+    lbCx.setTransform(1,0,0,1,0,0);
+    lbCx.clearRect(0,0,W,H);
+    lbCx.imageSmoothingEnabled=r<1;           /* enlarging: hard pixels, never a blur */
+    lbCx.imageSmoothingQuality='high';        /* shrinking: the best filter there is */
+    /* only the visible part of the file is drawn, so big zooms stay fast */
+    const sx=Math.max(0,Math.floor(-X/r)), sy=Math.max(0,Math.floor(-Y/r));
+    const ex=Math.min(nw,Math.ceil((W-X)/r)), ey=Math.min(nh,Math.ceil((H-Y)/r));
+    if(ex>sx&&ey>sy)lbCx.drawImage(lbImg,sx,sy,ex-sx,ey-sy,X+sx*r,Y+sy*r,(ex-sx)*r,(ey-sy)*r);
+  }
+  const lzPaint=()=>{if(LZ.raf===null)LZ.raf=requestAnimationFrame(lzDraw);};
+  /* the label also gives the file's own size: if text is fuzzy at actual
+     size, the screenshot itself is small and no zoom can add the detail */
+  function lzLabel(){
+    const r=LZ.k*DPR();
+    lbZoom.textContent=(!LZ.on?'Fit':Math.abs(r-1)<.01?'Actual size':r>1?Math.round(r)+'× actual size':Math.round(r*100)+'% of actual size')
+      +' · '+lbImg.naturalWidth+'×'+lbImg.naturalHeight;
+    lbZoom.classList.add('show');clearTimeout(LZ.hint);
+    LZ.hint=setTimeout(()=>lbZoom.classList.remove('show'),1400);
+  }
+  function lzReset(){LZ.on=false;LZ.pan=null;lb.classList.remove('zoomed','panning');lbZoom.classList.remove('show');}
+  /* zoom to `want` (or by `by`) keeping the file pixel under the cursor put */
+  function lzTo(want,cx,cy,by){
+    const nw=lbImg.naturalWidth;if(!nw)return;
+    const lr=lb.getBoundingClientRect();
+    if(!LZ.on){
+      const ir=lbImg.getBoundingClientRect();
+      if(!ir.width)return;
+      LZ.k0=LZ.k=LZ.want=ir.width/nw;LZ.tx=ir.left-lr.left;LZ.ty=ir.top-lr.top;
+    }
+    if(by)want=LZ.want*by;
+    want=Math.max(LZ.k0,Math.min(Math.max(8/DPR(),LZ.k0*8),want));
+    const px=(cx-lr.left-LZ.tx)/LZ.k, py=(cy-lr.top-LZ.ty)/LZ.k;
+    if(want<=LZ.k0*1.001){lzReset();lzLabel();return;}
+    const k=lzSnap(want);
+    LZ.want=want;LZ.k=k;LZ.on=true;
+    LZ.tx=cx-lr.left-px*k;LZ.ty=cy-lr.top-py*k;
+    lb.classList.add('zoomed');
+    lzDraw();lzLabel();
+  }
+  lb.addEventListener('wheel',e=>{
+    e.preventDefault();e.stopPropagation();   /* the panel would scroll otherwise */
+    const step=e.deltaMode===1?e.deltaY*32:e.deltaY;
+    lzTo(0,e.clientX,e.clientY,Math.exp(-step*0.0022));
+  },{passive:false});
+  /* double-click: straight to actual size (one file pixel per screen pixel,
+     the sharpest it can be), or 2x for a small image; again to fit */
+  lb.addEventListener('dblclick',e=>{
+    if(e.target!==lbImg&&e.target!==lbCv)return;
+    if(LZ.on){lzReset();lzLabel();return;}
+    const fit=lbImg.getBoundingClientRect().width/(lbImg.naturalWidth||1), nat=1/DPR();
+    lzTo(nat>fit*1.2?nat:fit*2,e.clientX,e.clientY);
+  });
+  lbCv.addEventListener('pointerdown',e=>{
+    if(!LZ.on||e.button)return;
+    e.preventDefault();
+    LZ.pan={px:e.clientX,py:e.clientY,tx:LZ.tx,ty:LZ.ty};LZ.moved=false;
+    lb.classList.add('panning');
+    try{lbCv.setPointerCapture(e.pointerId);}catch(_){}
+  });
+  lbCv.addEventListener('pointermove',e=>{
+    if(!LZ.pan)return;
+    const dx=e.clientX-LZ.pan.px, dy=e.clientY-LZ.pan.py;
+    if(Math.abs(dx)+Math.abs(dy)>3)LZ.moved=true;
+    LZ.tx=LZ.pan.tx+dx;LZ.ty=LZ.pan.ty+dy;
+    lzPaint();
+  });
+  const lzEnd=()=>{if(!LZ.pan)return;LZ.pan=null;lb.classList.remove('panning');setTimeout(()=>{LZ.moved=false;},0);};
+  lbCv.addEventListener('pointerup',lzEnd);
+  lbCv.addEventListener('pointercancel',lzEnd);
+  window.addEventListener('resize',()=>{if(LZ.on)lzPaint();});   /* also fires on browser zoom */
+  /* a click on the empty area round a zoomed picture still closes it */
+  const lzOnImage=e=>{
+    if(!LZ.on)return e.target===lbImg;
+    const lr=lb.getBoundingClientRect(), x=e.clientX-lr.left-LZ.tx, y=e.clientY-lr.top-LZ.ty;
+    return x>=0&&y>=0&&x<=lbImg.naturalWidth*LZ.k&&y<=lbImg.naturalHeight*LZ.k;
+  };
+  function openLightbox(src){lzReset();lb.classList.remove('closing');lbImg.src=src;lb.classList.add('show');}
   function closeLightbox(){
     if(!lb.classList.contains('show')||lb.classList.contains('closing'))return;
     lb.classList.add('closing');
@@ -7007,8 +7185,32 @@ function qrMatrix(text){
       ?done()
       :lb.addEventListener('animationend',done,{once:true});
   }
-  lb.addEventListener('click',e=>{if(e.target!==lbImg)closeLightbox();});
+  lb.addEventListener('click',e=>{if(!lzOnImage(e)&&!LZ.moved&&!e.target.closest('.lbzoom'))closeLightbox();});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&lb.classList.contains('show'))closeLightbox();});
+
+  /* ---- PDF viewer: the browser's own reader, full page, over everything ---- */
+  const pdfView=$('.pdfview'), pdfFrame=$('.pdfframe');
+  function openPdf(url,name){
+    if(!/^https?:\/\//i.test(url||''))return;
+    name=name||decodeURIComponent(url.split('/').pop().split('?')[0])||'Document.pdf';
+    $('.pdfname').textContent=name;
+    $('.pdfopen').href=url;
+    const dl=$('.pdfdl');dl.href=url;dl.setAttribute('download',name);
+    pdfFrame.src=url+'#view=FitH';
+    pdfView.classList.add('show');
+    setTimeout(()=>$('.pdfx').focus(),0);
+  }
+  function closePdf(){
+    if(!pdfView.classList.contains('show'))return;
+    pdfView.classList.remove('show');
+    pdfFrame.src='about:blank';   /* stops the document and frees it */
+  }
+  $('.pdfx').onclick=closePdf;
+  pdfView.addEventListener('click',e=>{if(e.target===pdfView)closePdf();});
+  /* registered before the panel's own Esc, so Esc closes the PDF first */
+  window.addEventListener('keydown',e=>{
+    if(e.key==='Escape'&&pdfView.classList.contains('show')){closePdf();e.stopImmediatePropagation();}
+  },true);
 
   const gifSeen=new WeakSet();
   function initGifs(){
@@ -7463,6 +7665,8 @@ function qrMatrix(text){
     }
     const pc=e.composedPath().find(n=>n.classList&&n.classList.contains('pinchip'));
     if(pc){showPin(b64d(pc.dataset.sel),pc.dataset.x,pc.dataset.y,pc.dataset.app||'');return;}
+    const fc=e.composedPath().find(n=>n.classList&&n.classList.contains('filechip'));
+    if(fc){openPdf(fc.dataset.pdf,b64d(fc.dataset.name||''));return;}
     const im=e.composedPath().find(n=>n.tagName==='IMG'&&n.closest&&n.closest('.content'));
     if(im){openLightbox(im.dataset.gif||im.dataset.full||im.src);return;}
     const q=e.composedPath().find(n=>n.classList&&n.classList.contains('quote'));
@@ -7487,7 +7691,7 @@ function qrMatrix(text){
       const ta=document.createElement('textarea');ta.innerHTML=rec.content;
       const raw=ta.value;
       const imgs=[...raw.matchAll(/\[img\](https?:[^\s\[\]]+)\[\/img\]/g)].map(m=>m[1]);
-      const body=raw.replace(/\[img\][^\[]*\[\/img\]/g,'').replace(TOKRE,'').replace(/\n{3,}/g,'\n\n').trim();
+      const body=fileText(raw).replace(/\[img\][^\[]*\[\/img\]/g,'').replace(TOKRE,'').replace(/\n{3,}/g,'\n\n').trim();
       const pageUrl=rec.context==='general'?ORIGIN
         :rec.context.indexOf('/wp-admin:')===0?ORIGIN+adminHref(rec.context)
         :ORIGIN+rec.context;
@@ -7540,7 +7744,7 @@ function qrMatrix(text){
       let editPin=parsePin(orig);
       const metaToks=(orig.match(TOKRE)||[]).filter(t=>t.indexOf('[meta]')>-1).join('');
       body.style.display='none';
-      const box=document.createElement('textarea');box.className='editbox';box.value=stripTok(orig).trim();
+      const box=document.createElement('textarea');box.className='editbox';box.value=orig.replace(TOKRE,'').trim();
       const pinRow=document.createElement('div');pinRow.className='editpinrow';
       const paintPinRow=()=>{
         /* can this pin's target still be snapshotted here? (estimator pins made
@@ -7621,7 +7825,7 @@ function qrMatrix(text){
       const ta=document.createElement('textarea');ta.innerHTML=r.content;
       const raw=ta.value;
       [...raw.matchAll(/\[img\](https?:[^\s\[\]]+)\[\/img\]/g)].forEach(m=>imgs.push(m[1]));
-      const body=raw.replace(/\[img\][^\[]*\[\/img\]/g,'').replace(TOKRE,'').replace(/\n{3,}/g,'\n\n').trim();
+      const body=fileText(raw).replace(/\[img\][^\[]*\[\/img\]/g,'').replace(TOKRE,'').replace(/\n{3,}/g,'\n\n').trim();
       if(body)parts.push(nameOf(r)+': '+body);
     });
     const first=rows[0];
@@ -7672,26 +7876,39 @@ function qrMatrix(text){
 
   /* ---- screenshot paste: upload immediately, show chip, attach on send ---- */
   const chipsBox=$('.chips');
-  let pendingImgs=[];
+  let pendingImgs=[], pendingFiles=[];
   const syncChips=()=>chipsBox.classList.toggle('show',chipsBox.children.length>0);
   textEl.addEventListener('paste',e=>{
     if(!ME)return;
-    const items=[...(e.clipboardData?.items||[])].filter(i=>i.type.startsWith('image/'));
+    const items=[...(e.clipboardData?.items||[])].filter(i=>i.kind==='file'&&(i.type.startsWith('image/')||i.type==='application/pdf'));
     if(!items.length)return;
     e.preventDefault();
     attachImages(items.map(it=>it.getAsFile()).filter(Boolean));
   });
-  const IMG_OK=['image/png','image/jpeg','image/webp','image/gif'];
+  const IMG_OK=['image/png','image/jpeg','image/webp','image/gif','application/pdf'];
   function attachImages(files){
     if(!ME)return;
     files.filter(f=>IMG_OK.includes(f.type)).forEach(file=>{
+      const isPdf=file.type==='application/pdf';
+      if(isPdf&&file.size>10*1024*1024){alert('“'+file.name+'” is over 10MB, the limit for PDFs.');return;}
       const chip=document.createElement('div');chip.className='chip loading';chip.textContent='…';
       chipsBox.appendChild(chip);syncChips();
       const fr=new FileReader();
       fr.onload=()=>{
         const b64=fr.result.split(',')[1];
-        api('dc_upload',{type:file.type,data:b64}).then(j=>{
-          if(!j.success){chip.remove();syncChips();alert((j.data&&j.data.msg)||'Upload failed.');return;}
+        api('dc_upload',{type:file.type,data:b64,name:file.name||''}).then(j=>{
+          if(!j||!j.success){chip.remove();syncChips();
+            alert((j&&j.data&&j.data.msg)||(isPdf?'Upload failed. The server may not accept a file this big.':'Upload failed.'));return;}
+          if(isPdf){
+            const f={url:j.data.url,name:file.name||'Document.pdf'};
+            pendingFiles.push(f);
+            chip.className='chip file';chip.title='Preview';
+            chip.innerHTML=PDFICO+'<span></span><button class="x" type="button" aria-label="Remove">✕</button>';
+            chip.querySelector('span').textContent=f.name;
+            chip.onclick=ev=>{if(!ev.target.closest('.x'))openPdf(f.url,f.name);};
+            chip.querySelector('.x').onclick=()=>{pendingFiles=pendingFiles.filter(x=>x!==f);chip.remove();syncChips();};
+            return;
+          }
           const url=j.data.url;
           pendingImgs.push(url);
           chip.classList.remove('loading');
@@ -7704,7 +7921,7 @@ function qrMatrix(text){
             pendingImgs=pendingImgs.map(u=>u===cur?nu:u);cur=nu;
             chip.querySelector('img').src=nu;
           });
-        });
+        }).catch(()=>{chip.remove();syncChips();alert('Upload failed.');});
       };
       fr.readAsDataURL(file);
     });
@@ -7881,7 +8098,7 @@ function qrMatrix(text){
     const p=(cache[ctx]||[]).find(r=>r.id==pid);
     if(!p)return '';
     const ta=document.createElement('textarea');ta.innerHTML=p.content;
-    let txt=ta.value.replace(/\[img\][^\[]*\[\/img\]/g,' <i>[image]</i> ').replace(/\[pin\][^\[]*\[\/pin\]/g,' <i>[pin]</i> ').replace(/\[meta\][^\[]*\[\/meta\]/g,'').trim()||'<i>[image]</i>';
+    let txt=ta.value.replace(/\[img\][^\[]*\[\/img\]/g,' <i>[image]</i> ').replace(/\[file\][^\[]*\[\/file\]/g,' <i>[PDF]</i> ').replace(/\[pin\][^\[]*\[\/pin\]/g,' <i>[pin]</i> ').replace(/\[meta\][^\[]*\[\/meta\]/g,'').trim()||'<i>[image]</i>';
     return `<button class="quote" data-goto="${p.id}">
       <span class="qmeta"><span class="qname">${nameOf(p)}</span>
       <span class="qtime">${timeAgo(p.created_at)}</span></span>
@@ -7892,6 +8109,7 @@ function qrMatrix(text){
     if(!ME)return;
     let c=textEl.value.trim();
     if(pendingImgs.length)c=(c?c+'\n':'')+pendingImgs.map(u=>'[img]'+u+'[/img]').join('\n');
+    if(pendingFiles.length)c=(c?c+'\n':'')+pendingFiles.map(f=>'[file]'+f.url+'|'+b64e(f.name)+'[/file]').join('\n');
     if(pendingPin)c=(c?c+'\n':'')+pinTok(pendingPin);
     if(!c){textEl.focus();return;}
     c+='\n[meta]'+b64e(JSON.stringify(metaNow()))+'[/meta]';
@@ -7916,7 +8134,7 @@ function qrMatrix(text){
 
     textEl.value='';autoGrow();cancelReply();textEl.focus();
     wasTyping=false;sentAt=Date.now(); /* dc_post clears our typing entry server-side */
-    pendingImgs=[];clearPin();chipsBox.innerHTML='';syncChips();
+    pendingImgs=[];pendingFiles=[];clearPin();chipsBox.innerHTML='';syncChips();
     localStorage.removeItem(draftKey());
     mutate('dc_post',{content:c,parent_id:pid}).then(j=>{
       if(j.success&&j.data&&j.data.id){el.dataset.id=j.data.id;}
@@ -8055,7 +8273,7 @@ function qrMatrix(text){
   const isImgAtt=a=>a.kind==='image'||/\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(a.url||'');
   const attHtml=a=>isImgAtt(a)
     ?`<img src="${escHtml(a.url)}" data-lb="${escHtml(a.url)}" alt="${escHtml(a.name||'')}" loading="lazy">`
-    :`<a class="tffile" href="${escHtml(a.url)}" target="_blank" rel="noopener">${escHtml(a.name||'File')}</a>`;
+    :`<a class="tffile" href="${escHtml(a.url)}" target="_blank" rel="noopener"${/\.pdf(\?|#|$)/i.test(a.url)?` data-pdf data-name="${escHtml(a.name||'')}"`:''}>${escHtml(a.name||'File')}</a>`;
 
   /* ---- people ---- */
   const fullName=p=>p?(`${p.first_name||''} ${p.last_name||''}`.trim()||'Someone'):'Someone';
@@ -8882,6 +9100,7 @@ function qrMatrix(text){
   tfBody.addEventListener('click',e=>{
     const t=e.target;
     const lb=t.closest('[data-lb]');if(lb&&lb.tagName==='IMG'){openLightbox(lb.dataset.lb);return;}
+    const pf=t.closest('a[data-pdf]');if(pf){e.preventDefault();openPdf(pf.href,pf.dataset.name);return;}
     if(t.closest('a'))return;                                   /* real links just open */
     const b=t.closest('button');
     if(b){
@@ -9998,6 +10217,8 @@ function qrMatrix(text){
                 $body = esc_html($r['content']);
                 $body = preg_replace('#\[img\](https?://[^\s\[\]]+)\[/img\]#',
                     '<a href="$1" target="_blank"><img src="$1" style="max-width:120px;max-height:90px;border-radius:6px;vertical-align:middle"></a>', $body);
+                $body = preg_replace('#\[file\](https?://[^\s\[\]|]+)\|[A-Za-z0-9\-_]*\[/file\]#',
+                    '<a href="$1" target="_blank">PDF</a>', $body);
                 echo '<tr>';
                 echo '<td><span class="dc-name">' . esc_html($name) . '</span><br><span class="dc-muted dc-mono">'
                    . esc_html($users[$uid]['email'] ?? 'deleted account') . '</span></td>';

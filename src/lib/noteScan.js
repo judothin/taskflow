@@ -82,6 +82,9 @@ export async function scanNotebookPage(file, onProgress, { pages = [] } = {}) {
   }
   const body = await res.json().catch(() => null);
   if (!res.ok || !body) {
+    if (!body && (res.status === 504 || res.status === 502)) {
+      throw new Error('The scan took too long. Try a closer, straighter photo of just the list.');
+    }
     // The dev server (npm start) doesn't run /api functions; `vercel dev` does.
     if (res.status === 404 || !body) throw new Error('The scanner isn\'t available here — it runs on the deployed site (or `vercel dev`).');
     throw new Error(body.error || 'The scan failed. Try again.');

@@ -26,7 +26,15 @@
 // ============================================================
 
 const MAX_BASE64 = 4 * 1024 * 1024; // ~3 MB image; Vercel caps bodies at 4.5 MB
-const TIMEOUT_MS = 25000;
+// The whole scan has to finish inside the function's 60s (vercel.json). Messy
+// pages (crossed-out lines, scribbles) are what used to blow it: the model
+// would deliberate at length or loop, the first try timed out at 25s and the
+// fallback ran out of time too. Now every try gets a slice of one fixed
+// budget, thinking is capped, and the output length is capped.
+const BUDGET_MS = 52000;
+const FIRST_TRY_MS = 30000;      // leaves room for the fast fallback
+const THINKING_BUDGET = 1024;    // enough to sort out a messy page, not to wander
+const MAX_OUTPUT_TOKENS = 6144;  // a full page is ~1–2k; this stops a runaway repeat
 const DEFAULT_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
 
 const promptFor = (today, pages) => `You are reading a photo of a handwritten notebook page that is used as a to-do checklist for website work.
@@ -45,6 +53,8 @@ Return every checklist item on the page. Rules:
 - "time": if a time is written next to the item (e.g. "9:30", "2pm", "14:05", "@ 3"), give it as 24-hour HH:MM ("2pm" -> "14:00"). When am/pm is not written, pick the reading that makes sense for a work day (8:00-18:59). Otherwise an empty string.
 - "date": if the page has a date written on it (usually at the top), give it as YYYY-MM-DD. Today is ${today}; if the year is not written, use the year that puts the date closest to today without being in the future. If there is no date, an empty string.
 - Ignore headings (other than using them for "area"), the abbreviation legend itself, doodles and anything without a checkbox (a written date or time is only used for "date"/"time", never as an item).
+- Crossed-out writing is deleted writing. Words that are struck through, scribbled over or blacked out are NOT part of the item: leave them out and keep the rest. If a whole item (or its checkbox line) is crossed out or scribbled over, skip that item entirely. Do not try to decipher scribbles, and do not report them as unclear items.
+- List each item once. Never repeat an item.
 - Keep the writer's wording. Fix only obvious misspellings caused by handwriting; do not add words.
 - "unclear" is true if you are not confident you read the item's words correctly.
 - Items in top-to-bottom order. If there are no checklist items, return an empty list.`;
@@ -94,9 +104,29 @@ async function isSignedIn(token) {
   } catch { return false; }
 }
 
-async function askGemini(model, key, image, mimeType, today, pages) {
+// When the answer is cut off (the output cap, mid-loop), the JSON is
+// unfinished: keep every item object that did arrive whole.
+function salvage(text) {
+  const date = (/"date"\s*:\s*"([^"]*)"/.exec(text) || [])[1] || '';
+  const start = text.indexOf('"items"');
+  if (start < 0) return null;
+  const items = [];
+  for (const m of text.slice(start).matchAll(/\{[^{}]*\}/g)) {
+    try { items.push(JSON.parse(m[0])); } catch { /* the half-written last one */ }
+  }
+  return items.length ? { date, items } : null;
+}
+
+// thinking: a token budget, 0 for none, or null to leave the model's default
+// (for a model that rejects the setting).
+async function askGemini(model, key, image, mimeType, today, pages, { timeoutMs, thinking }) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const generationConfig = {
+    temperature: 0.1, maxOutputTokens: MAX_OUTPUT_TOKENS,
+    responseMimeType: 'application/json', responseSchema: SCHEMA,
+  };
+  if (thinking != null) generationConfig.thinkingConfig = { thinkingBudget: thinking };
   try {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
@@ -104,16 +134,18 @@ async function askGemini(model, key, image, mimeType, today, pages) {
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mimeType, data: image } }, { text: promptFor(today, pages) }] }],
-        generationConfig: { temperature: 0.1, responseMimeType: 'application/json', responseSchema: SCHEMA },
+        generationConfig,
       }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) return { status: res.status, error: body?.error?.message || `Gemini error ${res.status}` };
-    const text = (body?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
-    const parsed = JSON.parse(text || '{}');
+    const text = (body?.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('');
+    let parsed;
+    try { parsed = JSON.parse(text || '{}'); } catch { parsed = salvage(text); }
+    if (!parsed) return { status: 502, error: 'Could not read the scan result.' };
     return { date: parsed.date, items: Array.isArray(parsed.items) ? parsed.items : [] };
   } catch (e) {
-    return { status: 504, error: e.name === 'AbortError' ? 'The scan timed out.' : 'Could not read the scan result.' };
+    return { status: 504, error: e.name === 'AbortError' ? 'timeout' : 'Could not read the scan result.' };
   } finally {
     clearTimeout(timer);
   }
@@ -121,6 +153,7 @@ async function askGemini(model, key, image, mimeType, today, pages) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'method not allowed' }); return; }
+  const deadline = Date.now() + BUDGET_MS;
 
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
@@ -144,12 +177,25 @@ export default async function handler(req, res) {
   const type = ['image/jpeg', 'image/png', 'image/webp'].includes(mimeType) ? mimeType : 'image/jpeg';
 
   // Free-tier quota is per model, so a quota or availability error on one
-  // falls through to the next.
-  const models = process.env.GEMINI_MODEL ? [process.env.GEMINI_MODEL] : DEFAULT_MODELS;
+  // falls through to the next. The second try never thinks: if the first ran
+  // long on a messy page, the quick read is what fits in the time left.
+  const pinned = process.env.GEMINI_MODEL;
+  const attempts = pinned
+    ? [{ model: pinned, thinking: THINKING_BUDGET }, { model: pinned, thinking: 0 }]
+    : DEFAULT_MODELS.map((model, i) => ({ model, thinking: i === 0 ? THINKING_BUDGET : 0 }));
   let last = null;
-  for (const model of models) {
-    const result = await askGemini(model, key, image, type, today, pages);
+  for (let i = 0; i < attempts.length; i++) {
+    const left = deadline - Date.now();
+    if (left < 5000) break;
+    const timeoutMs = i < attempts.length - 1 ? Math.min(FIRST_TRY_MS, left - 15000) : left;
+    let { model, thinking } = attempts[i];
+    let result = await askGemini(model, key, image, type, today, pages, { timeoutMs, thinking });
+    // a model that doesn't take a thinking budget: same request without it
+    if (result.status === 400 && /thinking/i.test(result.error || '') && deadline - Date.now() > 5000) {
+      result = await askGemini(model, key, image, type, today, pages, { timeoutMs: deadline - Date.now(), thinking: null });
+    }
     if (result.items) {
+      const seen = new Set();
       const items = result.items
         .filter(it => it && typeof it.text === 'string' && it.text.trim())
         .map(it => ({
@@ -158,16 +204,26 @@ export default async function handler(req, res) {
           checked: !!it.checked,
           unclear: !!it.unclear,
           time: cleanTime(it.time),
-        }));
+        }))
+        // a model stuck on a scribble can emit the same line over and over
+        .filter(it => {
+          const k = `${it.text.toLowerCase()}|${it.area.toLowerCase()}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
       const date = cleanDate(result.date);
       res.status(200).json({ date: date && date <= today ? date : '', items });
       return;
     }
     last = result;
-    if (![404, 429, 500, 503, 504].includes(result.status)) break;
+    if (![404, 429, 500, 502, 503, 504].includes(result.status)) break;
   }
   const busy = last?.status === 429;
-  res.status(busy ? 429 : 502).json({
-    error: busy ? "Today's free scanning limit is used up — try again later." : (last?.error || 'The scan failed.'),
+  const slow = !last || last.error === 'timeout';
+  res.status(busy ? 429 : slow ? 504 : 502).json({
+    error: busy ? "Today's free scanning limit is used up — try again later."
+      : slow ? 'The scan took too long. Try a closer, straighter photo of just the list.'
+      : (last.error || 'The scan failed.'),
   });
 }
