@@ -119,13 +119,13 @@ function salvage(text) {
 
 // thinking: a token budget, 0 for none, or null to leave the model's default
 // (for a model that rejects the setting).
-async function askGemini(model, key, image, mimeType, today, pages, { timeoutMs, thinking }) {
+async function askGemini(model, key, image, mimeType, today, pages, { timeoutMs, thinking, plain = false }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const generationConfig = {
-    temperature: 0.1, maxOutputTokens: MAX_OUTPUT_TOKENS,
-    responseMimeType: 'application/json', responseSchema: SCHEMA,
+    temperature: 0.1, responseMimeType: 'application/json', responseSchema: SCHEMA,
   };
+  if (!plain) generationConfig.maxOutputTokens = MAX_OUTPUT_TOKENS;
   if (thinking != null) generationConfig.thinkingConfig = { thinkingBudget: thinking };
   try {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
@@ -190,9 +190,12 @@ export default async function handler(req, res) {
     const timeoutMs = i < attempts.length - 1 ? Math.min(FIRST_TRY_MS, left - 15000) : left;
     let { model, thinking } = attempts[i];
     let result = await askGemini(model, key, image, type, today, pages, { timeoutMs, thinking });
-    // a model that doesn't take a thinking budget: same request without it
-    if (result.status === 400 && /thinking/i.test(result.error || '') && deadline - Date.now() > 5000) {
-      result = await askGemini(model, key, image, type, today, pages, { timeoutMs: deadline - Date.now(), thinking: null });
+    // A model that rejects the tuning (Gemini answers a plain "Request contains
+    // an invalid argument", without naming it): the same request with only
+    // the settings every model takes.
+    if (result.status === 400 && deadline - Date.now() > 5000) {
+      result = await askGemini(model, key, image, type, today, pages,
+        { timeoutMs: Math.min(timeoutMs, deadline - Date.now()), thinking: null, plain: true });
     }
     if (result.items) {
       const seen = new Set();
@@ -217,7 +220,7 @@ export default async function handler(req, res) {
       return;
     }
     last = result;
-    if (![404, 429, 500, 502, 503, 504].includes(result.status)) break;
+    if (![400, 404, 429, 500, 502, 503, 504].includes(result.status)) break;
   }
   const busy = last?.status === 429;
   const slow = !last || last.error === 'timeout';
