@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { REVIEWS_CHANGED } from '../lib/reviews';
-import { openTask, TASKS_CHANGED } from '../lib/events';
+import { openTask, openTaskMenu, TASKS_CHANGED } from '../lib/events';
 import { taskTitle, pageLabel } from '../lib/taskText';
 import Collapse from '../components/Collapse';
 import { Icon, Segmented, Avatar, Empty, fullName } from '../ui';
@@ -547,7 +547,7 @@ function Timeline({ entries, mode, days, onOpenEntry }) {
               const k = KINDS[e.kind];
               return (
                 <li key={e.id} style={{ '--i': Math.min(i, 14) }}>
-                  <button type="button" className={`ta-tl-item ta-tone-${k.tone}`} onClick={() => onOpenEntry(e)}>
+                  <button type="button" className={`ta-tl-item ta-tone-${k.tone}`} onClick={() => onOpenEntry(e)} onContextMenu={e.task ? (ev) => openTaskMenu(ev, e.task) : undefined}>
                     <time className="ta-tl-time" dateTime={e.at}>{format(new Date(e.at), 'h:mm a')}</time>
                     <span className="ta-tl-dot" />
                     <span className="ta-tl-body">

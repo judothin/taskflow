@@ -25,7 +25,7 @@
   height: 36px;
   border: 1px solid var(--border-input);
   border-radius: var(--r);
-  background: var(--surface-solid);
+  background: var(--control);
   box-shadow: var(--shadow-xs);
   overflow: hidden;
 }

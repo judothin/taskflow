@@ -9,7 +9,7 @@
 .show-phone { display: none !important; }
 
 @media (max-width: 1180px) {
-  .sheet { width: calc(100vw - 24px); }
+  .sheet { width: 100vw; }
   .sheet-aside { width: 360px; }
 }
 
@@ -43,17 +43,19 @@
     align-items: center;
     column-gap: 12px;
     row-gap: 4px;
-    padding: 13px 4px;
+    padding: 13px 0;
     min-height: 0;
   }
   .table-row > .table-cell:first-child,
   .table-row > .table-main { flex: 1 0 100%; }
   .table-row > .table-cell:not(:first-child) { font-size: 13px; color: var(--text-3); }
-  .table-row:hover { background: transparent; }
-  .table-row:active { background: var(--hover); }
-  .table-group { padding: 22px 4px 6px; }
+  .table-row::after { inset: 0 -8px; }
+  .table-row:hover::after { background: transparent; }
+  .table-row:active::after { background: var(--hover); }
+  .table-group { padding: 22px 0 6px; }
 
   /* Sheets: full screen, up from the bottom. */
+  .sheet-overlay { inset: 0; }
   .sheet {
     top: 0; right: 0; bottom: 0; left: 0;
     width: 100%;

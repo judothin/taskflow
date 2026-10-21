@@ -4,6 +4,7 @@
 
 export const OPEN_NEW_TASK = 'open-new-task';          // detail: prefill | undefined
 export const OPEN_TASK = 'open-task';                  // detail: { id } | { task }
+export const OPEN_TASK_MENU = 'open-task-menu';        // detail: { task } | { id }, x, y
 export const OPEN_QUICK_LOG = 'open-quick-log';
 export const OPEN_QUICK_CONTEXT = 'open-quick-context';
 export const OPEN_SEARCH = 'open-global-search';
@@ -23,3 +24,14 @@ export const openNotifications = () => fire(OPEN_NOTIFICATIONS);
 export const openNoteScan = () => fire(OPEN_NOTE_SCAN);
 export const tasksChanged = () => fire(TASKS_CHANGED);
 export const queueChanged = () => fire(QUEUE_CHANGED);
+
+// Right-click menu for a task, from anywhere. Use as an onContextMenu handler:
+//   onContextMenu={(e) => openTaskMenu(e, task)}
+// A task object shows the menu instantly; an id works too (it's fetched).
+export const openTaskMenu = (e, taskOrId) => {
+  if (!taskOrId) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const ref = typeof taskOrId === 'object' ? { task: taskOrId } : { id: taskOrId };
+  fire(OPEN_TASK_MENU, { ...ref, x: e.clientX, y: e.clientY });
+};

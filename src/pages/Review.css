@@ -77,7 +77,7 @@
   padding: 0 14px 0 12px;
   border: 1px solid var(--border-input);
   border-radius: var(--r-lg);
-  background: var(--surface-solid);
+  background: var(--control);
   font-size: 15px;
   color: var(--text);
   text-align: left;
@@ -92,7 +92,7 @@
 .rv-pick-row:hover:not(:disabled) { border-color: var(--border-strong); background: var(--hover); }
 .rv-pick-row:active:not(:disabled) { transform: scale(0.98); }
 .rv-pick-row.is-on { border-color: var(--text); box-shadow: 0 0 0 0.5px var(--text); }
-.rv-pick-row.is-on:hover:not(:disabled) { border-color: var(--text); background: var(--surface-solid); }
+.rv-pick-row.is-on:hover:not(:disabled) { border-color: var(--text); background: var(--control); }
 .rv-pick-row:disabled { cursor: default; }
 .rv-pick-row:disabled:not(.is-on) { opacity: 0.6; }
 .rv-pick-name { flex: 1; }
@@ -191,7 +191,7 @@
   padding: 0 13px 0 5px;
   border: 1px solid var(--border-input);
   border-radius: var(--r-pill);
-  background: var(--surface-solid);
+  background: var(--control);
   font-size: 14px;
   color: var(--text);
   white-space: nowrap;
@@ -278,7 +278,7 @@
   padding: 8px 11px;
   border-radius: var(--r);
   border: 1px solid var(--border);
-  background: var(--surface-solid);
+  background: var(--control);
   font-size: 13.5px;
   line-height: 1.5;
   color: var(--text-2);

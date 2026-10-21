@@ -39,7 +39,7 @@
 
 /* Custom picker: dashed until it holds a colour. */
 .sw-custom {
-  background: var(--surface-solid);
+  background: var(--control);
   color: var(--text-3);
   box-shadow: inset 0 0 0 1.5px var(--border-strong);
   border: 0;

@@ -71,7 +71,7 @@
   gap: 10px;
   border: 1px solid var(--border-input);
   border-radius: var(--r-lg);
-  background: var(--surface-solid);
+  background: var(--control);
   box-shadow: var(--shadow-sm);
 }
 .cs-newtag-row { display: flex; align-items: center; gap: 8px; min-width: 0; }

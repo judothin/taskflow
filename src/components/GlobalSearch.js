@@ -6,7 +6,7 @@ import { SETTINGS_SECTIONS, sectionPath } from '../lib/settingsSections';
 import { searchRank } from '../lib/fuzzySearch';
 import { taskTitle, taskPreview, pageLabel, htmlToText } from '../lib/taskText';
 import {
-  openTask, openNewTask, openQuickLog, openQuickContext, openNotifications, openNoteScan,
+  openTask, openTaskMenu, openNewTask, openQuickLog, openQuickContext, openNotifications, openNoteScan,
 } from '../lib/events';
 import { Icon, STATUS_LABEL, cap } from '../ui';
 import ModalPortal from './ModalPortal';
@@ -325,6 +325,7 @@ export default function GlobalSearch() {
                         style={{ '--i': Math.min(idx, 12) }}
                         onMouseMove={() => { if (!on) setActiveIdx(idx); }}
                         onClick={() => activate(item)}
+                        onContextMenu={item.type === 'task' ? (e) => openTaskMenu(e, item.id) : undefined}
                       >
                         <span className="gs-row-icon">
                           {item.type === 'file' && item.ext

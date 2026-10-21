@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { taskTitle, pageLabel } from '../lib/taskText';
 import { subtaskProgress } from '../lib/subtasks';
-import { openTask } from '../lib/events';
+import { openTask, openTaskMenu } from '../lib/events';
 import { Avatar, Empty, Icon, StatusLabel, SkeletonRows, shortDate, cap, fullName, STATUS_LABEL } from '../ui';
 import './TaskTable.css';
 
@@ -137,7 +137,7 @@ export default function TaskTable({
                 tabIndex={0}
                 onClick={() => (select ? select.toggle(t.id) : openTask(t))}
                 onKeyDown={(e) => { if (e.key === 'Enter') openTask(t); }}
-                onContextMenu={onContextMenu ? (e) => onContextMenu(e, t) : undefined}
+                onContextMenu={(e) => (onContextMenu ? onContextMenu(e, t) : openTaskMenu(e, t))}
               >
                 {select && (
                   <input

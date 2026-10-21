@@ -21,7 +21,7 @@ export function useMenu() {
   return { anchorRef, open, setOpen, close, toggle, props: { anchorRef, open, onClose: close } };
 }
 
-export function Menu({ anchorRef, open, onClose, align = 'start', width, children, className = '' }) {
+export function Menu({ anchorRef, open, onClose, align = 'start', width, point, children, className = '' }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
@@ -33,23 +33,51 @@ export function Menu({ anchorRef, open, onClose, align = 'start', width, childre
       if (!a || !m) return;
       const w = m.offsetWidth;
       const h = m.offsetHeight;
-      const vw = window.innerWidth;
+      // clientWidth excludes the scrollbar, so right-anchored menus sit
+      // exactly under their button.
+      const vw = document.documentElement.clientWidth;
       const vh = window.innerHeight;
-      let left = align === 'end' ? a.right - w : a.left;
-      left = Math.max(8, Math.min(left, vw - w - 8));
+      if (point) {
+        // Context menu: open at the cursor, growing away from it. Flip left
+        // or up when there's no room, and grow out of the corner nearest the
+        // cursor so it reads as coming from where you clicked.
+        const gap = 2;
+        const left = point.x + gap + w > vw - 8 ? Math.max(8, point.x - gap - w) : point.x + gap;
+        let top = point.y + gap;
+        let up = false;
+        if (top + h > vh - 8) {
+          if (point.y - gap - h >= 8) { top = point.y - gap - h; up = true; } else top = Math.max(8, vh - h - 8);
+        }
+        const ox = Math.min(w, Math.max(0, point.x - left));
+        const oy = Math.min(h, Math.max(0, point.y - top));
+        setPos({ left, top, up, origin: `${ox}px ${oy}px` });
+        return;
+      }
       const below = a.bottom + 6;
       const up = below + h > vh - 8 && a.top - h - 6 > 8;
-      const top = up ? a.top - h - 6 : Math.min(below, vh - h - 8);
-      setPos({ left, top, up, origin: `${align === 'end' ? 'right' : 'left'} ${up ? 'bottom' : 'top'}` });
+      const top = up ? a.top - h - 6 : Math.max(8, Math.min(below, vh - h - 8));
+      const origin = `${align === 'end' ? 'right' : 'left'} ${up ? 'bottom' : 'top'}`;
+      if (align === 'end') {
+        // Pin the right edge to the anchor's right edge, so the menu hangs
+        // under its button whatever width it ends up rendering at.
+        const right = Math.max(8, Math.min(vw - a.right, vw - w - 8));
+        setPos({ right, top, up, origin });
+      } else {
+        const left = Math.max(8, Math.min(a.left, vw - w - 8));
+        setPos({ left, top, up, origin });
+      }
     };
     place();
+    // Re-place once layout settles (fonts, async content in the menu).
+    const raf = requestAnimationFrame(place);
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [open, anchorRef, align]);
+  }, [open, anchorRef, align, point]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -75,8 +103,9 @@ export function Menu({ anchorRef, open, onClose, align = 'start', width, childre
       className={`menu ${pos?.up ? 'is-up' : ''} ${className}`}
       role="menu"
       style={{
-        left: pos?.left ?? -9999,
-        top: pos?.top ?? -9999,
+        left: pos ? pos.left : -9999,
+        right: pos ? pos.right : undefined,
+        top: pos ? pos.top : -9999,
         width,
         '--origin': pos?.origin,
         visibility: pos ? 'visible' : 'hidden',

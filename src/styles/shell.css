@@ -16,11 +16,13 @@
   flex-direction: column;
   align-items: center;
   padding: 12px 0 14px;
-  background: var(--rail);
+  /* Same translucent glass as the top bar, so the two read as one frame. */
+  background: color-mix(in srgb, var(--bg-app) 86%, transparent);
   border-right: 1px solid var(--border);
-  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
-  backdrop-filter: blur(var(--glass-blur, 0px));
+  -webkit-backdrop-filter: saturate(1.4) blur(14px);
+  backdrop-filter: saturate(1.4) blur(14px);
 }
+body.has-bg-image .rail { background: var(--surface); }
 .rail-logo {
   display: grid;
   place-items: center;
@@ -67,7 +69,7 @@
   font-weight: 600;
   line-height: 15px;
   text-align: center;
-  box-shadow: 0 0 0 2px var(--rail);
+  box-shadow: 0 0 0 2px var(--bg);
   animation: tf-pop 0.4s var(--ease-spring) both;
 }
 /* Tooltip: slides out of the rail */
@@ -125,7 +127,7 @@ body.has-bg-image .topbar { background: var(--surface); }
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: var(--r-pill);
-  background: var(--surface-solid);
+  background: var(--control);
   font-size: 13px;
   font-weight: 600;
   color: var(--text);

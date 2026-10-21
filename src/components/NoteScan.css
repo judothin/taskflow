@@ -217,7 +217,7 @@
   padding: 0 9px;
   border: 1px solid var(--border-input);
   border-radius: var(--r-sm);
-  background: var(--surface-solid);
+  background: var(--control);
   color: var(--text-3);
   transition: border-color var(--dur-1) ease, box-shadow var(--dur-2) ease;
 }

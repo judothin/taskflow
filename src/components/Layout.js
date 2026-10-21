@@ -20,6 +20,7 @@ import ScanNotifier from './ScanNotifier';
 import QuickContext from './QuickContext';
 import NotificationCenter from './NotificationCenter';
 import NoteScan from './NoteScan';
+import TaskContextMenu from './TaskContextMenu';
 import TopBar, { TenurePill } from './TopBar';
 import ErrorBoundary from './ErrorBoundary';
 import { useEscapeStack } from '../ui/Sheet';
@@ -245,6 +246,7 @@ export default function Layout() {
       <GlobalShortcuts />
       <ScanNotifier />
       <QuickContext hideTrigger />
+      <TaskContextMenu />
       {notifOpen && <NotificationCenter onClose={() => setNotifOpen(false)} />}
       {scanOpen && <NoteScan onClose={() => setScanOpen(false)} />}
       <ToastHost />

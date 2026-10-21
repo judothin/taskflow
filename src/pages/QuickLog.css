@@ -24,7 +24,7 @@
   padding: 0 14px 0 11px;
   border: 1px solid var(--border-input);
   border-radius: var(--r-lg);
-  background: var(--surface-solid);
+  background: var(--control);
   text-align: left;
   font-size: 14px;
   color: var(--text);
@@ -32,7 +32,7 @@
 }
 .ql-person:hover { border-color: var(--border-strong); background: var(--hover); }
 .ql-person:active { transform: scale(0.98); }
-.ql-person.is-on { border-color: var(--text); box-shadow: 0 0 0 1px var(--text); background: var(--surface-solid); }
+.ql-person.is-on { border-color: var(--text); box-shadow: 0 0 0 1px var(--text); background: var(--control); }
 .ql-person-name { flex: 1; }
 .ql-person .check-round { margin-left: auto; }
 .ql-person-skel { height: 46px; border-radius: var(--r-lg); }

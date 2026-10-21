@@ -52,7 +52,7 @@
 .fl-side-skel { display: flex; flex-direction: column; gap: 22px; padding: 12px 11px; }
 
 /* ── Main ── */
-.fl-main { min-width: 0; padding: 46px var(--page-pad) 70px; max-width: 1400px; }
+.fl-main { min-width: 0; padding: 46px var(--page-pad) 70px; }
 .fl-main .page-head { margin-bottom: 26px; }
 .fl-n { display: inline-block; }
 .fl-error { margin-bottom: 16px; }
