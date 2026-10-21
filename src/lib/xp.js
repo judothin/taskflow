@@ -12,13 +12,10 @@ export const BONUS_XP = {
   critical:     15,  // completing a critical-priority task
   queue:        10,  // completing a task from the focus queue (in progress)
   firstOfDay:   15,  // your first completed task of the day
-  streakPerDay:  5,  // × current streak length…
-  streakMax:    60,  // …capped here
 };
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const localToday = () => ymd(new Date());
-const localYesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); return ymd(d); };
 
 export function userXpToNext(level) {
   return 100 + (level - 1) * 20;
@@ -95,14 +92,10 @@ export async function awardTaskCompletedXp(userId, complexity, opts = {}) {
     bonusXp += BONUS_XP.queue; bonuses.push({ type: 'queue', label: 'Queue completion', xp: BONUS_XP.queue });
   }
 
-  let newStreak = userRow.streak || 0;
   let newLastDate = userRow.last_completed_date || null;
   const firstOfDay = userRow.last_completed_date !== today;
   if (firstOfDay) {
     bonusXp += BONUS_XP.firstOfDay; bonuses.push({ type: 'firstOfDay', label: 'First task of the day', xp: BONUS_XP.firstOfDay });
-    newStreak = userRow.last_completed_date === localYesterday() ? (userRow.streak || 0) + 1 : 1;
-    const streakXp = Math.min(BONUS_XP.streakMax, newStreak * BONUS_XP.streakPerDay);
-    bonusXp += streakXp; bonuses.push({ type: 'streak', label: `${newStreak}-day streak`, xp: streakXp });
     newLastDate = today;
   }
 
@@ -110,7 +103,7 @@ export async function awardTaskCompletedXp(userId, complexity, opts = {}) {
   const userResult = applyUserXp({ level: userRow.level, xp: userRow.xp }, gain);
   await supabase.from('user_levels').update({
     level: userResult.level, xp: userResult.xp,
-    last_completed_date: newLastDate, streak: newStreak,
+    last_completed_date: newLastDate,
     tasks_completed: (userRow.tasks_completed || 0) + 1,
     updated_at: new Date().toISOString(),
   }).eq('user_id', userId);

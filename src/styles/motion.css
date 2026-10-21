@@ -1,0 +1,149 @@
+/* ══════════════════════════════════════════════════════════════
+   Motion — bubbly, but minimal
+   --------------------------------------------------------------
+   Three rules:
+     1. Things that APPEAR spring in (small scale + a touch of overshoot).
+     2. Things that MOVE glide (ease-out, no overshoot).
+     3. Things you PRESS squish (scale .96) and spring back.
+   Nothing loops except loaders, and everything respects reduced motion
+   (base.css).
+
+   Utilities:
+     .anim-pop        pop in (menus, popovers, chips)
+     .anim-rise       fade up 8px (cards, page sections)
+     .anim-fade       plain fade
+     .stagger > *     children rise in one after another (set --i or
+                      let nth-child pick the delay)
+     .press           squish on :active (buttons already have it)
+     .wiggle          one-off attention shake (add, then remove)
+     .bump            one-off scale bump (counts, badges)
+   ══════════════════════════════════════════════════════════════ */
+
+@keyframes tf-spin { to { transform: rotate(360deg); } }
+@keyframes tf-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tf-fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+@keyframes tf-pop {
+  0% { opacity: 0; transform: scale(0.94) translateY(-4px); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes tf-pop-up {
+  0% { opacity: 0; transform: scale(0.94) translateY(6px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes tf-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tf-rise-sm {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tf-sheet-in {
+  from { transform: translateX(42px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes tf-sheet-out {
+  from { transform: none; opacity: 1; }
+  to { transform: translateX(36px); opacity: 0; }
+}
+@keyframes tf-sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+@keyframes tf-sheet-down {
+  from { transform: none; }
+  to { transform: translateY(100%); }
+}
+@keyframes tf-dialog-in {
+  0% { opacity: 0; transform: scale(0.92) translateY(10px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes tf-dialog-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(0.96) translateY(6px); }
+}
+@keyframes tf-toast-in {
+  0% { opacity: 0; transform: translateY(16px) scale(0.92); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes tf-toast-out {
+  to { opacity: 0; transform: translateY(10px) scale(0.96); }
+}
+@keyframes tf-check {
+  0% { transform: scale(0.6); }
+  55% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@keyframes tf-draw { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+@keyframes tf-bump {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+@keyframes tf-wiggle {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+@keyframes tf-grow-y {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@keyframes tf-grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes tf-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+@keyframes tf-pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 40%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 0%, transparent); }
+}
+@keyframes tf-collapse-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(14px) scale(0.98); }
+}
+@keyframes tf-float-up {
+  0% { opacity: 0; transform: translate(-50%, 4px) scale(0.8); }
+  20% { opacity: 1; transform: translate(-50%, -6px) scale(1.05); }
+  80% { opacity: 1; transform: translate(-50%, -14px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -22px) scale(0.95); }
+}
+@keyframes tf-page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.anim-pop { animation: tf-pop var(--dur-3) var(--ease-spring) both; transform-origin: top center; }
+.anim-pop-up { animation: tf-pop-up var(--dur-3) var(--ease-spring) both; transform-origin: bottom center; }
+.anim-rise { animation: tf-rise var(--dur-4) var(--ease-out) both; }
+.anim-fade { animation: tf-fade-in var(--dur-3) ease both; }
+.bump { animation: tf-bump 0.42s var(--ease-spring); }
+.wiggle { animation: tf-wiggle 0.42s var(--ease-out); }
+
+.stagger > * { animation: tf-rise 0.42s var(--ease-out) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 30ms; }
+.stagger > *:nth-child(3) { animation-delay: 60ms; }
+.stagger > *:nth-child(4) { animation-delay: 90ms; }
+.stagger > *:nth-child(5) { animation-delay: 120ms; }
+.stagger > *:nth-child(6) { animation-delay: 150ms; }
+.stagger > *:nth-child(7) { animation-delay: 180ms; }
+.stagger > *:nth-child(8) { animation-delay: 210ms; }
+.stagger > *:nth-child(9) { animation-delay: 240ms; }
+.stagger > *:nth-child(10) { animation-delay: 270ms; }
+.stagger > *:nth-child(n+11) { animation-delay: 300ms; }
+/* Re-renders of a list that is already on screen shouldn't replay it. */
+.stagger.settled > * { animation: none; }
+
+.press { transition: transform var(--dur-2) var(--ease-spring); }
+.press:active { transform: scale(0.96); }
+
+/* Page entrance — the outlet replays this on each navigation (Layout). */
+.page-enter { animation: tf-page-in 0.38s var(--ease-out) both; }

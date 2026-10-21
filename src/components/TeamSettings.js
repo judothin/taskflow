@@ -1,428 +1,299 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
-import { fetchTeamMembers, regenerateInviteCode, setMemberRole, removeMember, renameTeam, setTeamGamification } from '../lib/teams';
-import { fetchTeamStreaks, setWeekendStreaks, adminSetStreak, adminSetStreakPaused } from '../lib/streak';
+import {
+  fetchTeamMembers, regenerateInviteCode, setMemberRole, removeMember, renameTeam, setTeamGamification,
+} from '../lib/teams';
+import { Icon, Avatar, Dialog, ConfirmDialog, Empty, SkeletonRows, fullName, toast } from '../ui';
+import { SettingRow, Toggle } from './SettingsControls';
 import TeamJoinCreateForm from './TeamJoinCreateForm';
-import Avatar from './Avatar';
-import ModalPortal from './ModalPortal';
 import './TeamSettings.css';
 
-function CopyButton({ value, label = 'Copy' }) {
+function CopyButton({ value, label = 'Copy', primary, small = true }) {
   const [copied, setCopied] = useState(false);
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch { /* clipboard unavailable — no-op */ }
+  useEffect(() => {
+    if (!copied) return undefined;
+    const t = setTimeout(() => setCopied(false), 1700);
+    return () => clearTimeout(t);
+  }, [copied]);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(value); setCopied(true); } catch { toast('Couldn’t reach the clipboard', { icon: 'alert' }); }
   };
   return (
-    <button type="button" className={`btn btn-secondary btn-sm ${copied ? 'team-copy-done' : ''}`} onClick={handleCopy}>
-      {copied ? (
-        <>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          Copied
-        </>
-      ) : (
-        <>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-          {label}
-        </>
-      )}
+    <button
+      type="button"
+      className={`btn ${primary ? 'btn-primary' : ''} ${small ? 'btn-sm' : ''} ts-copy ${copied ? 'is-done' : ''}`}
+      onClick={copy}
+    >
+      <span key={copied ? 'y' : 'n'} className="ts-copy-in">
+        <Icon name={copied ? 'check' : 'copy'} size={13} stroke={copied ? 2.6 : 1.9} />
+        {copied ? 'Copied' : label}
+      </span>
     </button>
   );
 }
+
+const ROLE_TAG = { owner: 'tag-purple', admin: 'tag-blue', member: 'tag-gray' };
 
 export default function TeamSettings() {
   const { user } = useAuth();
   const { teams, activeTeam, activeTeamId, switchTeam, isOwner, isAdmin, refreshTeams } = useTeam();
 
   const [members, setMembers] = useState([]);
-  const [streaks, setStreaks] = useState({});
-  const [savingWeekend, setSavingWeekend] = useState(false);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [showAddTeam, setShowAddTeam] = useState(false);
-  const [confirmRemove, setConfirmRemove] = useState(null); // member object, or null
-  const [removeConfirmText, setRemoveConfirmText] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(null);
+  const [removeText, setRemoveText] = useState('');
+  const [confirmRegen, setConfirmRegen] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [renaming, setRenaming] = useState(false);
-  const [renameError, setRenameError] = useState('');
   const [savingGamification, setSavingGamification] = useState(false);
 
   const loadMembers = useCallback(async () => {
-    if (!activeTeamId) { setMembers([]); setStreaks({}); setLoadingMembers(false); return; }
+    if (!activeTeamId) { setMembers([]); setLoadingMembers(false); return; }
     setLoadingMembers(true);
-    const [list, streakMap] = await Promise.all([
-      fetchTeamMembers(activeTeamId),
-      fetchTeamStreaks(activeTeamId),
-    ]);
-    setMembers(list);
-    setStreaks(streakMap);
+    setMembers(await fetchTeamMembers(activeTeamId));
     setLoadingMembers(false);
   }, [activeTeamId]);
 
   useEffect(() => { loadMembers(); }, [loadMembers]);
-
-  useEffect(() => { setEditingName(false); setRenameError(''); }, [activeTeamId]);
-
-  const handleRenameSubmit = async (e) => {
-    e.preventDefault();
-    if (!nameDraft.trim()) return;
-    setRenaming(true);
-    setRenameError('');
-    try {
-      await renameTeam(activeTeamId, nameDraft.trim());
-      await refreshTeams();
-      setEditingName(false);
-    } catch (err) {
-      setRenameError(err.message || 'Failed to rename team');
-    } finally {
-      setRenaming(false);
-    }
-  };
+  useEffect(() => { setEditingName(false); setError(''); }, [activeTeamId]);
 
   const guestLink = activeTeam ? `${window.location.origin}/submit/${activeTeam.slug}` : '';
   const inviteLink = activeTeam ? `${window.location.origin}/register?invite=${activeTeam.invite_code}` : '';
 
-  const handleAddTeamDone = async (team) => {
+  const run = async (fn, fallback) => {
+    setError('');
+    try { await fn(); return true; } catch (err) { setError(err.message || fallback); return false; }
+  };
+
+  const rename = async (e) => {
+    e.preventDefault();
+    if (!nameDraft.trim() || nameDraft.trim() === activeTeam.name) { setEditingName(false); return; }
+    setRenaming(true);
+    const ok = await run(async () => { await renameTeam(activeTeamId, nameDraft.trim()); await refreshTeams(); }, 'Failed to rename team');
+    setRenaming(false);
+    if (ok) { setEditingName(false); toast('Team renamed'); }
+  };
+
+  const addTeamDone = async (team) => {
     await refreshTeams();
     switchTeam(team.id);
     setShowAddTeam(false);
+    toast(`Switched to ${team.name}`);
   };
 
-  const handleToggleRole = async (member) => {
-    setError('');
-    setBusyId(member.id);
-    try {
-      await setMemberRole(activeTeamId, member.id, member.role === 'admin' ? 'member' : 'admin');
-      await loadMembers();
-    } catch (err) {
-      setError(err.message || 'Failed to update role');
-    } finally {
-      setBusyId(null);
-    }
+  const toggleRole = async (m) => {
+    setBusyId(m.id);
+    await run(async () => { await setMemberRole(activeTeamId, m.id, m.role === 'admin' ? 'member' : 'admin'); await loadMembers(); }, 'Failed to update role');
+    setBusyId(null);
   };
 
-  const openRemoveConfirm = (member) => {
-    setConfirmRemove(member);
-    setRemoveConfirmText('');
-    setError('');
-  };
-
-  const handleRemoveConfirmed = async () => {
+  const doRemove = async () => {
     if (!confirmRemove) return;
-    setError('');
     setBusyId(confirmRemove.id);
-    try {
-      await removeMember(activeTeamId, confirmRemove.id);
-      setConfirmRemove(null);
-      setRemoveConfirmText('');
-      await loadMembers();
-    } catch (err) {
-      setError(err.message || 'Failed to remove member');
-    } finally {
-      setBusyId(null);
-    }
+    const name = fullName(confirmRemove);
+    const ok = await run(async () => { await removeMember(activeTeamId, confirmRemove.id); await loadMembers(); }, 'Failed to remove member');
+    setBusyId(null);
+    if (ok) { setConfirmRemove(null); setRemoveText(''); toast(`${name} removed`); }
   };
 
-  const handleRegenerate = async () => {
+  const doRegenerate = async () => {
     setRegenerating(true);
-    setError('');
-    try {
-      await regenerateInviteCode(activeTeamId);
-      await refreshTeams();
-    } catch (err) {
-      setError(err.message || 'Failed to regenerate code');
-    } finally {
-      setRegenerating(false);
-    }
+    const ok = await run(async () => { await regenerateInviteCode(activeTeamId); await refreshTeams(); }, 'Failed to regenerate code');
+    setRegenerating(false);
+    setConfirmRegen(false);
+    if (ok) toast('New invite code ready');
   };
 
-  const handleToggleGamification = async () => {
+  const toggleGamification = async () => {
     setSavingGamification(true);
-    setError('');
-    try {
-      await setTeamGamification(activeTeamId, activeTeam.gamification_enabled === false);
-      await refreshTeams();
-    } catch (err) {
-      setError(err.message || 'Failed to update setting');
-    } finally {
-      setSavingGamification(false);
-    }
+    await run(async () => { await setTeamGamification(activeTeamId, activeTeam.gamification_enabled === false); await refreshTeams(); }, 'Failed to update setting');
+    setSavingGamification(false);
   };
 
-  const handleToggleWeekend = async () => {
-    setSavingWeekend(true);
-    setError('');
-    try {
-      await setWeekendStreaks(activeTeamId, activeTeam.weekend_streaks === false);
-      await refreshTeams();
-    } catch (err) {
-      setError(err.message || 'Failed to update setting');
-    } finally {
-      setSavingWeekend(false);
-    }
-  };
-
-  const handleSetStreak = async (memberId, value) => {
-    const n = Math.max(0, parseInt(value, 10) || 0);
-    if (n === (streaks[memberId]?.current_streak || 0)) return;
-    setError('');
-    try {
-      await adminSetStreak(activeTeamId, memberId, n);
-      await loadMembers();
-    } catch (err) {
-      setError(err.message || 'Failed to set streak');
-    }
-  };
-
-  const handleTogglePauseStreak = async (memberId) => {
-    setError('');
-    setBusyId(memberId);
-    try {
-      await adminSetStreakPaused(activeTeamId, memberId, !streaks[memberId]?.paused);
-      await loadMembers();
-    } catch (err) {
-      setError(err.message || 'Failed to update streak');
-    } finally {
-      setBusyId(null);
-    }
-  };
+  const removeName = confirmRemove ? fullName(confirmRemove) : '';
+  const removeMatches = removeText.trim().toLowerCase() === removeName.toLowerCase();
 
   return (
-    <div className="team-settings">
+    <div className="ts">
+      <div className="st-rows stagger">
+        <SettingRow label="Team" desc="The team you’re working in. Everything in TaskFlow belongs to one." top>
+          <div className="chip-row ts-teams">
+            {teams.map(t => (
+              <button
+                key={t.id}
+                type="button"
+                className={`chip-toggle ${t.id === activeTeamId ? 'is-on' : ''}`}
+                onClick={() => switchTeam(t.id)}
+                aria-pressed={t.id === activeTeamId}
+              >
+                {t.id === activeTeamId && <Icon name="check" size={13} stroke={2.6} className="ts-team-check" />}
+                {t.name}
+                <span className="ts-team-role">{t.role}</span>
+              </button>
+            ))}
+            <button type="button" className="chip-toggle is-dashed" onClick={() => setShowAddTeam(true)}>
+              <Icon name="plus" size={13} />Add team
+            </button>
+          </div>
+        </SettingRow>
 
-      {/* ── Team switcher ── */}
-      <div className="team-switcher-row">
-        {teams.map(t => (
-          <button
-            key={t.id}
-            className={`team-pill ${t.id === activeTeamId ? 'team-pill-active' : ''}`}
-            onClick={() => switchTeam(t.id)}
-          >
-            <span className="team-pill-dot" />
-            {t.name}
-            <span className="team-pill-role">{t.role}</span>
-          </button>
-        ))}
-        <button className="team-pill team-pill-add" onClick={() => setShowAddTeam(true)}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Team
-        </button>
-      </div>
-
-      {!activeTeam ? (
-        <div className="empty-state">
-          <h3>No team selected</h3>
-          <p>Create or join a team to get started.</p>
-        </div>
-      ) : (
-        <>
-          <div className="team-name-header">
+        {activeTeam && (
+          <SettingRow label="Name" desc={isAdmin ? 'Owners and admins can rename the team.' : 'Only owners and admins can rename it.'}>
             {editingName ? (
-              <form className="team-name-edit-form" onSubmit={handleRenameSubmit}>
+              <form className="st-inline-form anim-fade" onSubmit={rename}>
                 <input
                   className="input"
                   value={nameDraft}
                   onChange={e => setNameDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setEditingName(false); } }}
                   autoFocus
                   maxLength={80}
                 />
-                <button type="submit" className="btn btn-primary btn-sm" disabled={renaming}>
-                  {renaming ? 'Saving…' : 'Save'}
-                </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingName(false)} disabled={renaming}>
-                  Cancel
+                <button type="button" className="btn btn-ghost" onClick={() => setEditingName(false)} disabled={renaming}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={renaming || !nameDraft.trim()}>
+                  {renaming ? <span className="spinner" /> : 'Save'}
                 </button>
               </form>
             ) : (
               <>
-                <h2 className="team-name-title">{activeTeam.name}</h2>
+                <span className="ts-name">{activeTeam.name}</span>
                 {isAdmin && (
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => { setNameDraft(activeTeam.name); setEditingName(true); }}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                    Rename
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setNameDraft(activeTeam.name); setEditingName(true); }}>
+                    <Icon name="edit" size={13} />Rename
                   </button>
                 )}
               </>
             )}
-          </div>
-          {renameError && <div className="error-msg" style={{ marginBottom: 14 }}>⚠ {renameError}</div>}
+          </SettingRow>
+        )}
 
-          {/* ── Members ── */}
-          <div className="card team-card">
-            <h2 className="team-card-title">
-              Members
-              <span className="team-card-count">{members.length}</span>
-            </h2>
+        {activeTeam && (
+          <SettingRow label="Invite people" desc={<>Share the code or link so someone can join <strong>{activeTeam.name}</strong> as a member.</>} top col>
+            <div className="ts-code">
+              <span key={activeTeam.invite_code} className="ts-code-value">{activeTeam.invite_code}</span>
+              <CopyButton value={activeTeam.invite_code} />
+            </div>
+            <div className="ts-actions">
+              <CopyButton value={inviteLink} label="Copy invite link" />
+              {isAdmin && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirmRegen(true)} disabled={regenerating}>
+                  <Icon name="refresh" size={13} className={regenerating ? 'ts-spin' : ''} />New code
+                </button>
+              )}
+            </div>
+          </SettingRow>
+        )}
 
-            {error && <div className="error-msg" style={{ marginBottom: 12 }}>⚠ {error}</div>}
+        {activeTeam && (
+          <SettingRow label="Guest portal" desc={<>Anyone with this link can send feedback to <strong>{activeTeam.name}</strong> — no account needed. It lands in Submissions.</>} top col>
+            <div className="link-field">
+              <Icon name="globe" size={15} />
+              <span className="link-field-text">{guestLink}</span>
+              <a className="link-open" href={guestLink} target="_blank" rel="noopener noreferrer">Open <Icon name="arrowUpRight" size={12} /></a>
+            </div>
+            <div className="ts-actions">
+              <CopyButton value={guestLink} label="Copy link" />
+              <CopyButton value={`Send feedback to ${activeTeam.name}: ${guestLink}`} label="Copy with a message" />
+            </div>
+          </SettingRow>
+        )}
 
+        {activeTeam && isAdmin && (
+          <SettingRow
+            label="Levels & XP"
+            desc={<>When off, nobody sees levels or XP while working in <strong>{activeTeam.name}</strong>. Their XP still adds up in the background.</>}
+          >
+            <Toggle
+              on={activeTeam.gamification_enabled !== false}
+              onClick={toggleGamification}
+              disabled={savingGamification}
+              label="Levels and XP for this team"
+            />
+            <span key={String(activeTeam.gamification_enabled !== false)} className="st-note anim-fade">
+              {activeTeam.gamification_enabled === false ? 'Off for this team' : 'On for this team'}
+            </span>
+          </SettingRow>
+        )}
+      </div>
+
+      {error && (
+        <div key={error} className="notice notice-error wiggle ts-error" role="alert">
+          <Icon name="alert" size={15} /><span>{error}</span>
+        </div>
+      )}
+
+      {!activeTeam ? (
+        <Empty icon="users" title="No team selected" action={<button type="button" className="btn btn-primary" onClick={() => setShowAddTeam(true)}>Create or join a team</button>}>
+          Create a team, or join one with an invite code.
+        </Empty>
+      ) : (
+        <>
+          <h2 className="st-group-title">
+            Members
+            {!loadingMembers && <span key={members.length} className="count bump">{members.length}</span>}
+          </h2>
+          <p className="st-group-sub">
+            {isOwner ? 'You can make people admins, and remove anyone but yourself.'
+              : isAdmin ? 'Admins can remove members. Only the owner can change roles.'
+                : 'Everyone on this team.'}
+          </p>
+          <div className="table ts-table" style={{ '--cols': 'minmax(0, 1fr) 100px 190px' }}>
+            <div className="table-head">
+              <span>Member</span>
+              <span className="hide-phone">Role</span>
+              <span className="hide-phone" />
+            </div>
             {loadingMembers ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {[1,2,3].map(i => <div key={i} className="loading-pulse" style={{ height: 52, borderRadius: 'var(--radius)', background: 'var(--bg-4)' }} />)}
-              </div>
+              <SkeletonRows rows={3} widths={['40%', '12%', '18%']} />
             ) : (
-              <div className="team-member-list">
+              <div className="stagger">
                 {members.map(m => {
                   const isSelf = m.id === user?.id;
-                  const canManageRole = isOwner && m.role !== 'owner';
+                  const canRole = isOwner && m.role !== 'owner';
                   const canRemove = (isOwner && m.role !== 'owner' && !isSelf) || (isAdmin && !isOwner && m.role === 'member');
-                  const isBusy = busyId === m.id;
+                  const busy = busyId === m.id;
                   return (
-                    <div className="team-member-row" key={m.id}>
-                      <Avatar src={m.avatar_url} color={m.color} initials={`${m.first_name?.[0] || ''}${m.last_name?.[0] || ''}`.toUpperCase()} size={36} />
-                      <div className="team-member-info">
-                        <span className="team-member-name">
-                          {m.first_name} {m.last_name}
-                          {isSelf && <span className="team-member-you">you</span>}
-                        </span>
-                        <span className="team-member-email">{m.email}</span>
+                    <div key={m.id} className="table-row is-static">
+                      <div className="table-cell ts-member">
+                        <Avatar person={m} size={32} />
+                        <div style={{ minWidth: 0 }}>
+                          <div className="table-title truncate">
+                            {fullName(m)}
+                            {isSelf && <span className="ts-you">you</span>}
+                          </div>
+                          <div className="table-sub">{m.email}</div>
+                        </div>
                       </div>
-                      <span className={`team-role-badge team-role-badge-${m.role}`}>{m.role}</span>
-
-                      <span className={`team-streak-chip ${streaks[m.id]?.paused ? 'team-streak-chip-paused' : ''}`} title={streaks[m.id]?.paused ? 'Streak paused' : 'Current streak'}>
-                        🔥 {streaks[m.id]?.current_streak || 0}
-                        {streaks[m.id]?.paused && <span className="team-streak-paused-tag">paused</span>}
-                      </span>
-
-                      {isAdmin && (
-                        <span className="team-streak-controls">
-                          <input
-                            type="number"
-                            min="0"
-                            className="team-streak-input"
-                            key={`${m.id}-${streaks[m.id]?.current_streak || 0}`}
-                            defaultValue={streaks[m.id]?.current_streak || 0}
-                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
-                            onBlur={(e) => handleSetStreak(m.id, e.target.value)}
-                            aria-label={`Set ${m.first_name}'s streak`}
-                            title="Set streak count"
-                          />
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => handleTogglePauseStreak(m.id)}
-                            disabled={isBusy}
-                            title={streaks[m.id]?.paused ? 'Resume streak' : 'Pause streak (keeps progress)'}
-                          >
-                            {streaks[m.id]?.paused ? 'Resume' : 'Pause'}
+                      <div className="table-cell">
+                        <span className={`tag ${ROLE_TAG[m.role] || 'tag-gray'}`}>{m.role}</span>
+                      </div>
+                      <div className="table-cell ts-row-actions">
+                        {canRole && (
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleRole(m)} disabled={busy}>
+                            {busy ? <span className="spinner" /> : m.role === 'admin' ? 'Make member' : 'Make admin'}
                           </button>
-                        </span>
-                      )}
-
-                      {canManageRole && (
-                        <button className="btn btn-ghost btn-sm" onClick={() => handleToggleRole(m)} disabled={isBusy}>
-                          {m.role === 'admin' ? 'Make Member' : 'Make Admin'}
-                        </button>
-                      )}
-
-                      {canRemove && (
-                        <button className="task-action-btn task-action-btn-danger" aria-label="Remove member" onClick={() => openRemoveConfirm(m)}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6 M14 11v6"/>
-                          </svg>
-                        </button>
-                      )}
+                        )}
+                        {canRemove && (
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm btn-icon"
+                            onClick={() => { setConfirmRemove(m); setRemoveText(''); setError(''); }}
+                            aria-label={`Remove ${fullName(m)}`}
+                            title="Remove from team"
+                          >
+                            <Icon name="trash" size={13} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
-              </div>
-            )}
-          </div>
-
-          {/* ── Invite + guest link ── */}
-          <div className="team-settings-grid">
-            <div className="card team-card">
-              <h2 className="team-card-title">Invite people</h2>
-              <p className="team-card-desc">Share this code (or link) so someone can join <strong>{activeTeam.name}</strong> as a member.</p>
-              <div className="team-code-box">
-                <span className="team-code-value">{activeTeam.invite_code}</span>
-                <CopyButton value={activeTeam.invite_code} />
-              </div>
-              <div className="team-link-row">
-                <CopyButton value={inviteLink} label="Copy invite link" />
-                {isAdmin && (
-                  <button className="btn btn-ghost btn-sm" onClick={handleRegenerate} disabled={regenerating}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-                    {regenerating ? 'Regenerating…' : 'Regenerate code'}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="card team-card">
-              <h2 className="team-card-title">Guest portal</h2>
-              <p className="team-card-desc">Anyone with this link can submit a task to <strong>{activeTeam.name}</strong> without an account.</p>
-              <div className="team-guest-link-box">
-                <span className="team-guest-link-value">{guestLink}</span>
-              </div>
-              <CopyButton value={`Submit a task to ${activeTeam.name}: ${guestLink}`} label="Copy guest link" />
-            </div>
-
-            {isAdmin && (
-              <div className="card team-card">
-                <h2 className="team-card-title">Pets &amp; Levels</h2>
-                <p className="team-card-desc">
-                  When off, no one on <strong>{activeTeam.name}</strong> sees levels, XP animations, or the pet
-                  widget/page while working in this team. Their own XP still accrues in the background — switching
-                  to a team where this is on reveals whatever they've earned.
-                </p>
-                <div className="theme-color-row" style={{ borderBottom: 'none', paddingLeft: 0, paddingRight: 0 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                      {activeTeam.gamification_enabled === false ? 'Disabled for this team' : 'Enabled for this team'}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className={`nc-toggle ${activeTeam.gamification_enabled !== false ? 'nc-toggle-on' : ''}`}
-                    onClick={handleToggleGamification}
-                    disabled={savingGamification}
-                    role="switch"
-                    aria-checked={activeTeam.gamification_enabled !== false}
-                  >
-                    <span className="nc-toggle-thumb" />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {isOwner && (
-              <div className="card team-card">
-                <h2 className="team-card-title">Weekend streaks</h2>
-                <p className="team-card-desc">
-                  When <strong>on</strong>, weekends count toward streaks like any other day. When <strong>off</strong>,
-                  streaks pause on weekends — a missed Saturday/Sunday won't break anyone's streak, and activity on a
-                  weekend still adds to it.
-                </p>
-                <div className="theme-color-row" style={{ borderBottom: 'none', paddingLeft: 0, paddingRight: 0 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                      {activeTeam.weekend_streaks === false ? 'Weekends paused' : 'Weekends count'}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className={`nc-toggle ${activeTeam.weekend_streaks !== false ? 'nc-toggle-on' : ''}`}
-                    onClick={handleToggleWeekend}
-                    disabled={savingWeekend}
-                    role="switch"
-                    aria-checked={activeTeam.weekend_streaks !== false}
-                  >
-                    <span className="nc-toggle-thumb" />
-                  </button>
-                </div>
               </div>
             )}
           </div>
@@ -430,60 +301,51 @@ export default function TeamSettings() {
       )}
 
       {showAddTeam && (
-        <ModalPortal>
-        <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setShowAddTeam(false); }}>
-          <div className="modal" style={{ maxWidth: 440 }}>
-            <div className="modal-header">
-              <h2 style={{ fontSize: 18, fontWeight: 700 }}>Add a Team</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowAddTeam(false)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <TeamJoinCreateForm onDone={handleAddTeamDone} onCancel={() => setShowAddTeam(false)} />
-            </div>
+        <Dialog title="Add a team" text="Start a new team, or join one with the code a teammate sent you." onClose={() => setShowAddTeam(false)}>
+          <div style={{ marginTop: 18, paddingBottom: 16 }}>
+            <TeamJoinCreateForm onDone={addTeamDone} onCancel={() => setShowAddTeam(false)} />
           </div>
-        </div>
-        </ModalPortal>
+        </Dialog>
       )}
 
-      {confirmRemove && (() => {
-        const targetName = `${confirmRemove.first_name} ${confirmRemove.last_name}`.trim();
-        const matches = removeConfirmText.trim().toLowerCase() === targetName.toLowerCase();
-        const isBusy = busyId === confirmRemove.id;
-        return (
-          <ModalPortal>
-          <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setConfirmRemove(null); }}>
-            <div className="modal" style={{ maxWidth: 420 }}>
-              <div className="modal-header">
-                <h2 style={{ fontSize: 17, fontWeight: 700 }}>Remove member</h2>
-                <button className="btn btn-ghost btn-sm" onClick={() => setConfirmRemove(null)}>✕</button>
-              </div>
-              <div className="modal-body">
-                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
-                  This removes <strong>{targetName}</strong> from <strong>{activeTeam?.name}</strong> — they'll lose access to all of this team's tasks, projects, and files.
-                </p>
-                <div className="form-group">
-                  <label className="label">Type "{targetName}" to confirm</label>
-                  <input
-                    className="input"
-                    value={removeConfirmText}
-                    onChange={e => setRemoveConfirmText(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && matches && !isBusy) handleRemoveConfirmed(); }}
-                    autoFocus
-                  />
-                </div>
-                {error && <div className="error-msg" style={{ marginTop: 10 }}>⚠ {error}</div>}
-              </div>
-              <div className="modal-footer">
-                <button className="btn btn-ghost" onClick={() => setConfirmRemove(null)} disabled={isBusy}>Cancel</button>
-                <button className="btn btn-danger" onClick={handleRemoveConfirmed} disabled={!matches || isBusy}>
-                  {isBusy ? 'Removing…' : 'Remove Member'}
-                </button>
-              </div>
-            </div>
-          </div>
-          </ModalPortal>
-        );
-      })()}
+      {confirmRegen && (
+        <ConfirmDialog
+          title="Make a new invite code?"
+          text="The current code and invite link stop working straight away. People already on the team aren’t affected."
+          confirmLabel="Make new code"
+          busy={regenerating}
+          onConfirm={doRegenerate}
+          onClose={() => !regenerating && setConfirmRegen(false)}
+        />
+      )}
+
+      {confirmRemove && (
+        <Dialog
+          title="Remove member"
+          text={<>This removes <strong>{removeName}</strong> from <strong>{activeTeam?.name}</strong>. They’ll lose access to all of this team’s tasks, reviews and files.</>}
+          onClose={() => busyId !== confirmRemove.id && setConfirmRemove(null)}
+          footer={(
+            <>
+              <button type="button" className="btn btn-ghost" onClick={() => setConfirmRemove(null)} disabled={busyId === confirmRemove.id}>Cancel</button>
+              <button type="button" className="btn btn-danger-solid" onClick={doRemove} disabled={!removeMatches || busyId === confirmRemove.id}>
+                {busyId === confirmRemove.id ? <span className="spinner" /> : 'Remove member'}
+              </button>
+            </>
+          )}
+        >
+          <label className="field" style={{ marginTop: 18 }}>
+            <span className="field-label">Type <span className="mono">{removeName}</span> to confirm</span>
+            <input
+              className="input"
+              value={removeText}
+              onChange={e => setRemoveText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && removeMatches) doRemove(); }}
+              autoFocus
+            />
+          </label>
+          {error && <div key={error} className="field-error wiggle" style={{ marginTop: 10 }}>{error}</div>}
+        </Dialog>
+      )}
     </div>
   );
 }

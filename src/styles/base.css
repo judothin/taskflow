@@ -1,0 +1,142 @@
+/* ══════════════════════════════════════════════════════════════
+   Base — reset, document, typography helpers, background image layer
+   ══════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  font-size: 16px;
+  overflow-x: clip;
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  background: var(--bg);
+}
+
+body {
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+  overflow-x: clip;
+  transition: background-color var(--dur-3) ease, color var(--dur-3) ease;
+}
+
+/* Boot: no transitions until the first frame has painted (index.js). */
+html.tf-boot, html.tf-boot *, html.tf-boot *::before, html.tf-boot *::after {
+  transition: none !important;
+  animation-duration: 0s !important;
+}
+
+.a11y-bold body { font-weight: 500; }
+.a11y-bold .t-2, .a11y-bold .t-3 { color: var(--text-2); }
+
+img, svg, video { display: block; max-width: 100%; }
+svg { flex-shrink: 0; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+input, textarea, select { font: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+h1, h2, h3, h4, h5 { font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
+::selection { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* Scrollbars: thin and quiet. */
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Typography helpers ── */
+.mono { font-family: var(--mono); font-feature-settings: normal; letter-spacing: 0; }
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  line-height: 1.3;
+}
+.t-2 { color: var(--text-2); }
+.t-3 { color: var(--text-3); }
+.t-4 { color: var(--text-4); }
+.t-ok { color: var(--success); }
+.t-bad { color: var(--danger); }
+.num { font-variant-numeric: tabular-nums; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* Priority text: high and critical read red, everything else quiet. */
+.prio { color: var(--text-3); }
+.prio-high, .prio-critical { color: var(--danger); }
+
+/* ── Background image ──
+   A real fixed element (created in lib/themeColors.js), not a body
+   background: base64 images can be megabytes, and a fixed body background
+   tears on scroll in Chromium. Blur and tint are variables so dragging a
+   slider never re-decodes the image. */
+#tf-bg-layer {
+  position: fixed;
+  inset: -40px;
+  z-index: -2;
+  background-size: cover;
+  background-position: center;
+  filter: blur(var(--glass-blur, 0px));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-4) ease;
+}
+body.has-bg-image #tf-bg-layer { opacity: 1; }
+body.has-bg-image::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--bg-tint, transparent);
+  pointer-events: none;
+}
+body.has-bg-image { background: transparent; }
+html:has(body.has-bg-image) { background: var(--bg); }
+
+/* ── Route loader ── */
+.route-loader {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.route-loader-spinner, .spinner {
+  width: 22px; height: 22px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--text);
+  border-radius: 50%;
+  animation: tf-spin 0.7s linear infinite;
+}
+.route-loader-spinner { opacity: 0; animation: tf-spin 0.7s linear infinite, tf-fade-in 0.3s ease 0.3s forwards; }
+.spinner-sm { width: 14px; height: 14px; border-width: 1.75px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

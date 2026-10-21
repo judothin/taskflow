@@ -1,38 +1,17 @@
-.team-mode-toggle {
-  display: flex;
-  gap: 4px;
-  background: var(--bg-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 4px;
-  margin-bottom: 18px;
+/* ── Create / join a team (Onboarding, Settings › Teams dialog) ── Prefix: .tj- */
+
+.tj { display: flex; flex-direction: column; gap: 18px; }
+.tj .seg-btn { height: 36px; }
+.tj-field { animation: tf-rise-sm 0.32s var(--ease-out) both; }
+.tj-field .input { height: 42px; }
+.tj-code { letter-spacing: 0.16em; font-size: 15px; }
+.tj-actions { display: flex; gap: 8px; }
+.tj-submit { flex: 1; }
+.tj-submit svg { transition: transform var(--dur-3) var(--ease-spring); }
+.tj-submit:hover:not(:disabled) svg { transform: translateX(3px); }
+
+@media (max-width: 768px) {
+  .tj-field .input { height: 46px; }
+  .tj-submit { --btn-h: 46px; }
 }
-
-.team-mode-btn {
-  flex: 1;
-  padding: 9px 12px;
-  border: none;
-  background: none;
-  border-radius: var(--radius);
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.team-mode-btn:hover { color: var(--text); }
-
-.team-mode-btn-active {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 0 14px var(--accent-glow);
-}
-
-.team-mode-btn-active:hover { color: #fff; }
-
-.team-code-input {
-  font-family: var(--mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
+.tj .notice.wiggle { animation: tf-wiggle 0.42s var(--ease-out); }

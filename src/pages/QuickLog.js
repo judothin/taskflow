@@ -1,196 +1,284 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { awardTaskCreatedXp, awardTaskCompletedXp } from '../lib/xp';
-import { bumpTeamStreak } from '../lib/streak';
-import Avatar from '../components/Avatar';
+import { tasksChanged } from '../lib/events';
 import FeedbackEditor from '../components/FeedbackEditor';
-import ModalPortal from '../components/ModalPortal';
+import {
+  Sheet, Icon, Avatar, Segmented, SheetLabel, CheckRow, toast, fullName, ROIS, COMPLEXITIES,
+} from '../ui';
 import './QuickLog.css';
 
-// The form itself, with no chrome around it — used both by the modal below
-// and by the standalone /quicklog page the mobile companion docks to.
-export function QuickLogForm({ onLogged }) {
-  const { user } = useAuth();
+// ══════════════════════════════════════════════════════════════
+// Log a completed task — something already done that was never tracked.
+// Opened by the 'open-quick-log' event / the "q" shortcut; GlobalShortcuts
+// mounts <QuickLogModal onClose />. QuickLogForm is the same form without
+// the sheet around it, for embedding.
+// ══════════════════════════════════════════════════════════════
+
+const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const plain = (html) => (html || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+// The `title` column is newer than some databases: an insert naming it
+// fails there, and we retry with the title folded into the description.
+const missingTitleColumn = (err) => /title/i.test(err?.message || '') && /column|schema/i.test(err?.message || '');
+
+function useQuickLog({ onLogged }) {
+  const { user, profile } = useAuth();
   const { activeTeamId } = useTeam();
-  const [users, setUsers]             = useState([]);
-  const [page, setPage]               = useState('');
-  const [feedback, setFeedback]       = useState('');
-  const [completedBy, setCompletedBy] = useState([]);
-  const [saving, setSaving]           = useState(false);
-  const [error, setError]             = useState('');
-  const [successCount, setSuccessCount] = useState(0);
-  const [editorKey, setEditorKey]     = useState(0);
+  const myName = fullName(profile);
+  const [members, setMembers] = useState(null);
+  const [title, setTitle] = useState('');
+  const [page, setPage] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [completedBy, setCompletedBy] = useState(myName ? [myName] : []);
+  const [roi, setRoi] = useState('medium');
+  const [complexity, setComplexity] = useState('medium');
+  const [another, setAnother] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [errorKey, setErrorKey] = useState(0);
+  const [editorKey, setEditorKey] = useState(0);
+  const [count, setCount] = useState(0);
 
   useEffect(() => {
     if (!activeTeamId) return;
-    fetchTeamMembers(activeTeamId).then(setUsers);
+    fetchTeamMembers(activeTeamId).then(m => setMembers(m || []));
   }, [activeTeamId]);
+  // The profile can arrive after the sheet opens.
+  useEffect(() => { if (myName) setCompletedBy(prev => (prev.length ? prev : [myName])); }, [myName]);
 
-  const togglePerson = (name) => {
-    setCompletedBy(prev =>
-      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
-    );
-  };
+  const togglePerson = (name) =>
+    setCompletedBy(prev => (prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]));
 
-  // Keep the Page / Area between entries (often logging several for the same
-  // area) — only clear what was done and who did it. Bumping editorKey remounts
-  // the rich-text editor so its contents actually clear on screen.
-  const reset = () => {
-    setFeedback('');
-    setCompletedBy([]);
-    setError('');
-    setEditorKey(k => k + 1);
-  };
+  const fail = (msg) => { setError(msg); setErrorKey(k => k + 1); };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!page.trim()) { setError('Page is required.'); return; }
-    const plainFeedback = feedback.replace(/<[^>]*>/g, '').trim();
-    if (!plainFeedback) { setError('Feedback is required.'); return; }
-    if (!completedBy.length) { setError('Select at least one person who completed this.'); return; }
+  const submit = async () => {
+    if (saving) return false;
+    if (!title.trim()) { fail('Say what you finished.'); return false; }
+    if (!page.trim()) { fail('Add the page or area it was on.'); return false; }
+    if (!completedBy.length) { fail('Pick at least one person who completed it.'); return false; }
 
     setSaving(true);
     setError('');
     const now = new Date().toISOString();
-    const { error: err } = await supabase.from('tasks').insert({
-      team_id:        activeTeamId,
-      page:           page.trim(),
-      feedback,
-      noticed_by:     completedBy.join(', '),
-      completed_by:   completedBy.join(', '),
-      status:         'completed',
-      roi:            'medium',
-      complexity:     'medium',
-      date_received:  now,
+    const who = completedBy.join(', ');
+    const body = plain(feedback) ? feedback : '';
+    const row = {
+      team_id: activeTeamId,
+      title: title.trim(),
+      page: page.trim(),
+      feedback: body,
+      noticed_by: who,
+      completed_by: who,
+      status: 'completed',
+      roi,
+      complexity,
+      date_received: now,
       date_completed: now,
-      updated_at:     now,
-      created_by:     user?.id || null,
-    });
-
+      updated_at: now,
+      created_by: user?.id || null,
+    };
+    let { error: err } = await supabase.from('tasks').insert(row);
+    if (err && missingTitleColumn(err)) {
+      const { title: t, ...rest } = row;
+      ({ error: err } = await supabase.from('tasks').insert({ ...rest, feedback: `<p>${escapeHtml(t)}</p>${body}` }));
+    }
     setSaving(false);
-    if (err) { setError(err.message); return; }
-    awardTaskCreatedXp(user?.id);
-    awardTaskCompletedXp(user?.id, 'medium');
-    bumpTeamStreak(activeTeamId);
-    window.dispatchEvent(new CustomEvent('tasks-changed'));
-    setSuccessCount(c => c + 1);
-    onLogged?.();
-    reset();
+    if (err) { fail(err.message); return false; }
+
+    // One after the other: each award reads XP and writes it back.
+    (async () => {
+      await awardTaskCreatedXp(user?.id);
+      await awardTaskCompletedXp(user?.id, complexity, { roi });
+    })().catch(() => {});
+    tasksChanged();
+    setCount(c => c + 1);
+
+    // Keep the page and people (often several logs for one area); clear
+    // what was done.
+    setTitle('');
+    setFeedback('');
+    setEditorKey(k => k + 1);
+    onLogged?.(row);
+    return true;
   };
 
+  return {
+    members, myName, title, setTitle, page, setPage, feedback, setFeedback, completedBy, togglePerson,
+    roi, setRoi, complexity, setComplexity, another, setAnother, saving, error, errorKey, editorKey, count, submit,
+  };
+}
+
+// ── Pieces shared by the sheet and the bare form ─────────────
+function MainFields({ f, titleRef }) {
+  const grow = (el) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; } };
   return (
     <>
-          {/* Success flash */}
-          {successCount > 0 && (
-            <div className="quicklog-success">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              {successCount === 1 ? 'Task logged.' : `${successCount} tasks logged.`} Marked as completed.
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="quicklog-form">
-
-            <div className="form-group">
-              <label className="label">Page / Area</label>
-              <input
-                className="input"
-                placeholder="e.g. Checkout, Admin Dashboard, API"
-                value={page}
-                onChange={e => setPage(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="label">What was done</label>
-              <FeedbackEditor key={editorKey} value={feedback} onChange={setFeedback} />
-            </div>
-
-            <div className="form-group">
-              <label className="label">
-                Completed By
-                {completedBy.length > 0 && (
-                  <span className="quicklog-selected-count">{completedBy.length} selected</span>
-                )}
-              </label>
-              <div className="quicklog-people">
-                {users.map(u => {
-                  const name = `${u.first_name} ${u.last_name}`;
-                  const checked = completedBy.includes(name);
-                  return (
-                    <label key={u.id} className={`complete-person-row quicklog-person-row ${checked ? 'complete-person-row-checked' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => togglePerson(name)}
-                        className="complete-person-checkbox"
-                      />
-                      <Avatar
-                        src={u.avatar_url}
-                        color={u.color || '#6366f1'}
-                        initials={`${u.first_name[0]}${u.last_name[0]}`}
-                        size={28}
-                        style={{ flexShrink: 0 }}
-                      />
-                      <span className="complete-person-name">{u.first_name} {u.last_name}</span>
-                    </label>
-                  );
-                })}
-                {users.length === 0 && (
-                  <p style={{ fontSize: 13, color: 'var(--text-dim)', padding: '8px 4px' }}>No team members found.</p>
-                )}
-              </div>
-            </div>
-
-            {error && <div className="error-msg">⚠ {error}</div>}
-
-            <button type="submit" className="btn btn-primary quicklog-submit" disabled={saving}>
-              {saving ? 'Logging…' : 'Log as Completed'}
-            </button>
-
-          </form>
+      <textarea
+        ref={(el) => { if (titleRef) titleRef.current = el; grow(el); }}
+        className="title-input ql-title"
+        rows={1}
+        placeholder="What did you finish?"
+        value={f.title}
+        onChange={(e) => { f.setTitle(e.target.value); grow(e.target); }}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) e.preventDefault(); }}
+        aria-label="What did you finish?"
+      />
+      <label className="link-field ql-page">
+        <Icon name="link" size={15} />
+        <input
+          value={f.page}
+          onChange={(e) => f.setPage(e.target.value)}
+          placeholder="Page name or URL, e.g. Checkout or https://example.com/page"
+          aria-label="Page or area"
+        />
+      </label>
+      <div className="ql-body">
+        <FeedbackEditor
+          key={f.editorKey}
+          value={f.feedback}
+          onChange={f.setFeedback}
+          placeholder="Any detail worth keeping — what changed, where, anything to remember… (optional)"
+        />
+      </div>
     </>
   );
 }
 
+function People({ f }) {
+  if (f.members === null) {
+    return (
+      <div className="ql-people">
+        {[0, 1, 2].map(i => <div key={i} className="skel ql-person-skel" />)}
+      </div>
+    );
+  }
+  if (!f.members.length) return <p className="ql-hint">No team members found.</p>;
+  return (
+    <div className="ql-people stagger">
+      {f.members.map(m => {
+        const name = fullName(m);
+        const on = f.completedBy.includes(name);
+        return (
+          <button key={m.id} type="button" className={`ql-person ${on ? 'is-on' : ''}`} onClick={() => f.togglePerson(name)} aria-pressed={on}>
+            <Avatar person={m} size={26} />
+            <span className="truncate ql-person-name">{name}{name === f.myName && <span className="t-3"> · you</span>}</span>
+            <span className={`check-round ${on ? 'is-on' : ''}`} aria-hidden="true" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Choices({ f }) {
+  return (
+    <>
+      <div>
+        <SheetLabel>ROI</SheetLabel>
+        <Segmented value={f.roi} onChange={f.setRoi} options={ROIS} ariaLabel="ROI" />
+      </div>
+      <div>
+        <SheetLabel>Complexity</SheetLabel>
+        <Segmented value={f.complexity} onChange={f.setComplexity} options={COMPLEXITIES} ariaLabel="Complexity" />
+      </div>
+    </>
+  );
+}
+
+function ErrorLine({ f }) {
+  if (!f.error) return null;
+  return (
+    <div key={f.errorKey} className="notice notice-error wiggle ql-error" role="alert">
+      <Icon name="alert" size={15} />{f.error}
+    </div>
+  );
+}
+
+/** The form with no sheet around it. */
+export function QuickLogForm({ onLogged }) {
+  const f = useQuickLog({ onLogged });
+  return (
+    <form className="ql-form" onSubmit={(e) => { e.preventDefault(); f.submit(); }}>
+      {f.count > 0 && (
+        <div key={f.count} className="notice notice-ok ql-ok">
+          <Icon name="check" size={15} />
+          {f.count === 1 ? 'Logged as completed.' : `${f.count} tasks logged as completed.`}
+        </div>
+      )}
+      <MainFields f={f} />
+      <div>
+        <SheetLabel>Completed by</SheetLabel>
+        <People f={f} />
+      </div>
+      <Choices f={f} />
+      <ErrorLine f={f} />
+      <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={f.saving}>
+        {f.saving ? <span className="spinner" /> : 'Log as completed'}
+      </button>
+    </form>
+  );
+}
+
 export default function QuickLogModal({ onClose }) {
-  const mouseDownRef = useRef(false);
-  const handleOverlayMD = useCallback(e => { mouseDownRef.current = e.target === e.currentTarget; }, []);
-  const handleOverlayMU = useCallback(e => { if (mouseDownRef.current && e.target === e.currentTarget) onClose(); }, [onClose]);
+  const navigate = useNavigate();
+  const titleRef = useRef(null);
+  const anotherRef = useRef(false);
+  const onLogged = useCallback((row) => {
+    toast(anotherRef.current ? `Logged “${row.title.slice(0, 40)}”` : 'Logged as completed', {
+      action: { label: 'View', onClick: () => navigate('/completed') },
+    });
+  }, [navigate]);
+  const f = useQuickLog({ onLogged });
+  anotherRef.current = f.another;
+
+  useEffect(() => { setTimeout(() => titleRef.current?.focus(), 60); }, []);
+
+  const submit = async () => {
+    const ok = await f.submit();
+    if (!ok) return;
+    if (f.another) titleRef.current?.focus();
+    else onClose();
+  };
 
   return (
-    <ModalPortal>
-      <div className="modal-overlay" onMouseDown={handleOverlayMD} onMouseUp={handleOverlayMU}>
-        <div className="modal quicklog-modal">
-          <div className="modal-header">
-            <div className="quicklog-header">
-              <div className="quicklog-header-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
-                  <polyline points="22 4 12 14.01 9 11.01"/>
-                </svg>
-              </div>
-              <div>
-                <h2 className="quicklog-title">Log Completed Task</h2>
-                <p className="quicklog-sub">Record something finished that wasn't already tracked.</p>
-              </div>
-            </div>
-            <button className="btn btn-secondary" onClick={onClose} aria-label="Close" style={{ padding: '7px 10px' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
+    <Sheet
+      eyebrow={<>Log completed{f.count > 0 && <span key={f.count} className="t-4 bump">· {f.count} logged</span>}</>}
+      onClose={onClose}
+      onSubmit={submit}
+      mainClassName="ql-main"
+      aside={(
+        <>
+          <div>
+            <SheetLabel sub="Everyone picked shares the credit">Completed by</SheetLabel>
+            <People f={f} />
           </div>
-
-          <div className="modal-body">
-            <QuickLogForm />
-          </div>
-        </div>
-      </div>
-    </ModalPortal>
+          <Choices f={f} />
+          <div className="sheet-aside-sep" />
+          <CheckRow
+            checked={f.another}
+            onChange={f.setAnother}
+            title="Log another"
+            desc="Keep this open and reuse the page + people"
+          />
+        </>
+      )}
+      footer={(
+        <>
+          <span className="sheet-foot-note hide-phone">Lands in Completed, stamped now</span>
+          <span className="spacer" />
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={f.saving}>
+            {f.saving ? <span className="spinner" /> : <>Log as completed <span className="kbd">⌘↵</span></>}
+          </button>
+        </>
+      )}
+    >
+      <MainFields f={f} titleRef={titleRef} />
+      <ErrorLine f={f} />
+    </Sheet>
   );
 }

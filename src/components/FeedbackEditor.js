@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import './FeedbackEditor.css';
 
 // Strip pasted/foreign formatting (Word, light-mode colors, fonts) so content
 // always renders in the app's own theme.
@@ -22,7 +23,9 @@ function normalizeHtml(html) {
   return doc.body.innerHTML;
 }
 
-export default function FeedbackEditor({ value, onChange }) {
+// Rich-text description field. Bare by default (the borderless body of a
+// sheet); `boxed` gives it a field border. ⌘/Ctrl+B bolds, paste is plain text.
+export default function FeedbackEditor({ value, onChange, placeholder = 'Describe the issue, where it happens, and what done looks like…', boxed = false, autoFocus = false }) {
   const editorRef = useRef();
   const initialized = useRef(false);
 
@@ -30,12 +33,11 @@ export default function FeedbackEditor({ value, onChange }) {
     if (!initialized.current && editorRef.current) {
       editorRef.current.innerHTML = normalizeHtml(value || '');
       initialized.current = true;
+      if (autoFocus) editorRef.current.focus();
     }
   }, []);
 
-  // Reflect external value changes into the DOM — e.g. batch-add clears
-  // `feedback` for the next entry. Skip while the editor is focused so typing
-  // never fights the caret (onInput already keeps state in sync then).
+  // Reflect outside changes (batch add clears the field) unless focused.
   useEffect(() => {
     const el = editorRef.current;
     if (!el || !initialized.current) return;
@@ -46,40 +48,27 @@ export default function FeedbackEditor({ value, onChange }) {
 
   const sync = () => onChange(editorRef.current.innerHTML);
 
-  // Paste as plain text — never let external styling into the document.
   const handlePaste = (e) => {
+    // Images are the sheet's business (attachments) — let them bubble.
+    const hasImage = Array.from(e.clipboardData?.items || []).some(it => it.kind === 'file');
+    if (hasImage) return;
     e.preventDefault();
     const text = (e.clipboardData || window.clipboardData).getData('text/plain');
     document.execCommand('insertText', false, text);
     sync();
   };
 
-  const bold = () => {
-    document.execCommand('bold', false, null);
-    editorRef.current.focus();
-  };
-
   return (
-    <div className="rich-editor-wrap">
-      <div className="rich-editor-toolbar">
-        <button
-          type="button"
-          onMouseDown={(e) => { e.preventDefault(); bold(); }}
-          className="rich-toolbar-btn rich-toolbar-bold"
-          title="Bold selected text"
-        >
-          B
-        </button>
-      </div>
-      <div
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        onInput={sync}
-        onPaste={handlePaste}
-        className="rich-editor-body"
-        data-placeholder="Describe the issue or what needs to be fixed..."
-      />
-    </div>
+    <div
+      ref={editorRef}
+      contentEditable
+      suppressContentEditableWarning
+      onInput={sync}
+      onPaste={handlePaste}
+      className={`fb-editor ${boxed ? 'fb-editor-boxed' : ''}`}
+      data-placeholder={placeholder}
+      role="textbox"
+      aria-multiline="true"
+    />
   );
 }

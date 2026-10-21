@@ -1,0 +1,187 @@
+/* ══════════════════════════════════════════════════════════════
+   TaskFlow design system — tokens
+   --------------------------------------------------------------
+   One look for the whole app. <html> carries:
+     data-theme="light" | "dark"   resolved from the Light / Dark / System
+                                   choice (context/ThemeContext.js)
+     style="--accent: …"           the person's accent colour, when they've
+                                   picked one (lib/themeColors.js)
+     body.has-bg-image             a background image is set — surfaces turn
+                                   to frosted glass (see base.css)
+
+   Everything else reads these variables. Nothing outside this file should
+   hard-code a colour except the fixed status / priority hues below.
+   ══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Type ── */
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-md: 14px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 22px;
+  --fs-3xl: 32px;
+  --fs-4xl: 40px;
+
+  /* ── Shape ── */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r: 8px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+  --r-pill: 999px;
+
+  /* ── Layout ── */
+  --rail-w: 58px;
+  --topbar-h: 57px;
+  --page-pad: 46px;
+  --tabbar-h: 62px;
+
+  /* ── Motion ──
+     spring:  the bubbly one — small overshoot, for things that appear
+     out:     fast start, soft landing — for things that move
+     io:      symmetric — for things already on screen changing place */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.4, 0.27, 1.4);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-io: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-1: 0.12s;
+  --dur-2: 0.2s;
+  --dur-3: 0.32s;
+  --dur-4: 0.46s;
+
+  /* ── Fixed hues (status / priority) ── */
+  --st-open: #2563eb;
+  --st-inprogress: #ea580c;
+  --st-onhold: #d97706;
+  --st-completed: #16a34a;
+  --st-critical: #dc2626;
+  --success: #15803d;
+  --success-soft: #dcfce7;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --warning: #b45309;
+  --warning-soft: #fef3c7;
+  --info: #2563eb;
+  --chart: #22a447;
+
+  /* ── Light palette (default) ── */
+  --bg: #ffffff;
+  --bg-app: #ffffff;
+  --rail: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f6f6f5;
+  --surface-3: #efefee;
+  --surface-solid: #ffffff;
+  --hover: #f4f4f3;
+  --press: #ececeb;
+  --border: #ececea;
+  --border-strong: #dededc;
+  --border-input: #e3e3e1;
+
+  --text: #171717;
+  --text-2: #4b4b50;
+  --text-3: #85858c;
+  --text-4: #b2b2b8;
+
+  /* Ink = the near-black of primary buttons and selected segments. The
+     accent defaults to it; picking an accent colour recolours them. */
+  --ink: #141414;
+  --ink-text: #ffffff;
+  --accent: var(--ink);
+  --accent-text: var(--ink-text);
+  --accent-soft: color-mix(in srgb, var(--accent) 9%, transparent);
+  --accent-ring: color-mix(in srgb, var(--accent) 20%, transparent);
+
+  --overlay: rgba(28, 28, 30, 0.34);
+  --shadow-xs: 0 1px 2px rgba(17, 17, 20, 0.05);
+  --shadow-sm: 0 1px 3px rgba(17, 17, 20, 0.06), 0 1px 2px rgba(17, 17, 20, 0.04);
+  --shadow: 0 10px 30px -10px rgba(17, 17, 20, 0.16), 0 2px 6px -2px rgba(17, 17, 20, 0.06);
+  --shadow-lg: 0 30px 70px -20px rgba(17, 17, 20, 0.3), 0 8px 20px -10px rgba(17, 17, 20, 0.12);
+  --shadow-sheet: -24px 0 60px -24px rgba(17, 17, 20, 0.22);
+
+  --avatar-bg: #efe7dc;
+  --avatar-text: #5b4a36;
+
+  --logo-bg: #111111;
+  --logo-text: #ffffff;
+
+  --scrollbar: #d7d7d5;
+  color-scheme: light;
+}
+
+/* ── Dark palette ── */
+:root[data-theme="dark"] {
+  --st-open: #60a5fa;
+  --st-inprogress: #fb923c;
+  --st-onhold: #fbbf24;
+  --st-completed: #4ade80;
+  --st-critical: #f87171;
+  --success: #4ade80;
+  --success-soft: rgba(74, 222, 128, 0.12);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.12);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.12);
+  --info: #60a5fa;
+  --chart: #3fbf68;
+
+  --bg: #111112;
+  --bg-app: #111112;
+  --rail: #0d0d0e;
+  --surface: #161617;
+  --surface-2: #1c1c1e;
+  --surface-3: #242427;
+  --surface-solid: #18181a;
+  --hover: #1e1e20;
+  --press: #27272a;
+  --border: #252528;
+  --border-strong: #303034;
+  --border-input: #2c2c30;
+
+  --text: #ededee;
+  --text-2: #b4b4ba;
+  --text-3: #808088;
+  --text-4: #56565c;
+
+  --ink: #f2f2f2;
+  --ink-text: #111112;
+
+  --overlay: rgba(0, 0, 0, 0.55);
+  --shadow-xs: none;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 34px 80px -20px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-sheet: -24px 0 70px -20px rgba(0, 0, 0, 0.8);
+
+  --avatar-bg: #2e2820;
+  --avatar-text: #dccbb5;
+
+  --logo-bg: #f2f2f2;
+  --logo-text: #111112;
+
+  --scrollbar: #333337;
+  color-scheme: dark;
+}
+
+/* ── Glass (background image set) ──
+   Opacity and blur come from the person's settings via --glass-alpha /
+   --glass-blur (lib/themeColors.js). The sheet/menu surface stays nearly
+   opaque so text over a busy photo stays readable. */
+body.has-bg-image {
+  --glass-alpha: 0.72;
+  --surface: color-mix(in srgb, var(--bg) calc(var(--glass-alpha) * 100%), transparent);
+  --surface-2: color-mix(in srgb, var(--bg) calc(var(--glass-alpha) * 100% - 6%), transparent);
+  --rail: color-mix(in srgb, var(--bg) calc(var(--glass-alpha) * 100% + 6%), transparent);
+  --bg-app: transparent;
+  --surface-solid: color-mix(in srgb, var(--bg) 96%, transparent);
+  --hover: color-mix(in srgb, var(--text) 6%, transparent);
+  --press: color-mix(in srgb, var(--text) 10%, transparent);
+  --border: color-mix(in srgb, var(--text) 10%, transparent);
+  --border-strong: color-mix(in srgb, var(--text) 16%, transparent);
+  --border-input: color-mix(in srgb, var(--text) 13%, transparent);
+}

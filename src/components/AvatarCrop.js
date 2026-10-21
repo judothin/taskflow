@@ -1,222 +1,128 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import ModalPortal from './ModalPortal';
+import { Dialog, Icon } from '../ui';
+import { Range } from './SettingsControls';
 
 /**
- * AvatarCrop
- * Presents a circular crop UI over an image, returns a cropped Blob.
- *
- * Props:
- *   src       – object URL of the source image
- *   onConfirm(blob) – called with the cropped JPEG blob
- *   onCancel  – called when dismissed
+ * Circular crop for a profile photo. Drag to move, scroll / pinch-free
+ * slider to zoom; returns a JPEG blob.
+ *   <AvatarCrop src={objectUrl} onConfirm={(blob) => …} onCancel={…} />
  */
+const SIZE = 280; // output & canvas size in px
+
+function layout(img, scale, offset) {
+  const aspect = img.naturalWidth / img.naturalHeight;
+  const baseW = aspect >= 1 ? SIZE * aspect : SIZE;
+  const baseH = aspect >= 1 ? SIZE : SIZE / aspect;
+  const w = baseW * scale;
+  const h = baseH * scale;
+  return { w, h, x: (SIZE - w) / 2 + offset.x, y: (SIZE - h) / 2 + offset.y };
+}
+
 export default function AvatarCrop({ src, onConfirm, onCancel }) {
-  const canvasRef   = useRef(null);
-  const imgRef      = useRef(null);
-  const containerRef = useRef(null);
-
-  const [scale,    setScale]    = useState(1);
-  const [offset,   setOffset]   = useState({ x: 0, y: 0 });
+  const canvasRef = useRef(null);
+  const imgRef = useRef(null);
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
-  const dragStart  = useRef(null);
+  const [ready, setReady] = useState(false);
+  const drag = useRef(null);
 
-  const SIZE = 280; // crop circle diameter in px
-
-  // Draw the image + crop overlay onto the canvas preview
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    const img    = imgRef.current;
-    if (!canvas || !img) return;
-
+    const img = imgRef.current;
+    if (!canvas || !img || !img.naturalWidth) return;
     const ctx = canvas.getContext('2d');
-    canvas.width  = SIZE;
+    canvas.width = SIZE;
     canvas.height = SIZE;
-
-    // How the image fits: fill the circle, centered
-    const aspect = img.naturalWidth / img.naturalHeight;
-    let baseW, baseH;
-    if (aspect >= 1) {
-      baseH = SIZE;
-      baseW = SIZE * aspect;
-    } else {
-      baseW = SIZE;
-      baseH = SIZE / aspect;
-    }
-
-    const w = baseW * scale;
-    const h = baseH * scale;
-    const x = (SIZE - w) / 2 + offset.x;
-    const y = (SIZE - h) / 2 + offset.y;
-
-    // Clear
+    const { x, y, w, h } = layout(img, scale, offset);
     ctx.clearRect(0, 0, SIZE, SIZE);
-
-    // Dark dimming outside circle
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(0, 0, SIZE, SIZE);
-
-    // Clip to circle, draw image
     ctx.save();
     ctx.beginPath();
     ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2);
     ctx.clip();
-    ctx.clearRect(0, 0, SIZE, SIZE);
     ctx.drawImage(img, x, y, w, h);
     ctx.restore();
-
-    // Circle border
-    ctx.strokeStyle = 'white';
-    ctx.lineWidth   = 2;
-    ctx.beginPath();
-    ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 1, 0, Math.PI * 2);
-    ctx.stroke();
   }, [scale, offset]);
 
   useEffect(() => { draw(); }, [draw]);
 
-  // ── Drag ────────────────────────────────────────────────────
-  const onMouseDown = (e) => {
+  // Pointer drag — the canvas can be shown smaller than SIZE on a phone, so
+  // convert screen pixels to canvas pixels.
+  const ratio = () => {
+    const r = canvasRef.current?.getBoundingClientRect();
+    return r && r.width ? SIZE / r.width : 1;
+  };
+  const onPointerDown = (e) => {
     e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    drag.current = { mx: e.clientX, my: e.clientY, ox: offset.x, oy: offset.y, k: ratio() };
     setDragging(true);
-    dragStart.current = {
-      mx: e.clientX, my: e.clientY,
-      ox: offset.x,  oy: offset.y,
-    };
   };
-
-  const onMouseMove = useCallback((e) => {
-    if (!dragging || !dragStart.current) return;
-    const dx = e.clientX - dragStart.current.mx;
-    const dy = e.clientY - dragStart.current.my;
-    setOffset({ x: dragStart.current.ox + dx, y: dragStart.current.oy + dy });
-  }, [dragging]);
-
-  const onMouseUp = useCallback(() => setDragging(false), []);
-
-  // Touch equivalents
-  const onTouchStart = (e) => {
-    const t = e.touches[0];
-    setDragging(true);
-    dragStart.current = { mx: t.clientX, my: t.clientY, ox: offset.x, oy: offset.y };
+  const onPointerMove = (e) => {
+    const d = drag.current;
+    if (!d) return;
+    setOffset({ x: d.ox + (e.clientX - d.mx) * d.k, y: d.oy + (e.clientY - d.my) * d.k });
   };
-  const onTouchMove = useCallback((e) => {
-    if (!dragging || !dragStart.current) return;
-    const t = e.touches[0];
-    setOffset({
-      x: dragStart.current.ox + t.clientX - dragStart.current.mx,
-      y: dragStart.current.oy + t.clientY - dragStart.current.my,
-    });
-  }, [dragging]);
+  const onPointerUp = () => { drag.current = null; setDragging(false); };
 
+  // Wheel zoom without scrolling the page behind the dialog.
   useEffect(() => {
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup',   onMouseUp);
-    window.addEventListener('touchmove', onTouchMove, { passive: true });
-    window.addEventListener('touchend',  onMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup',   onMouseUp);
-      window.removeEventListener('touchmove', onTouchMove);
-      window.removeEventListener('touchend',  onMouseUp);
+    const el = canvasRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      setScale(s => Math.min(3, Math.max(0.5, s - e.deltaY * 0.0015)));
     };
-  }, [onMouseMove, onMouseUp, onTouchMove]);
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
-  // ── Confirm: render final cropped circle to a new canvas & export ──
-  const handleConfirm = () => {
-    const img    = imgRef.current;
+  const confirm = () => {
+    const img = imgRef.current;
     if (!img) return;
-
-    const out    = document.createElement('canvas');
-    out.width    = SIZE;
-    out.height   = SIZE;
-    const ctx    = out.getContext('2d');
-
-    const aspect = img.naturalWidth / img.naturalHeight;
-    let baseW, baseH;
-    if (aspect >= 1) { baseH = SIZE; baseW = SIZE * aspect; }
-    else             { baseW = SIZE; baseH = SIZE / aspect; }
-
-    const w = baseW * scale;
-    const h = baseH * scale;
-    const x = (SIZE - w) / 2 + offset.x;
-    const y = (SIZE - h) / 2 + offset.y;
-
+    const out = document.createElement('canvas');
+    out.width = SIZE;
+    out.height = SIZE;
+    const ctx = out.getContext('2d');
+    const { x, y, w, h } = layout(img, scale, offset);
     ctx.beginPath();
     ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2);
     ctx.clip();
     ctx.drawImage(img, x, y, w, h);
-
-    out.toBlob((blob) => { onConfirm(blob); }, 'image/jpeg', 0.92);
+    out.toBlob((blob) => { if (blob) onConfirm(blob); }, 'image/jpeg', 0.92);
   };
 
   return (
-    <ModalPortal>
-    <div className="modal-overlay" style={{ zIndex: 1200 }}>
-      <div className="modal" style={{ maxWidth: 380 }}>
-        <div className="modal-header">
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Crop Profile Photo</h2>
-          <button onClick={onCancel} className="btn btn-ghost btn-sm">✕</button>
-        </div>
-
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', alignSelf: 'flex-start' }}>
-            Drag to reposition · scroll or use the slider to zoom
-          </p>
-
-          {/* Hidden img element used as source for canvas */}
-          <img
-            ref={imgRef}
-            src={src}
-            alt=""
-            style={{ display: 'none' }}
-            onLoad={draw}
-          />
-
-          {/* Canvas crop preview */}
-          <canvas
-            ref={canvasRef}
-            width={SIZE}
-            height={SIZE}
-            style={{
-              borderRadius: '50%',
-              cursor: dragging ? 'grabbing' : 'grab',
-              userSelect: 'none',
-              touchAction: 'none',
-              width: SIZE,
-              height: SIZE,
-            }}
-            onMouseDown={onMouseDown}
-            onTouchStart={onTouchStart}
-          />
-
-          {/* Zoom slider */}
-          <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-dim)', flexShrink: 0 }}>
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
-            </svg>
-            <input
-              type="range"
-              min="0.5"
-              max="3"
-              step="0.01"
-              value={scale}
-              onChange={e => setScale(parseFloat(e.target.value))}
-              style={{ flex: 1, accentColor: 'var(--accent)' }}
-            />
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-dim)', flexShrink: 0 }}>
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
-            </svg>
-          </div>
-        </div>
-
-        <div className="modal-footer">
-          <button onClick={onCancel} className="btn btn-ghost">Cancel</button>
-          <button onClick={handleConfirm} className="btn btn-primary">Apply</button>
+    <Dialog
+      title="Crop your photo"
+      text="Drag to reposition. Scroll or use the slider to zoom."
+      onClose={onCancel}
+      footer={(
+        <>
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={confirm} disabled={!ready}>Use photo</button>
+        </>
+      )}
+    >
+      <div className="st-crop">
+        <img ref={imgRef} src={src} alt="" hidden onLoad={() => { setReady(true); draw(); }} />
+        <canvas
+          ref={canvasRef}
+          width={SIZE}
+          height={SIZE}
+          className={dragging ? 'is-dragging' : ''}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          aria-label="Photo crop area"
+        />
+        <div className="st-crop-zoom">
+          <Icon name="image" size={13} />
+          <Range value={scale} min={0.5} max={3} step={0.01} onChange={setScale} label="Zoom" />
+          <Icon name="image" size={18} />
         </div>
       </div>
-    </div>
-    </ModalPortal>
+    </Dialog>
   );
 }

@@ -2,128 +2,96 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { usePets } from '../context/PetContext';
+import { Icon } from '../ui';
+import ColorSwatches, { PERSON_COLORS } from '../components/ColorSwatches';
 import './Auth.css';
-
-const PRESET_COLORS = [
-  '#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6',
-  '#8b5cf6','#ef4444','#06b6d4','#84cc16','#f97316'
-];
 
 export default function Register() {
   const [form, setForm] = useState({
-    firstName: '', lastName: '', email: '', password: '', confirm: '', color: '#6366f1'
+    firstName: '', lastName: '', email: '', password: '', confirm: '', color: PERSON_COLORS[0],
   });
   const [error, setError] = useState('');
+  const [errTick, setErrTick] = useState(0);
   const [loading, setLoading] = useState(false);
   const { signUp } = useAuth();
-  const { refresh: refreshPets } = usePets();
+  const { refresh: refreshLevels } = usePets();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const invite = searchParams.get('invite');
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  const fail = (msg) => { setError(msg); setErrTick(t => t + 1); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (form.password !== form.confirm) { setError('Passwords do not match'); return; }
-    if (form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (form.password.length < 6) { fail('Password must be at least 6 characters.'); return; }
+    if (form.password !== form.confirm) { fail('Passwords don’t match.'); return; }
     setLoading(true);
     try {
-      await signUp(form.email, form.password, form.firstName, form.lastName, form.color);
-      // AuthContext's onAuthStateChange listener can fire (and trigger
-      // PetContext's very first fetch) before signUp()'s own sequential
-      // profiles/user_levels inserts above have actually landed — that
-      // race left PetContext caching a stale "no row yet" result, which
-      // meant RequireGamificationChoice saw nothing usable and let
-      // RequirePet send new signups straight to the pet-reveal crate
-      // *before* the choose-gamification screen ever got a chance to show.
-      // Explicitly refreshing here (now that the inserts are guaranteed
-      // done) forces PetContext to pick up the real row.
-      await refreshPets();
-      const invite = searchParams.get('invite');
+      await signUp(form.email.trim(), form.password, form.firstName.trim(), form.lastName.trim(), form.color);
+      // The auth listener can fetch the level row before signUp's own insert
+      // lands; refresh now that it has.
+      await refreshLevels();
       navigate(invite ? `/onboarding?invite=${invite}` : '/onboarding');
     } catch (err) {
-      setError(err.message || 'Registration failed');
+      fail(err.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-bg">
-        <div className="auth-orb auth-orb-1" />
-        <div className="auth-orb auth-orb-2" />
-      </div>
+    <div className="au-page">
+      <div className="au-card au-card-wide">
+        <div className="au-logo" aria-hidden="true">T</div>
+        <h1 className="au-title">Create your account</h1>
+        <p className="au-sub">{invite ? 'You’ve been invited to a team. Make an account to join it.' : 'Join your team on TaskFlow.'}</p>
 
-      <div className="auth-card fade-in" style={{ maxWidth: 480 }}>
-        <div className="auth-logo">
-          <img src="/logo.png" alt="TaskFlow" style={{ margin: '0 auto 16px', width: 44, height: 44, borderRadius: 8, objectFit: 'contain', display: 'block' }} />
-          <h1>Create account</h1>
-          <p>Join your team on TaskFlow</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-grid form-grid-2">
-            <div className="form-group">
-              <label className="label">First Name</label>
-              <input className="input" placeholder="Jane" value={form.firstName} onChange={set('firstName')} required />
-            </div>
-            <div className="form-group">
-              <label className="label">Last Name</label>
-              <input className="input" placeholder="Doe" value={form.lastName} onChange={set('lastName')} required />
-            </div>
+        <form onSubmit={handleSubmit} className="au-form stagger">
+          <div className="au-pair">
+            <label className="field">
+              <span className="field-label">First name</span>
+              <input className="input" placeholder="Jane" value={form.firstName} onChange={set('firstName')} autoComplete="given-name" required autoFocus />
+            </label>
+            <label className="field">
+              <span className="field-label">Last name</span>
+              <input className="input" placeholder="Doe" value={form.lastName} onChange={set('lastName')} autoComplete="family-name" required />
+            </label>
           </div>
 
-          <div className="form-group">
-            <label className="label">Email</label>
-            <input type="email" className="input" placeholder="you@company.com" value={form.email} onChange={set('email')} required />
+          <label className="field">
+            <span className="field-label">Email</span>
+            <input type="email" className="input" placeholder="you@company.com" value={form.email} onChange={set('email')} autoComplete="email" required />
+          </label>
+
+          <div className="au-pair">
+            <label className="field">
+              <span className="field-label">Password</span>
+              <input type="password" className="input" placeholder="Min. 6 characters" value={form.password} onChange={set('password')} autoComplete="new-password" required />
+            </label>
+            <label className="field">
+              <span className="field-label">Confirm</span>
+              <input type="password" className="input" placeholder="••••••••" value={form.confirm} onChange={set('confirm')} autoComplete="new-password" required />
+            </label>
           </div>
 
-          <div className="form-group">
-            <label className="label">Password</label>
-            <input type="password" className="input" placeholder="Min. 6 characters" value={form.password} onChange={set('password')} required />
+          <div className="field">
+            <span className="field-label">Your color <span className="opt-hint">· for your avatar and the activity chart</span></span>
+            <ColorSwatches value={form.color} onChange={(c) => setForm(f => ({ ...f, color: c }))} custom label="Your color" />
           </div>
 
-          <div className="form-group">
-            <label className="label">Confirm Password</label>
-            <input type="password" className="input" placeholder="••••••••" value={form.confirm} onChange={set('confirm')} required />
-          </div>
+          {error && (
+            <div key={errTick} className="notice notice-error wiggle" role="alert"><Icon name="alert" size={15} /><span>{error}</span></div>
+          )}
 
-          <div className="form-group">
-            <label className="label">Your Chart Color</label>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
-              This color will represent you on the activity chart
-            </p>
-            <div className="color-picker-row">
-              {PRESET_COLORS.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`color-swatch ${form.color === c ? 'color-swatch-active' : ''}`}
-                  style={{ background: c }}
-                  onClick={() => setForm(f => ({ ...f, color: c }))}
-                />
-              ))}
-              <input
-                type="color"
-                value={form.color}
-                onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
-                className="color-custom-input"
-                title="Custom color"
-              />
-            </div>
-          </div>
-
-          {error && <div className="error-msg">⚠ {error}</div>}
-
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
-            {loading ? 'Creating account...' : 'Create Account'}
+          <button type="submit" className="btn btn-primary btn-block au-submit" disabled={loading}>
+            {loading ? <span className="spinner" /> : <>Create account <Icon name="arrowRight" size={15} /></>}
           </button>
         </form>
 
-        <div className="auth-footer">
-          Already have an account? <Link to="/login">Sign in</Link>
+        <div className="au-foot">
+          Already have an account? <Link to={invite ? `/login?invite=${invite}` : '/login'}>Sign in</Link>
         </div>
       </div>
     </div>

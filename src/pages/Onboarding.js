@@ -6,19 +6,18 @@ import { usePets } from '../context/PetContext';
 import TeamJoinCreateForm from '../components/TeamJoinCreateForm';
 import './Auth.css';
 
+// After sign-up (or for anyone with no team): create one, or join with a code.
 export default function Onboarding() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const { refreshTeams, switchTeam } = useTeam();
-  const { refresh: refreshPets } = usePets();
+  const { refresh: refreshLevels } = usePets();
+  const invite = params.get('invite') || '';
 
   const handleDone = async (team) => {
     await refreshTeams();
-    // Belt-and-suspenders alongside the same refresh in Register.js — makes
-    // sure RequireGamificationChoice has real data the moment we land on
-    // /dashboard, not a stale pre-signup-insert cache.
-    await refreshPets();
+    await refreshLevels();
     switchTeam(team.id);
     navigate('/dashboard');
   };
@@ -29,26 +28,22 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-bg">
-        <div className="auth-orb auth-orb-1" />
-        <div className="auth-orb auth-orb-2" />
+    <div className="au-page">
+      <div className="au-card au-card-wide">
+        <div className="au-logo" aria-hidden="true">T</div>
+        <h1 className="au-title">{invite ? 'Join your team' : 'Set up your team'}</h1>
+        <p className="au-sub">
+          {invite
+            ? 'Your invite code is filled in — join to get started.'
+            : 'Everything in TaskFlow lives in a team. Start one, or join with an invite code.'}
+        </p>
+        <div style={{ marginTop: 26 }}>
+          <TeamJoinCreateForm defaultCode={invite} onDone={handleDone} />
+        </div>
       </div>
-
-      <div className="auth-card fade-in" style={{ maxWidth: 440 }}>
-        <div className="auth-logo">
-          <img src="/logo.png" alt="TaskFlow" style={{ margin: '0 auto 16px', width: 44, height: 44, borderRadius: 8, objectFit: 'contain', display: 'block' }} />
-          <h1>One more step</h1>
-          <p>Create a team, or join one with an invite code</p>
-        </div>
-
-        <TeamJoinCreateForm defaultCode={params.get('invite') || ''} onDone={handleDone} />
-
-        <div className="auth-footer">
-          <button onClick={handleSignOut} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 13, cursor: 'pointer' }}>
-            Sign out
-          </button>
-        </div>
+      <div className="au-below">
+        Signed in as <span className="mono">{user?.email}</span> ·{' '}
+        <button type="button" className="au-link" onClick={handleSignOut}>Sign out</button>
       </div>
     </div>
   );

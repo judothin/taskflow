@@ -8,8 +8,7 @@ import { useEffect } from 'react';
 // back down — a sheet you can only close with an X reads as a dialog wearing a
 // sheet's clothes.
 //
-// Applied by ModalPortal to whatever `.modal` it contains, so it reaches every
-// modal at once rather than each one opting in.
+// Applied by ModalPortal to whatever sheet or dialog it contains.
 //
 // The rule that makes it feel right: the drag only starts when the sheet's own
 // scroll is already at the top. Otherwise flicking down through a long form
@@ -26,12 +25,13 @@ export default function useSheetGestures(rootRef, onDismiss, enabled = true) {
     const root = rootRef.current;
     if (!enabled || !root || !onDismiss) return undefined;
 
-    // Two sheet shapes in this app: .modal (every form) and .msheet (the
-    // purpose-built bottom sheets).
-    const sheet = root.querySelector('.modal, .msheet');
+    // Side sheets are full screen on a phone and full of fields, so only their
+    // header bar drags. Dialogs and the "More" sheet drag from anywhere.
+    const sheet = root.querySelector('.sheet, .dialog, .more-sheet');
     if (!sheet) return undefined;
-    // The scrolling part, if it has one. .msheet scrolls itself.
-    const body = sheet.querySelector('.modal-body') || (sheet.classList.contains('msheet') ? sheet : null);
+    const isSide = sheet.classList.contains('sheet');
+    const handle = isSide ? (sheet.querySelector('.sheet-head') || sheet) : sheet;
+    const body = isSide ? null : sheet;
 
     let startY = 0;
     let startT = 0;
@@ -73,16 +73,16 @@ export default function useSheetGestures(rootRef, onDismiss, enabled = true) {
       }
     };
 
-    sheet.addEventListener('touchstart', onStart, { passive: true });
-    sheet.addEventListener('touchmove', onMove, { passive: true });
-    sheet.addEventListener('touchend', onEnd);
-    sheet.addEventListener('touchcancel', onEnd);
+    handle.addEventListener('touchstart', onStart, { passive: true });
+    handle.addEventListener('touchmove', onMove, { passive: true });
+    handle.addEventListener('touchend', onEnd);
+    handle.addEventListener('touchcancel', onEnd);
 
     return () => {
-      sheet.removeEventListener('touchstart', onStart);
-      sheet.removeEventListener('touchmove', onMove);
-      sheet.removeEventListener('touchend', onEnd);
-      sheet.removeEventListener('touchcancel', onEnd);
+      handle.removeEventListener('touchstart', onStart);
+      handle.removeEventListener('touchmove', onMove);
+      handle.removeEventListener('touchend', onEnd);
+      handle.removeEventListener('touchcancel', onEnd);
     };
   }, [rootRef, onDismiss, enabled]);
 }

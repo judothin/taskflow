@@ -1,29 +1,24 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
-import { useThemeCustomization } from '../context/ThemeCustomizationContext';
-import ModalPortal from './ModalPortal';
-import { SettingRow, Toggle } from './SettingsControls';
+import { Icon, ConfirmDialog, Empty, SkeletonRows, toast } from '../ui';
 import {
   fetchSubtaskPresets, createSubtaskPreset, updateSubtaskPreset, deleteSubtaskPreset,
   MAX_PRESET_ITEMS, MAX_PRESET_NAME,
 } from '../lib/subtaskPresets';
+import '../pages/Settings.css';
 import './SubtaskPresets.css';
 
 let draftKey = 0;
 const draftItem = (text = '') => ({ key: `d${draftKey++}`, text });
 
-// Settings → Subtask Presets. Presets belong to the ACTIVE team and only its
+// Settings › Subtask presets. Presets belong to the ACTIVE team and only its
 // owners/admins can write them; members get a read-only list so they can see
-// what's available to them in the task form. RLS enforces the same split, so
-// a member who gets past this UI still can't write.
+// what's available in the task sheet. RLS enforces the same split.
+// (The one-or-two-column checklist preference lives in Accessibility.)
 export default function SubtaskPresetsCard() {
   const { user } = useAuth();
   const { activeTeam, activeTeamId, isAdmin } = useTeam();
-  // Two-column checklists are a personal display preference, not a team one,
-  // so it rides along with the other per-user display settings.
-  const { colors, setColor } = useThemeCustomization();
-  const twoColumns = Number(colors.subtaskColumns) === 2;
 
   const [presets, setPresets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +26,7 @@ export default function SubtaskPresetsCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [open, setOpen] = useState(null); // preset id whose steps are expanded
   const itemRefs = useRef({});
 
   const load = useCallback(async () => {
@@ -48,21 +44,21 @@ export default function SubtaskPresetsCard() {
   const startEdit = (p) => {
     setError('');
     setDraft({ id: p.id, name: p.name, items: p.items.length ? p.items.map(draftItem) : [draftItem()] });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const setItem = (key, text) =>
     setDraft(d => ({ ...d, items: d.items.map(i => (i.key === key ? { ...i, text } : i)) }));
 
-  const addItem = (focus = true) => {
+  const addItem = () => {
     const item = draftItem();
     setDraft(d => (d.items.length >= MAX_PRESET_ITEMS ? d : { ...d, items: [...d.items, item] }));
-    if (focus) setTimeout(() => itemRefs.current[item.key]?.focus(), 0);
+    setTimeout(() => itemRefs.current[item.key]?.focus(), 0);
   };
 
   const removeItem = (key) =>
     setDraft(d => {
       const items = d.items.filter(i => i.key !== key);
-      // Never leave the editor with zero rows — there'd be nothing to type in.
       return { ...d, items: items.length ? items : [draftItem()] };
     });
 
@@ -79,12 +75,14 @@ export default function SubtaskPresetsCard() {
   const filled = draft ? draft.items.map(i => i.text.trim()).filter(Boolean) : [];
   const canSave = !!draft && !!draft.name.trim() && filled.length > 0 && !busy;
 
-  const save = async () => {
+  const save = async (e) => {
+    e?.preventDefault();
     if (!canSave) return;
     setBusy(true); setError('');
     try {
       if (draft.id) await updateSubtaskPreset(draft.id, draft.name, filled);
       else await createSubtaskPreset(activeTeamId, user?.id, draft.name, filled);
+      toast(draft.id ? 'Preset saved' : 'Preset created');
       setDraft(null);
       await load();
     } catch (err) {
@@ -94,163 +92,138 @@ export default function SubtaskPresetsCard() {
     }
   };
 
-  const doDelete = async (p) => {
+  const doDelete = async () => {
     setBusy(true); setError('');
     try {
-      await deleteSubtaskPreset(p.id);
+      await deleteSubtaskPreset(confirmDelete.id);
       setConfirmDelete(null);
+      toast('Preset deleted');
       await load();
     } catch (err) {
       setError(err.message || 'Could not delete the preset.');
+      setConfirmDelete(null);
     } finally {
       setBusy(false);
     }
   };
 
-  const displayCard = (
-    <div className="card">
-      <h2 className="settings-card-title">Display</h2>
-      <p className="settings-card-sub">
-        How checklists are laid out on task cards, everywhere you see them.
-      </p>
-      <SettingRow
-        label="Two columns on cards"
-        desc="Fits longer checklists without scrolling. Narrow cards and phones stay single-column."
-      >
-        <Toggle
-          on={twoColumns}
-          onClick={() => setColor('subtaskColumns', twoColumns ? 1 : 2)}
-          label="Show subtasks in two columns on cards"
-        />
-      </SettingRow>
-    </div>
-  );
-
   if (!activeTeamId) {
-    return (
-      <>
-        {displayCard}
-        <div className="card settings-empty-card">
-          Join or create a team to set up subtask presets.
-        </div>
-      </>
-    );
+    return <Empty icon="list" title="No team yet">Join or create a team to set up subtask presets.</Empty>;
   }
 
   return (
-    <>
-      {displayCard}
+    <div className="sp">
+      <div className="sp-head anim-rise">
+        <div style={{ minWidth: 0 }}>
+          <div className="st-row-label">Presets for {activeTeam?.name || 'this team'}</div>
+          <div className="st-row-desc">
+            {isAdmin
+              ? 'Everyone on the team can drop these into a task with “Use a preset”. Only owners and admins can change them.'
+              : 'Saved by your team’s owners and admins. Apply one with “Use a preset” in any task.'}
+          </div>
+        </div>
+        {isAdmin && !draft && (
+          <button type="button" className="btn btn-primary anim-pop" onClick={startCreate}>
+            <Icon name="plus" size={14} />New preset
+          </button>
+        )}
+      </div>
 
-      <div className="card">
-        <div className="settings-card-head">
-          <h2 className="settings-card-title">
-            Presets for {activeTeam?.name || 'this team'}
-          </h2>
-          {isAdmin && !draft && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={startCreate}>
-              New preset
+      {error && (
+        <div key={error} className="notice notice-error wiggle sp-error" role="alert">
+          <Icon name="alert" size={15} /><span>{error}</span>
+        </div>
+      )}
+
+      {draft && (
+        <form className="sp-draft" onSubmit={save}>
+          <div className="eyebrow">{draft.id ? 'Edit preset' : 'New preset'}</div>
+          <input
+            className="title-input sp-name"
+            placeholder="Preset name, e.g. New page launch"
+            value={draft.name}
+            maxLength={MAX_PRESET_NAME}
+            onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+            autoFocus
+          />
+          <div className="sp-steps-label">
+            <span className="sheet-label" style={{ margin: 0 }}>Steps</span>
+            <span className="mono t-3">{filled.length}/{MAX_PRESET_ITEMS}</span>
+          </div>
+          <div className="sp-items">
+            {draft.items.map((item, idx) => (
+              <div key={item.key} className="sp-item">
+                <span className="sp-num">{idx + 1}</span>
+                <input
+                  ref={el => { itemRefs.current[item.key] = el; }}
+                  className="sp-input"
+                  placeholder="Step…"
+                  value={item.text}
+                  onChange={e => setItem(item.key, e.target.value)}
+                  onKeyDown={e => onItemKeyDown(e, item.key, idx)}
+                />
+                <button type="button" className="sp-x" onClick={() => removeItem(item.key)} aria-label="Remove step">
+                  <Icon name="x" size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+          {draft.items.length < MAX_PRESET_ITEMS && (
+            <button type="button" className="btn btn-ghost btn-sm sp-add" onClick={addItem}>
+              <Icon name="plus" size={13} />Add step
+              <span className="kbd">↵</span>
             </button>
           )}
-        </div>
-        <p className="settings-card-sub">
-          {isAdmin
-            ? 'Everyone on the team can drop these into a task from the Subtasks field. Only owners and admins can change them.'
-            : 'Saved by your team’s owners and admins. Apply one from the Subtasks field when you create or edit a task.'}
-        </p>
-
-        {error && <div className="error-msg settings-inline-err">⚠ {error}</div>}
-
-        {draft && (
-          <div className="preset-draft">
-            <div className="form-group">
-              <label className="label">Preset name</label>
-              <input
-                className="input"
-                placeholder="e.g. New page launch"
-                value={draft.name}
-                maxLength={MAX_PRESET_NAME}
-                onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="label">
-                Steps
-                <span className="label-note"> — added to the task unchecked, in this order</span>
-              </label>
-              <div className="preset-item-list">
-                {draft.items.map((item, idx) => (
-                  <div key={item.key} className="preset-item-row">
-                    <span className="preset-item-num">{idx + 1}</span>
-                    <input
-                      ref={el => { itemRefs.current[item.key] = el; }}
-                      className="preset-item-input"
-                      placeholder="Step…"
-                      value={item.text}
-                      onChange={e => setItem(item.key, e.target.value)}
-                      onKeyDown={e => onItemKeyDown(e, item.key, idx)}
-                    />
-                    <button
-                      type="button"
-                      className="preset-item-remove"
-                      onClick={() => removeItem(item.key)}
-                      title="Remove step"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-              {draft.items.length < MAX_PRESET_ITEMS && (
-                <button type="button" className="st-editor-add preset-add-step" onClick={() => addItem()}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  Add step
-                </button>
-              )}
-            </div>
-
-            <div className="preset-draft-actions">
-              <button type="button" className="btn btn-primary btn-sm" disabled={!canSave} onClick={save}>
-                {busy ? 'Saving…' : (draft.id ? 'Save changes' : 'Create preset')}
-              </button>
-              <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setDraft(null)}>
-                Cancel
-              </button>
-              {draft.name.trim() && filled.length === 0 && (
-                <span className="preset-draft-hint">Add at least one step.</span>
-              )}
-            </div>
+          <div className="sp-draft-foot">
+            {draft.name.trim() && filled.length === 0 && <span className="st-note t-3 anim-fade">Add at least one step.</span>}
+            <span style={{ flex: 1 }} />
+            <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setDraft(null)}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={!canSave}>
+              {busy ? <span className="spinner" /> : draft.id ? 'Save changes' : 'Create preset'}
+            </button>
           </div>
-        )}
+        </form>
+      )}
 
+      <div className="table sp-table" style={{ '--cols': 'minmax(0, 1fr) 90px 150px' }}>
+        <div className="table-head">
+          <span>Preset</span>
+          <span className="hide-phone">Steps</span>
+          <span className="hide-phone" />
+        </div>
         {loading ? (
-          <p className="settings-empty">Loading…</p>
+          <SkeletonRows rows={3} widths={['46%', '8%', '14%']} />
         ) : presets.length === 0 ? (
-          <p className="settings-empty">
-            {isAdmin
-              ? 'No presets yet — create one to save a checklist your team reuses.'
-              : 'No presets yet. Ask a team owner or admin to add one.'}
-          </p>
+          <Empty icon="list" title="No presets yet">
+            {isAdmin ? 'Create one to save a checklist your team reuses.' : 'Ask a team owner or admin to add one.'}
+          </Empty>
         ) : (
-          <div className="preset-list">
+          <div className="stagger">
             {presets.map(p => (
-              <div key={p.id} className="preset-row">
-                <div className="preset-row-main">
-                  <div className="preset-row-name">{p.name}</div>
-                  <div className="preset-row-steps">
-                    {p.items.length} step{p.items.length === 1 ? '' : 's'} — {p.items.join(' · ')}
-                  </div>
+              <div key={p.id} className={`table-row sp-row ${open === p.id ? 'is-open' : ''}`} onClick={() => setOpen(o => (o === p.id ? null : p.id))}>
+                <div className="table-cell" style={{ display: 'block' }}>
+                  <div className="table-title">{p.name}</div>
+                  {open === p.id ? (
+                    <ol className="sp-steps">
+                      {p.items.map((s, i) => <li key={i}>{s}</li>)}
+                    </ol>
+                  ) : (
+                    <div className="table-sub">{p.items.join(' · ')}</div>
+                  )}
                 </div>
-                {isAdmin && (
-                  <div className="preset-row-actions">
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => startEdit(p)}>Edit</button>
-                    <button type="button" className="theme-color-reset" onClick={() => setConfirmDelete(p)}>Delete</button>
-                  </div>
-                )}
+                <div className="table-cell mono">{p.items.length} step{p.items.length === 1 ? '' : 's'}</div>
+                <div className="table-cell sp-row-actions" onClick={e => e.stopPropagation()}>
+                  {isAdmin && (
+                    <>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => startEdit(p)}>
+                        <Icon name="edit" size={13} />Edit
+                      </button>
+                      <button type="button" className="btn btn-danger btn-sm btn-icon" onClick={() => setConfirmDelete(p)} aria-label={`Delete ${p.name}`}>
+                        <Icon name="trash" size={13} />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -258,28 +231,16 @@ export default function SubtaskPresetsCard() {
       </div>
 
       {confirmDelete && (
-        <ModalPortal>
-          <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
-            <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-              <div className="modal-header"><h2 className="settings-card-title">Delete this preset?</h2></div>
-              <div className="modal-body">
-                <p style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.6 }}>
-                  <strong>{confirmDelete.name}</strong> will no longer be available to your team.
-                </p>
-                <p style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.6 }}>
-                  Tasks it was already applied to keep their subtasks — they're copies, not links.
-                </p>
-              </div>
-              <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setConfirmDelete(null)}>Cancel</button>
-                <button className="btn btn-danger" disabled={busy} onClick={() => doDelete(confirmDelete)}>
-                  {busy ? 'Deleting…' : 'Delete preset'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </ModalPortal>
+        <ConfirmDialog
+          title="Delete this preset?"
+          text={`“${confirmDelete.name}” will no longer be available to your team. Tasks it was already applied to keep their subtasks — they’re copies, not links.`}
+          confirmLabel="Delete preset"
+          danger
+          busy={busy}
+          onConfirm={doDelete}
+          onClose={() => !busy && setConfirmDelete(null)}
+        />
       )}
-    </>
+    </div>
   );
 }

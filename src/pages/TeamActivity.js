@@ -1,66 +1,56 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { addDays, addWeeks, format, isSameDay, startOfDay, startOfWeek } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
-import { fullName, initialsOf, REVIEWS_CHANGED } from '../lib/reviews';
-import Avatar from '../components/Avatar';
+import { REVIEWS_CHANGED } from '../lib/reviews';
+import { openTask, TASKS_CHANGED } from '../lib/events';
+import { taskTitle, pageLabel } from '../lib/taskText';
+import Collapse from '../components/Collapse';
+import { Icon, Segmented, Avatar, Empty, fullName } from '../ui';
 import './TeamActivity.css';
 
 // ══════════════════════════════════════════════════════════════
-// Team Activity — owners and admins only. What each person did in a day or
+// Team activity — owners and admins only. What each person did in a day or
 // a week: tasks completed and added, review posts sent, verdicts given,
-// review comments, Go Live items and Context entries, each with its time.
+// review comments, posts that went live and Context entries, each with
+// its time.
 //
 // Everything is read from the tables the app already writes; nothing new is
 // stored. Completions are credited by name (tasks.completed_by is the list of
 // names picked when it was marked done), matched to the team's members.
+// "Went live" comes from Review (review_events kind 'went_live', backed up by
+// review_posts.went_live_at) — the old Go Live list is gone.
 // ══════════════════════════════════════════════════════════════
 
 const KINDS = {
-  completed:  { label: 'Completed',       short: 'Done',       tone: 'done' },
-  added:      { label: 'Added a task',     short: 'Added',      tone: 'add' },
-  submitted:  { label: 'Sent for review',  short: 'For review', tone: 'review' },
-  resubmitted:{ label: 'Re-sent for review', short: 'For review', tone: 'review' },
-  approved:   { label: 'Approved',         short: 'Reviewed',   tone: 'ok' },
-  needs_work: { label: 'Asked for changes', short: 'Reviewed',  tone: 'warn' },
-  went_live:  { label: 'Marked live',      short: 'Live',       tone: 'live' },
-  reopened:   { label: 'Reopened a review', short: 'Reviewed',  tone: 'review' },
-  comment:    { label: 'Commented on',     short: 'Comment',    tone: 'comment' },
-  golive:     { label: 'Added to Go Live', short: 'Go Live',    tone: 'live' },
-  context:    { label: 'Added context',    short: 'Context',    tone: 'context' },
+  completed:   { label: 'Completed',          tone: 'done' },
+  added:       { label: 'Added',              tone: 'add' },
+  submitted:   { label: 'Sent for review',    tone: 'review' },
+  resubmitted: { label: 'Re-sent for review', tone: 'review' },
+  approved:    { label: 'Approved',           tone: 'ok' },
+  needs_work:  { label: 'Asked for changes',  tone: 'warn' },
+  reopened:    { label: 'Reopened a review',  tone: 'review' },
+  went_live:   { label: 'Went live',          tone: 'live' },
+  comment:     { label: 'Commented',          tone: 'comment' },
+  context:     { label: 'Added context',      tone: 'context' },
 };
 
 // The summary columns, each counting one or more kinds.
 const COLUMNS = [
-  { id: 'completed', label: 'Completed',    kinds: ['completed'] },
-  { id: 'added',     label: 'Added',        kinds: ['added'] },
-  { id: 'review',    label: 'For review',   kinds: ['submitted', 'resubmitted'] },
-  { id: 'verdicts',  label: 'Reviewed',     kinds: ['approved', 'needs_work', 'reopened'] },
-  { id: 'comments',  label: 'Comments',     kinds: ['comment'] },
-  { id: 'live',      label: 'Go Live',      kinds: ['golive', 'went_live'] },
-  { id: 'context',   label: 'Context',      kinds: ['context'] },
+  { id: 'completed', label: 'Completed',  kinds: ['completed'] },
+  { id: 'added',     label: 'Added',      kinds: ['added'] },
+  { id: 'review',    label: 'For review', kinds: ['submitted', 'resubmitted'] },
+  { id: 'verdicts',  label: 'Reviewed',   kinds: ['approved', 'needs_work', 'reopened'] },
+  { id: 'comments',  label: 'Comments',   kinds: ['comment'] },
+  { id: 'live',      label: 'Went live',  kinds: ['went_live'] },
+  { id: 'context',   label: 'Context',    kinds: ['context'] },
 ];
+const TONE_ORDER = ['done', 'add', 'review', 'ok', 'warn', 'live', 'comment', 'context'];
 
-const ICON = {
-  left: <path d="M15 18l-6-6 6-6" />,
-  right: <path d="M9 18l6-6-6-6" />,
-  chevron: <path d="M6 9l6 6 6-6" />,
-  activity: <path d="M22 12h-4l-3 9L9 3l-3 9H2" />,
-  lock: <><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></>,
-};
-const Svg = ({ name, size = 15 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ICON[name]}</svg>
-);
-
-const plain = (html) => {
-  const s = String(html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"');
-  return s.replace(/\s+/g, ' ').trim();
-};
-const clip = (s, n = 140) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+const plain = (s) => String(s || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+const clip = (s, n = 160) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const dayKey = (d) => format(d, 'yyyy-MM-dd');
 const parseDay = (s) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
@@ -68,6 +58,8 @@ const parseDay = (s) => {
   const d = new Date(+m[1], +m[2] - 1, +m[3]);
   return Number.isNaN(d.getTime()) ? null : d;
 };
+const hourOf = (d) => d.getHours() + d.getMinutes() / 60;
+const fmtHour = (h) => format(new Date(2000, 0, 1, h % 24), 'h a');
 
 // A completed_by name ("Sam Lee", or just "Sam") → member id, when it's
 // clearly one person. Anything else stays a bare name.
@@ -89,19 +81,19 @@ function nameMatcher(members) {
 async function fetchActivity(teamId, from, to) {
   const a = from.toISOString();
   const b = to.toISOString();
-  const [done, added, events, comments, golive, context] = await Promise.all([
-    supabase.from('tasks').select('id, page, feedback, completed_by, date_completed')
+  const [done, added, events, comments, live, context] = await Promise.all([
+    supabase.from('tasks').select('*')
       .eq('team_id', teamId).eq('status', 'completed')
       .gte('date_completed', a).lt('date_completed', b).limit(2000),
-    supabase.from('tasks').select('id, page, feedback, status, created_by, date_received, date_completed')
+    supabase.from('tasks').select('*')
       .eq('team_id', teamId).not('created_by', 'is', null)
       .gte('date_received', a).lt('date_received', b).limit(2000),
     supabase.from('review_events').select('id, post_id, kind, actor, note, created_at')
       .eq('team_id', teamId).gte('created_at', a).lt('created_at', b).limit(2000),
     supabase.from('review_comments').select('id, post_id, user_id, content, created_at')
       .eq('team_id', teamId).gte('created_at', a).lt('created_at', b).limit(2000),
-    supabase.from('golive_items').select('id, page, description, created_by, created_at')
-      .eq('team_id', teamId).gte('created_at', a).lt('created_at', b).limit(2000),
+    supabase.from('review_posts').select('id, title, went_live_at, went_live_by')
+      .eq('team_id', teamId).gte('went_live_at', a).lt('went_live_at', b).limit(2000),
     supabase.from('context_entries').select('id, subject, created_by, created_at')
       .eq('team_id', teamId).gte('created_at', a).lt('created_at', b).limit(2000),
   ]);
@@ -110,19 +102,21 @@ async function fetchActivity(teamId, from, to) {
 
   // Titles for the review posts the events and comments point at.
   const postIds = [...new Set([...(events.data || []), ...(comments.data || [])].map(r => r.post_id))];
-  let posts = {};
-  if (postIds.length) {
-    const { data } = await supabase.from('review_posts').select('id, title').in('id', postIds);
-    posts = Object.fromEntries((data || []).map(p => [p.id, p]));
+  const posts = Object.fromEntries((live.data || []).map(p => [p.id, p]));
+  const missing = postIds.filter(id => !posts[id]);
+  if (missing.length) {
+    const { data } = await supabase.from('review_posts').select('id, title').in('id', missing);
+    for (const p of data || []) posts[p.id] = p;
   }
   return {
     done: done.data || [], added: added.data || [],
     events: events.data || [], comments: comments.data || [],
-    golive: golive.data || [], context: context.data || [], posts,
+    live: live.data || [], context: context.data || [], posts,
   };
 }
 
-// Raw rows → one flat list of { who, kind, at, text, page, note, to }.
+// Raw rows → one flat list of { id, who, kind, at, text, page, note, open }.
+// `open` is { task } for tasks, or a route for everything else.
 function toEntries(raw, members) {
   const match = nameMatcher(members);
   const out = [];
@@ -134,7 +128,7 @@ function toEntries(raw, members) {
       if (seen.has(who)) continue;
       seen.add(who);
       out.push({ id: `c-${t.id}-${who}`, who, kind: 'completed', at: t.date_completed,
-        text: clip(plain(t.feedback)), page: t.page, to: `/tasks/${t.id}` });
+        text: taskTitle(t), page: pageLabel(t.page), task: t });
     }
   }
   for (const t of raw.added) {
@@ -142,37 +136,42 @@ function toEntries(raw, members) {
     // thing, already counted as a completion.
     if (t.status === 'completed' && t.date_completed && t.date_completed === t.date_received) continue;
     out.push({ id: `a-${t.id}`, who: t.created_by, kind: 'added', at: t.date_received,
-      text: clip(plain(t.feedback)), page: t.page, to: `/tasks/${t.id}` });
+      text: taskTitle(t), page: pageLabel(t.page), task: t });
   }
+  const liveSeen = new Set();
   for (const e of raw.events) {
     if (!e.actor || !KINDS[e.kind]) continue;   // live_undone isn't worth a line
+    if (e.kind === 'went_live') liveSeen.add(`${e.post_id}:${e.actor}`);
     out.push({ id: `e-${e.id}`, who: e.actor, kind: e.kind, at: e.created_at,
       text: raw.posts[e.post_id]?.title || 'A review post', note: clip(e.note || '', 200),
-      to: `/review?post=${e.post_id}` });
+      page: 'Review', to: `/review?post=${e.post_id}` });
+  }
+  // Posts marked live without an event row (older data) still count once.
+  for (const p of raw.live) {
+    if (!p.went_live_by || liveSeen.has(`${p.id}:${p.went_live_by}`)) continue;
+    out.push({ id: `l-${p.id}`, who: p.went_live_by, kind: 'went_live', at: p.went_live_at,
+      text: p.title || 'A review post', page: 'Review', to: `/review?post=${p.id}` });
   }
   for (const c of raw.comments) {
     if (!c.user_id) continue;
     out.push({ id: `m-${c.id}`, who: c.user_id, kind: 'comment', at: c.created_at,
-      text: raw.posts[c.post_id]?.title || 'A review post', note: clip(c.content || '', 200),
-      to: `/review?post=${c.post_id}` });
-  }
-  for (const g of raw.golive) {
-    if (!g.created_by) continue;
-    out.push({ id: `g-${g.id}`, who: g.created_by, kind: 'golive', at: g.created_at,
-      text: clip(plain(g.description) || g.page), page: g.page, to: '/go-live' });
+      text: raw.posts[c.post_id]?.title || 'A review post', note: clip(plain(c.content), 200),
+      page: 'Review', to: `/review?post=${c.post_id}` });
   }
   for (const c of raw.context) {
     if (!c.created_by) continue;
     out.push({ id: `x-${c.id}`, who: c.created_by, kind: 'context', at: c.created_at,
-      text: clip(c.subject || ''), to: '/context' });
+      text: clip(c.subject || 'Context entry'), page: 'Context', to: '/context' });
   }
   return out.filter(e => e.at).sort((x, y) => new Date(y.at) - new Date(x.at));
 }
 
 const countCols = (entries) => Object.fromEntries(COLUMNS.map(c => [c.id, entries.filter(e => c.kinds.includes(e.kind)).length]));
+const roleLabel = (r) => (r === 'owner' ? 'Owner' : r === 'admin' ? 'Admin' : r === 'outside' ? 'Not on the team' : 'Member');
 
 export default function TeamActivity() {
   const { activeTeamId, activeTeam, isAdmin } = useTeam();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const mode = params.get('view') === 'week' ? 'week' : 'day';
   const anchor = parseDay(params.get('date')) || startOfDay(new Date());
@@ -187,14 +186,17 @@ export default function TeamActivity() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(() => new Set());
+  const [dir, setDir] = useState(0);
+  const dateInput = useRef(null);
 
   const setPeriod = (nextMode, date) => {
     const p = new URLSearchParams(params);
     p.set('view', nextMode);
     if (date && !isSameDay(date, new Date())) p.set('date', dayKey(date)); else p.delete('date');
+    setDir(date < from ? -1 : date > from ? 1 : 0);
     setParams(p, { replace: true });
   };
-  const step = (dir) => setPeriod(mode, mode === 'week' ? addWeeks(from, dir) : addDays(from, dir));
+  const step = (n) => setPeriod(mode, mode === 'week' ? addWeeks(from, n) : addDays(from, n));
 
   useEffect(() => {
     let live = true;
@@ -219,12 +221,12 @@ export default function TeamActivity() {
   useEffect(() => { load(false); }, [load]);
   useEffect(() => {
     const h = () => load(true);
-    window.addEventListener('tasks-changed', h);
+    window.addEventListener(TASKS_CHANGED, h);
     window.addEventListener(REVIEWS_CHANGED, h);
     const onVis = () => { if (!document.hidden) load(true); };
     document.addEventListener('visibilitychange', onVis);
     return () => {
-      window.removeEventListener('tasks-changed', h);
+      window.removeEventListener(TASKS_CHANGED, h);
       window.removeEventListener(REVIEWS_CHANGED, h);
       document.removeEventListener('visibilitychange', onVis);
     };
@@ -257,157 +259,275 @@ export default function TeamActivity() {
     return mode === 'week' ? Array.from({ length: 7 }, (_, i) => addDays(start, i)) : [start];
   }, [mode, fromKey]);
 
+  // The day track runs 8 AM – 6 PM, stretched to fit anything earlier or later.
+  const range = useMemo(() => {
+    let lo = 8;
+    let hi = 18;
+    for (const e of entries) {
+      const h = hourOf(new Date(e.at));
+      lo = Math.min(lo, Math.floor(h));
+      hi = Math.max(hi, Math.ceil(h + 0.01));
+    }
+    return { lo, hi: Math.min(24, hi) };
+  }, [entries]);
+
   const toggle = (id) => setOpen(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
-  const allOpen = people.some(p => p.entries.length) && people.filter(p => p.entries.length).every(p => open.has(p.id));
+  const activeRows = people.filter(p => p.entries.length);
+  const allOpen = activeRows.length > 0 && activeRows.every(p => open.has(p.id));
+
+  const openEntry = (e) => {
+    if (e.task) openTask(e.task);
+    else if (e.to) navigate(e.to);
+  };
 
   if (!isAdmin) {
     return (
-      <div className="ta-page">
-        <div className="empty-state ta-locked">
-          <Svg name="lock" size={34} />
-          <h3>Owners and admins only</h3>
-          <p>Team Activity shows what everyone on {activeTeam?.name || 'the team'} has been doing. Ask an owner to make you an admin to see it.</p>
-        </div>
+      <div className="page ta-page">
+        <Empty icon="lock" title="Owners and admins only">
+          Team activity shows what everyone on {activeTeam?.name || 'the team'} has been doing.
+          Ask an owner to make you an admin to see it.
+        </Empty>
       </div>
     );
   }
 
+  const last = addDays(to, -1);
+  const eyebrow = mode === 'week'
+    ? (isCurrent ? 'This week' : `Week of ${format(from, 'MMM d')}`)
+    : format(from, 'EEEE');
   const periodLabel = mode === 'week'
-    ? `${format(from, 'MMM d')} – ${format(addDays(to, -1), from.getMonth() === addDays(to, -1).getMonth() ? 'd, yyyy' : 'MMM d, yyyy')}`
-    : format(from, 'EEEE, MMM d, yyyy');
-  const active = people.filter(p => p.entries.length).length;
+    ? `${format(from, 'MMM d')} – ${format(last, from.getMonth() === last.getMonth() ? 'd, yyyy' : 'MMM d, yyyy')}`
+    : format(from, 'EEE, MMM d, yyyy');
+  const sub = loading && !raw
+    ? 'Loading…'
+    : `${entries.length} action${entries.length === 1 ? '' : 's'} · ${activeRows.length} of ${members.length} ${members.length === 1 ? 'person' : 'people'} active`;
+  const slideKey = `${mode}-${fromKey}`;
+  const slideClass = dir < 0 ? 'ta-slide-prev' : dir > 0 ? 'ta-slide-next' : 'ta-slide-none';
 
   return (
-    <div className="ta-page">
-      <header className="ta-head">
-        <div className="ta-head-icon"><Svg name="activity" size={20} /></div>
-        <div className="ta-head-text">
-          <h1 className="ta-head-title">Team Activity</h1>
-          <div className="ta-head-sub">
-            {loading && !raw ? 'Loading…'
-              : `${entries.length} action${entries.length === 1 ? '' : 's'} · ${active} of ${members.length} ${members.length === 1 ? 'person' : 'people'} active`}
+    <div className="page ta-page">
+      <header className="page-head ta-head anim-rise">
+        <div style={{ minWidth: 0 }}>
+          <div className="eyebrow"><span key={eyebrow} className="ta-eyebrow">{eyebrow}</span></div>
+          <h1 className="page-title">Team activity</h1>
+          <p className="page-sub">{sub}</p>
+        </div>
+        <div className="toolbar ta-tools">
+          <Segmented
+            ariaLabel="Period"
+            value={mode}
+            onChange={(m) => setPeriod(m, anchor)}
+            options={[{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }]}
+            className="ta-seg"
+          />
+          <div className="ta-stepper">
+            <button type="button" className="ta-step" onClick={() => step(-1)} aria-label={`Previous ${mode}`}>
+              <Icon name="chevronLeft" size={15} />
+            </button>
+            <button
+              type="button"
+              className="ta-period"
+              onClick={() => { try { dateInput.current?.showPicker(); } catch { dateInput.current?.focus(); } }}
+            >
+              <span key={periodLabel} className="ta-period-text">{periodLabel}</span>
+              <input
+                ref={dateInput}
+                type="date"
+                className="ta-date-input"
+                tabIndex={-1}
+                value={dayKey(anchor)}
+                max={dayKey(new Date())}
+                onChange={(e) => { const d = parseDay(e.target.value); if (d) setPeriod(mode, d); }}
+                aria-label="Pick a date"
+              />
+            </button>
+            <button type="button" className="ta-step" onClick={() => step(1)} disabled={isCurrent || from > new Date()} aria-label={`Next ${mode}`}>
+              <Icon name="chevronRight" size={15} />
+            </button>
           </div>
+          <button type="button" className="btn" onClick={() => setPeriod(mode, new Date())} disabled={isCurrent}>
+            {mode === 'week' ? 'This week' : 'Today'}
+          </button>
         </div>
       </header>
 
-      <div className="ta-toolbar">
-        <div className="ta-seg" role="tablist" aria-label="Period">
-          {['day', 'week'].map(m => (
-            <button key={m} type="button" role="tab" aria-selected={mode === m}
-              className={`ta-seg-btn ${mode === m ? 'ta-seg-on' : ''}`}
-              onClick={() => setPeriod(m, anchor)}>
-              {m === 'day' ? 'Day' : 'Week'}
-            </button>
+      {error && <div className="notice notice-error ta-error"><Icon name="alert" size={15} />{error}</div>}
+
+      <div key={slideKey} className={`ta-body ${slideClass}`}>
+        <div className="ta-stats">
+          {COLUMNS.map((c, i) => (
+            <div key={c.id} className={`stat ta-stat ${totals[c.id] ? '' : 'is-zero'}`} style={{ '--i': i }}>
+              {loading && !raw
+                ? <span className="skel ta-stat-skel" />
+                : <span key={totals[c.id]} className="stat-num bump">{totals[c.id]}</span>}
+              <span className="stat-label">{c.label}</span>
+            </div>
           ))}
         </div>
-        <div className="ta-nav">
-          <button type="button" className="ta-icon-btn" onClick={() => step(-1)} aria-label={`Previous ${mode}`}><Svg name="left" /></button>
-          <label className="ta-period">
-            <span>{periodLabel}</span>
-            <input type="date" value={dayKey(anchor)} max={dayKey(new Date())}
-              onChange={e => { const d = parseDay(e.target.value); if (d) setPeriod(mode, d); }}
-              aria-label="Pick a date" />
-          </label>
-          <button type="button" className="ta-icon-btn" onClick={() => step(1)} disabled={isCurrent || from > new Date()} aria-label={`Next ${mode}`}><Svg name="right" /></button>
-          {!isCurrent && (
-            <button type="button" className="btn btn-secondary ta-today" onClick={() => setPeriod(mode, new Date())}>
-              {mode === 'week' ? 'This week' : 'Today'}
+
+        <div className="ta-people-head">
+          <span className="eyebrow">People</span>
+          {activeRows.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-link ta-expand-all"
+              onClick={() => setOpen(allOpen ? new Set() : new Set(activeRows.map(p => p.id)))}
+            >
+              {allOpen ? 'Collapse all' : 'Expand all'}
             </button>
           )}
         </div>
-      </div>
 
-      {error && <div className="card error-msg">⚠ {error}</div>}
-
-      <div className="ta-totals">
-        {COLUMNS.map(c => (
-          <div key={c.id} className={`ta-total ${totals[c.id] ? '' : 'ta-total-zero'}`}>
-            <span className="ta-total-n">{totals[c.id]}</span>
-            <span className="ta-total-l">{c.label}</span>
+        <div className="table ta-table">
+          <div className="table-head">
+            <span>Person</span>
+            <span className="ta-track-head">
+              {mode === 'day'
+                ? <>{fmtHour(range.lo)} <span className="ta-track-rule" /> {fmtHour(range.hi)}</>
+                : <>Mon <span className="ta-track-rule" /> Sun</>}
+            </span>
+            {COLUMNS.map(c => <span key={c.id} className="ta-num-head">{c.label}</span>)}
+            <span />
           </div>
-        ))}
-      </div>
 
-      {loading && !raw ? (
-        <div className="ta-list">{[0, 1, 2].map(i => <div key={i} className="ta-skeleton loading-pulse" />)}</div>
-      ) : (
-        <div className="ta-list">
-          <div className="ta-list-head">
-            <span>People</span>
-            {active > 0 && (
-              <button type="button" className="ta-link" onClick={() => setOpen(allOpen ? new Set() : new Set(people.filter(p => p.entries.length).map(p => p.id)))}>
-                {allOpen ? 'Collapse all' : 'Expand all'}
-              </button>
-            )}
-          </div>
-          {people.map(p => (
-            <PersonRow key={p.id} row={p} mode={mode} days={days} open={open.has(p.id)} onToggle={() => toggle(p.id)} />
-          ))}
-          {!people.length && <div className="empty-state"><h3>No one on this team yet</h3></div>}
+          {loading && !raw ? (
+            <div>
+              {[0, 1, 2].map(i => (
+                <div key={i} className="skel-row ta-skel-row">
+                  <span className="skel" style={{ width: 30, height: 30, borderRadius: '50%' }} />
+                  <span className="skel skel-line" style={{ width: '16%' }} />
+                  <span className="skel skel-line" style={{ width: '30%', opacity: 0.6 }} />
+                </div>
+              ))}
+            </div>
+          ) : !people.length ? (
+            <Empty icon="users" title="No one on this team yet" />
+          ) : (
+            <div className="ta-rows stagger">
+              {people.map(p => (
+                <PersonRow
+                  key={p.id}
+                  row={p}
+                  mode={mode}
+                  days={days}
+                  range={range}
+                  open={open.has(p.id)}
+                  onToggle={() => toggle(p.id)}
+                  onOpenEntry={openEntry}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-function PersonRow({ row, mode, days, open, onToggle }) {
+function PersonRow({ row, mode, days, range, open, onToggle, onOpenEntry }) {
   const { person, name, role, entries, counts } = row;
   const n = entries.length;
   const first = n ? new Date(entries[n - 1].at) : null;
   const last = n ? new Date(entries[0].at) : null;
-  const perDay = days.map(d => entries.filter(e => isSameDay(new Date(e.at), d)).length);
-  const peak = Math.max(1, ...perDay);
+  const perDay = days.map(d => entries.filter(e => isSameDay(new Date(e.at), d)));
+
+  let meta = roleLabel(role);
+  if (n && mode === 'day') meta += ` · ${format(first, 'h:mm a')}${n > 1 ? ` – ${format(last, 'h:mm a')}` : ''}`;
+  if (n && mode === 'week') meta += ` · ${perDay.filter(l => l.length).length} of 7 days`;
 
   return (
-    <section className={`ta-person ${n ? '' : 'ta-person-idle'} ${open ? 'ta-person-open' : ''}`}>
-      <button type="button" className="ta-person-head" onClick={onToggle} disabled={!n} aria-expanded={open}>
-        <span className="ta-who">
-          {person
-            ? <Avatar src={person.avatar_url} color={person.color || '#6366f1'} initials={initialsOf(person)} size={32} />
-            : <span className="ta-who-blank">{name.slice(0, 1).toUpperCase()}</span>}
+    <section className={`ta-person ${n ? '' : 'is-idle'} ${open ? 'is-open' : ''}`}>
+      <div
+        className={`table-row ta-row ${n ? '' : 'is-static'}`}
+        role={n ? 'button' : undefined}
+        tabIndex={n ? 0 : undefined}
+        aria-expanded={n ? open : undefined}
+        onClick={n ? onToggle : undefined}
+        onKeyDown={n ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } } : undefined}
+      >
+        <div className="table-cell ta-who">
+          {person ? <Avatar person={person} size={30} /> : <Avatar name={name} size={30} className="ta-outside" />}
           <span className="ta-who-text">
-            <b>{name}</b>
-            <span className="ta-who-sub">
-              {role === 'owner' ? 'Owner' : role === 'admin' ? 'Admin' : role === 'outside' ? 'Named on tasks · not on the team' : 'Member'}
-              {n > 0 && mode === 'day' && ` · ${format(first, 'h:mm a')}${n > 1 ? ` – ${format(last, 'h:mm a')}` : ''}`}
-              {n > 0 && mode === 'week' && ` · active ${perDay.filter(Boolean).length} of 7 days`}
-            </span>
+            <span className="ta-who-name truncate">{name}</span>
+            <span className="ta-who-sub truncate">{meta}</span>
           </span>
-        </span>
+        </div>
 
-        {mode === 'week' && (
-          <span className="ta-spark" aria-label={`Actions per day: ${perDay.join(', ')}`}>
-            {perDay.map((v, i) => (
-              <span key={i} className="ta-spark-col" title={`${format(days[i], 'EEE d')}: ${v}`}>
-                <span className="ta-spark-bar" style={{ height: `${v ? Math.max(12, (v / peak) * 100) : 0}%` }} />
-                <span className="ta-spark-day">{format(days[i], 'EEEEE')}</span>
-              </span>
-            ))}
-          </span>
-        )}
+        <div className="table-cell ta-track-cell">
+          {mode === 'day'
+            ? <DayTrack entries={entries} range={range} />
+            : <WeekTrack perDay={perDay} days={days} />}
+        </div>
 
-        <span className="ta-counts">
-          {COLUMNS.map(c => (
-            <span key={c.id} className={`ta-count ${counts[c.id] ? '' : 'ta-count-zero'}`} title={c.label}>
-              <b>{counts[c.id]}</b><span>{c.label}</span>
-            </span>
-          ))}
-        </span>
-        <span className="ta-chevron">{n ? <Svg name="chevron" size={16} /> : <span className="ta-none">No activity</span>}</span>
-      </button>
+        {COLUMNS.map(c => (
+          <div key={c.id} className={`table-cell ta-num ${counts[c.id] ? '' : 'is-zero'}`}>
+            <span key={counts[c.id]} className="bump">{counts[c.id]}</span>
+            <span className="ta-num-label">{c.label}</span>
+          </div>
+        ))}
 
-      {open && n > 0 && <Timeline entries={entries} mode={mode} days={days} />}
+        <div className="table-cell ta-chev-cell">
+          {n > 0 && <Icon name="chevronDown" size={15} className={`ta-chev ${open ? 'is-up' : ''}`} />}
+        </div>
+      </div>
+
+      {n > 0 && (
+        <Collapse open={open} duration={340} className="ta-collapse">
+          <Timeline entries={entries} mode={mode} days={days} onOpenEntry={onOpenEntry} />
+        </Collapse>
+      )}
     </section>
   );
 }
 
-function Timeline({ entries, mode, days }) {
-  // Everything the person did, in the order they did it, whatever it was.
-  // A week is split by day (Monday first); a day is one list.
+function DayTrack({ entries, range }) {
+  const span = Math.max(1, range.hi - range.lo);
+  const pos = (e) => Math.max(0, Math.min(100, ((hourOf(new Date(e.at)) - range.lo) / span) * 100));
+  const inOrder = [...entries].reverse();
+  const lo = inOrder.length ? pos(inOrder[0]) : 0;
+  const hi = inOrder.length ? pos(inOrder[inOrder.length - 1]) : 0;
+  return (
+    <div className="ta-track" aria-label={`${entries.length} actions`}>
+      <span className="ta-track-line" />
+      {inOrder.length > 1 && <span className="ta-track-span" style={{ left: `${lo}%`, width: `${hi - lo}%` }} />}
+      {inOrder.map((e, i) => (
+        <span
+          key={e.id}
+          className={`ta-tick ta-tone-${KINDS[e.kind].tone}`}
+          style={{ left: `${pos(e)}%`, '--i': i }}
+          title={`${format(new Date(e.at), 'h:mm a')} · ${KINDS[e.kind].label} · ${e.text}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function WeekTrack({ perDay, days }) {
+  const peak = Math.max(1, ...perDay.map(l => l.length));
+  return (
+    <div className="ta-week">
+      {perDay.map((list, i) => {
+        const byTone = TONE_ORDER.map(t => [t, list.filter(e => KINDS[e.kind].tone === t).length]).filter(([, v]) => v);
+        return (
+          <div key={i} className="ta-week-col" title={`${format(days[i], 'EEE, MMM d')}: ${list.length}`}>
+            <div className="ta-week-bar" style={{ height: `${list.length ? Math.max(14, (list.length / peak) * 100) : 0}%`, '--i': i }}>
+              {byTone.map(([t, v]) => <span key={t} className={`ta-week-seg ta-tone-${t}`} style={{ flexGrow: v }} />)}
+            </div>
+            <span className={`ta-week-day ${list.length ? '' : 'is-zero'}`}>{format(days[i], 'EEEEE')}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Timeline({ entries, mode, days, onOpenEntry }) {
+  // Everything the person did, in the order they did it. A week is split by
+  // day (Monday first); a day is one list.
   const inOrder = [...entries].reverse();
   const groups = mode === 'week'
     ? days.map(d => ({ d, list: inOrder.filter(e => isSameDay(new Date(e.at), d)) })).filter(g => g.list.length)
@@ -418,25 +538,27 @@ function Timeline({ entries, mode, days }) {
         <div key={d ? dayKey(d) : 'day'} className="ta-tl-group">
           {d && (
             <div className="ta-tl-day">
-              {format(d, 'EEEE, MMM d')}
-              <span>{list.length} action{list.length === 1 ? '' : 's'}</span>
+              <span>{format(d, 'EEEE, MMM d')}</span>
+              <span className="count">{list.length}</span>
             </div>
           )}
           <ol className="ta-tl">
-            {list.map(e => {
+            {list.map((e, i) => {
               const k = KINDS[e.kind];
               return (
-                <li key={e.id} className={`ta-tl-item ta-tone-${k.tone}`}>
-                  <time className="ta-tl-time" dateTime={e.at}>{format(new Date(e.at), 'h:mm a')}</time>
-                  <span className="ta-tl-dot" />
-                  <div className="ta-tl-body">
-                    <div className="ta-tl-line">
-                      <span className="ta-tl-kind">{k.label}</span>
-                      {e.page && <span className="ta-tl-page">{e.page}</span>}
-                    </div>
-                    <Link to={e.to} className="ta-tl-text">{e.text || '(no description)'}</Link>
-                    {e.note && <div className="ta-tl-note">“{e.note}”</div>}
-                  </div>
+                <li key={e.id} style={{ '--i': Math.min(i, 14) }}>
+                  <button type="button" className={`ta-tl-item ta-tone-${k.tone}`} onClick={() => onOpenEntry(e)}>
+                    <time className="ta-tl-time" dateTime={e.at}>{format(new Date(e.at), 'h:mm a')}</time>
+                    <span className="ta-tl-dot" />
+                    <span className="ta-tl-body">
+                      <span className="ta-tl-title">{e.text || '(untitled)'}</span>
+                      <span className="ta-tl-meta">
+                        <span className="ta-tl-kind">{k.label}</span>
+                        {e.page && <> · <span>{e.page}</span></>}
+                      </span>
+                      {e.note && <span className="ta-tl-note">“{e.note}”</span>}
+                    </span>
+                  </button>
                 </li>
               );
             })}

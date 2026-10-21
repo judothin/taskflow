@@ -73,7 +73,7 @@ function unlockScroll() {
 //     used to play a close animation over the modal as it opened — the
 //     stutter on open. If the portal is back by the time the copy would
 //     show, it was one of those, and the copy is dropped.
-const EXIT_MS = 200;
+const EXIT_MS = 280;
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 

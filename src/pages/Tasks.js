@@ -1,200 +1,178 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import useRefresh from '../lib/useRefresh';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { TopBarPortal } from '../context/HeaderActionsContext';
-import TaskCard from '../components/TaskCard';
-import TaskForm from '../components/TaskForm';
-import BulkActionBar from '../components/BulkActionBar';
+import { openNewTask, TASKS_CHANGED } from '../lib/events';
+import { taskTitle } from '../lib/taskText';
 import useBulkSelect from '../lib/useBulkSelect';
-import '../components/TaskCard.css';
-import './Dashboard.css';
+import TaskTable, { GROUPS } from '../components/TaskTable';
+import BulkActionBar from '../components/BulkActionBar';
+import { Icon, Menu, MenuItem, MenuSep, MenuLabel, useMenu, PageHeader, SearchInput, Tabs, fullName, cap } from '../ui';
 import './Tasks.css';
 
-const STATUSES = [
-  { value: 'all',         label: 'All Tasks' },
-  { value: 'critical',    label: 'Critical' },
-  { value: 'open',        label: 'Open' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'on_hold',     label: 'On Hold' },
-  { value: 'completed',   label: 'Completed' },
+const TABS = [
+  { value: 'active', label: 'Active' },
+  { value: 'open', label: 'Open' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'on_hold', label: 'On hold' },
+  { value: 'critical', label: 'Critical' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'all', label: 'All' },
 ];
-
-const ROI_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+const SORTS = [
+  { value: 'date_desc', label: 'Newest first' },
+  { value: 'date_asc', label: 'Oldest first' },
+  { value: 'roi', label: 'Priority' },
+  { value: 'due', label: 'Due date' },
+];
+const ROI_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
+const matchTab = (t, tab) => {
+  if (tab === 'all') return true;
+  if (tab === 'active') return t.status !== 'completed';
+  if (tab === 'critical') return t.status !== 'completed' && (t.status === 'critical' || t.roi === 'critical');
+  return t.status === tab;
+};
 
 export default function Tasks() {
   const { activeTeamId } = useTeam();
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
-  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [roiFilter, setRoiFilter] = useState('all');
+  const [tab, setTab] = useState('active');
   const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState('date_desc');
-  const [editTask, setEditTask] = useState(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const { selectMode, selectedIds, toggle, clear, toggleAll, toggleSelectMode, exitSelectMode } = useBulkSelect();
+  const [roi, setRoi] = useState('all');
+  const [assignee, setAssignee] = useState('all');
+  const [sort, setSort] = useState('date_desc');
+  const [groupBy, setGroupBy] = useState(() => localStorage.getItem('tf-tasks-group') || 'status');
+  const bulk = useBulkSelect();
+  const filterMenu = useMenu();
+  const sortMenu = useMenu();
+  const groupMenu = useMenu();
+  const loaded = useRef(false);
 
-  // Skeletons on the first load only: flipping `loading` on for every refresh
-  // swapped the whole list for placeholders and back each time a task was
-  // added — a flash. Refreshes are burst-coalesced and latest-only too
-  // (lib/useRefresh).
-  const loadedOnce = useRef(false);
-  const { run: fetchData, refresh: refreshData } = useRefresh(async (isStale) => {
-    if (!activeTeamId) { setTasks([]); setUsers([]); setProjects([]); setLoading(false); return; }
-    if (!loadedOnce.current) setLoading(true);
-    const [{ data: allTasks }, allUsers, { data: allProjects }] = await Promise.all([
+  const { run, refresh } = useRefresh(async (isStale) => {
+    if (!activeTeamId) { setTasks([]); setLoading(false); return; }
+    if (!loaded.current) setLoading(true);
+    const [{ data }, members] = await Promise.all([
       supabase.from('tasks').select('*').eq('team_id', activeTeamId).order('date_received', { ascending: false }),
       fetchTeamMembers(activeTeamId),
-      supabase.from('projects').select('id, title').eq('team_id', activeTeamId).order('title'),
     ]);
     if (isStale()) return;
-    loadedOnce.current = true;
-    setTasks(allTasks || []);
-    setUsers((allUsers || []).sort((a, b) => (a.first_name || '').localeCompare(b.first_name || '')));
-    setProjects(allProjects || []);
+    loaded.current = true;
+    setTasks(data || []);
+    setUsers((members || []).sort((a, b) => (a.first_name || '').localeCompare(b.first_name || '')));
     setLoading(false);
   });
 
-  useEffect(() => { fetchData(); }, [activeTeamId, fetchData]);
-  // Quick Log and new tasks from the top bar menu / shortcuts are app-wide
-  // forms, so they announce saves rather than calling back into this page.
+  useEffect(() => { run(); }, [activeTeamId, run]);
   useEffect(() => {
-    window.addEventListener('tasks-changed', refreshData);
-    return () => window.removeEventListener('tasks-changed', refreshData);
-  }, [refreshData]);
+    window.addEventListener(TASKS_CHANGED, refresh);
+    return () => window.removeEventListener(TASKS_CHANGED, refresh);
+  }, [refresh]);
 
-  const filtered = tasks
-    .filter(t => {
-      if (statusFilter !== 'all' && t.status !== statusFilter) return false;
-      if (roiFilter !== 'all' && t.roi !== roiFilter) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        return (
-          t.page?.toLowerCase().includes(q) ||
-          t.feedback?.toLowerCase().includes(q) ||
-          t.noticed_by?.toLowerCase().includes(q)
-        );
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      // Pin critical to top when viewing all tasks
-      if (statusFilter === 'all') {
-        const aCrit = a.status === 'critical' ? 0 : 1;
-        const bCrit = b.status === 'critical' ? 0 : 1;
-        if (aCrit !== bCrit) return aCrit - bCrit;
-      }
-      if (sortBy === 'date_desc') return new Date(b.date_received) - new Date(a.date_received);
-      if (sortBy === 'date_asc') return new Date(a.date_received) - new Date(b.date_received);
-      if (sortBy === 'roi') return (ROI_ORDER[a.roi] ?? 4) - (ROI_ORDER[b.roi] ?? 4);
-      if (sortBy === 'status') return a.status.localeCompare(b.status);
-      return 0;
+  const counts = useMemo(() => {
+    const c = {};
+    TABS.forEach(t => { c[t.value] = tasks.filter(x => matchTab(x, t.value)).length; });
+    return c;
+  }, [tasks]);
+
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const list = tasks.filter(t => matchTab(t, tab)
+      && (roi === 'all' || t.roi === roi)
+      && (assignee === 'all' || (assignee === 'none' ? !t.assignee_id : t.assignee_id === assignee))
+      && (!q || [taskTitle(t), t.page, t.noticed_by, t.feedback, t.completed_by].some(v => (v || '').toLowerCase().includes(q))));
+    return [...list].sort((a, b) => {
+      if (sort === 'date_asc') return new Date(a.date_received) - new Date(b.date_received);
+      if (sort === 'roi') return (ROI_RANK[a.roi] ?? 4) - (ROI_RANK[b.roi] ?? 4);
+      if (sort === 'due') return (a.due_date || '9999').localeCompare(b.due_date || '9999');
+      return new Date(b.date_received) - new Date(a.date_received);
     });
+  }, [tasks, tab, roi, assignee, search, sort]);
 
-  const counts = {};
-  STATUSES.forEach(s => {
-    counts[s.value] = s.value === 'all' ? tasks.length : tasks.filter(t => t.status === s.value).length;
-  });
+  const filterCount = (roi !== 'all') + (assignee !== 'all');
+  const setGroup = (g) => { setGroupBy(g); try { localStorage.setItem('tf-tasks-group', g); } catch { /* ignore */ } };
+  const allShownSelected = shown.length > 0 && shown.every(t => bulk.selectedIds.has(t.id));
 
   return (
-    <div className="dashboard fade-in">
+    <div className="page tk">
       <TopBarPortal>
-          <button className={`btn ${selectMode ? 'btn-primary' : 'btn-secondary'}`} onClick={toggleSelectMode}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
-            </svg>
-            {selectMode ? 'Done' : 'Select'}
-          </button>
-          {selectMode && filtered.length > 0 && (
-            <button className="btn btn-secondary" onClick={() => toggleAll(filtered.map(t => t.id))}>
-              {filtered.every(t => selectedIds.has(t.id)) ? 'Clear all' : 'Select all'}
-            </button>
-          )}
-          <button className="btn btn-primary btn-icon-only" onClick={() => setShowCreate(true)} title="New task (N)" aria-label="New task">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-          </button>
+        <button type="button" className={`btn ${bulk.selectMode ? 'btn-primary' : ''} hide-phone`} onClick={bulk.toggleSelectMode}>
+          <Icon name="check" size={14} />{bulk.selectMode ? 'Done' : 'Select'}
+        </button>
+        <button type="button" className="btn btn-primary" onClick={() => openNewTask()}>
+          <Icon name="plus" size={15} stroke={2.2} /><span className="hide-phone">New task</span><span className="show-phone">New</span>
+        </button>
       </TopBarPortal>
 
-      {/* Status tabs */}
-      <div className="status-tabs">
-        {STATUSES.map(s => (
-          <button
-            key={s.value}
-            className={`status-tab ${statusFilter === s.value ? 'status-tab-active' : ''}`}
-            onClick={() => setStatusFilter(s.value)}
-          >
-            {s.label}
-            <span className="tab-count">{counts[s.value]}</span>
+      <PageHeader
+        eyebrow="Work"
+        title="Tasks"
+        sub={<>{counts.active} active<span className="sep">·</span>{counts.completed} completed</>}
+      />
+
+      <Tabs value={tab} onChange={setTab} items={TABS.map(t => ({ ...t, count: counts[t.value] }))} />
+
+      <div className="tk-bar">
+        <SearchInput value={search} onChange={setSearch} placeholder="Search tasks" className="tk-search" />
+        <div className="tk-bar-right">
+          {bulk.selectMode && (
+            <button type="button" className="btn btn-ghost anim-pop" onClick={() => bulk.toggleAll(shown.map(t => t.id))}>
+              {allShownSelected ? 'Clear all' : 'Select all'}
+            </button>
+          )}
+          <button ref={filterMenu.anchorRef} type="button" className="btn" onClick={filterMenu.toggle}>
+            <Icon name="filter" size={14} />Filter
+            {filterCount > 0 && <span key={filterCount} className="tk-badge bump">{filterCount}</span>}
           </button>
+          <button ref={sortMenu.anchorRef} type="button" className="btn" onClick={sortMenu.toggle}>
+            {SORTS.find(s => s.value === sort)?.label}<Icon name="chevronDown" size={13} />
+          </button>
+          <button ref={groupMenu.anchorRef} type="button" className="btn hide-phone" onClick={groupMenu.toggle}>
+            Group: {GROUPS.find(g => g.value === groupBy)?.label}
+          </button>
+        </div>
+      </div>
+
+      <Menu {...filterMenu.props} align="end" width={240}>
+        <MenuLabel>Priority</MenuLabel>
+        {['all', 'critical', 'high', 'medium', 'low'].map(r => (
+          <MenuItem key={r} checked={roi === r} onClick={() => setRoi(r)} keepOpen>{r === 'all' ? 'Any priority' : cap(r)}</MenuItem>
         ))}
-      </div>
+        <MenuSep />
+        <MenuLabel>Assignee</MenuLabel>
+        <MenuItem checked={assignee === 'all'} onClick={() => setAssignee('all')} keepOpen>Anyone</MenuItem>
+        <MenuItem checked={assignee === 'none'} onClick={() => setAssignee('none')} keepOpen>Unassigned</MenuItem>
+        {users.map(u => <MenuItem key={u.id} checked={assignee === u.id} onClick={() => setAssignee(u.id)} keepOpen>{fullName(u)}</MenuItem>)}
+        {filterCount > 0 && (<><MenuSep /><MenuItem icon="x" onClick={() => { setRoi('all'); setAssignee('all'); }}>Clear filters</MenuItem></>)}
+      </Menu>
+      <Menu {...sortMenu.props} align="end" width={180}>
+        {SORTS.map(s => <MenuItem key={s.value} checked={sort === s.value} onClick={() => setSort(s.value)}>{s.label}</MenuItem>)}
+      </Menu>
+      <Menu {...groupMenu.props} align="end" width={180}>
+        {GROUPS.map(g => <MenuItem key={g.value} checked={groupBy === g.value} onClick={() => setGroup(g.value)}>{g.label}</MenuItem>)}
+      </Menu>
 
-      {/* Filters row */}
-      <div className="filters-row">
-        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }}>
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input className="input" placeholder="Search tasks..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 38 }} />
-        </div>
+      <TaskTable
+        tasks={shown}
+        users={users}
+        groupBy={groupBy}
+        loading={loading}
+        columns={['task', 'page', 'status', 'priority', 'assignee', 'due', 'posted']}
+        select={bulk.selectMode ? { ids: bulk.selectedIds, toggle: bulk.toggle } : null}
+        empty={search || filterCount ? 'Nothing matches those filters.' : 'No tasks here yet.'}
+      />
 
-        <select className="input" style={{ width: 'auto' }} value={roiFilter} onChange={e => setRoiFilter(e.target.value)}>
-          <option value="all">All ROI</option>
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-
-        <select className="input" style={{ width: 'auto' }} value={sortBy} onChange={e => setSortBy(e.target.value)}>
-          <option value="date_desc">Newest First</option>
-          <option value="date_asc">Oldest First</option>
-          <option value="roi">By ROI</option>
-          <option value="status">By Status</option>
-        </select>
-      </div>
-
-      {/* Task grid */}
-      {loading ? (
-        <div className="loading-grid">
-          {[1,2,3,4,5,6].map(i => <div key={i} className="task-skeleton loading-pulse" />)}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="empty-state">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2" />
-          </svg>
-          <h3>No tasks found</h3>
-          <p>Try adjusting your filters or create a new task</p>
-        </div>
-      ) : (
-        <div className="tasks-grid">
-          {filtered.map(task => (
-            <TaskCard key={task.id} task={task} onEdit={setEditTask} onDeleted={refreshData} users={users} projects={projects}
-              selectMode={selectMode} selected={selectedIds.has(task.id)} onToggleSelect={toggle} />
-          ))}
-        </div>
-      )}
-
-      {selectMode && (
+      {bulk.selectMode && (
         <BulkActionBar
-          selectedTasks={tasks.filter(t => selectedIds.has(t.id))}
+          selectedTasks={tasks.filter(t => bulk.selectedIds.has(t.id))}
           users={users}
-          onChanged={refreshData}
-          onClear={clear}
-          onExit={exitSelectMode}
+          onChanged={refresh}
+          onClear={bulk.clear}
+          onExit={bulk.exitSelectMode}
         />
-      )}
-
-      {showCreate && (
-        <TaskForm onClose={() => setShowCreate(false)} onSaved={refreshData} users={users} projects={projects} />
-      )}
-      {editTask && (
-        <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={refreshData} users={users} projects={projects} />
       )}
     </div>
   );

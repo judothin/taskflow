@@ -1,63 +1,76 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
+import { TopBarPortal } from '../context/HeaderActionsContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { awardTaskCreatedXp } from '../lib/xp';
-import { bumpTeamStreak } from '../lib/streak';
-import { format } from 'date-fns';
-import ModalPortal from '../components/ModalPortal';
+import { openTask, tasksChanged } from '../lib/events';
+import { searchRank } from '../lib/fuzzySearch';
+import { taskTitle, taskPreview, pageLabel } from '../lib/taskText';
 import AssigneeSelect from '../components/AssigneeSelect';
 import DatePicker from '../components/DatePicker';
+import {
+  Icon, Sheet, ConfirmDialog, Tabs, Segmented, toast, PageHeader, Empty, SearchInput,
+  Dropzone, Lightbox, SheetLabel, SkeletonRows, ROIS, COMPLEXITIES, shortDate, longDate, fullName,
+} from '../ui';
 import './Submissions.css';
 
+// Inbox for the guest portal (/submit/:slug). Each submission is reviewed in
+// a sheet, then approved (which creates a task) or declined.
+
 const TABS = [
-  { value: 'pending',  label: 'Pending' },
+  { value: 'pending', label: 'Pending' },
   { value: 'approved', label: 'Approved' },
   { value: 'declined', label: 'Declined' },
 ];
+const DOT = { pending: 'dot-on_hold', approved: 'dot-completed', declined: '' };
+const STATUS_TEXT = { pending: 'Pending', approved: 'Approved', declined: 'Declined' };
 
-function SubmissionCard({ submission, users = [], onRefresh }) {
+// Databases without the newer `title` column reject it; retry without it,
+// folding the title into the description so nothing is lost.
+const missingTitle = (err) => !!err && /title/i.test(`${err.message || ''} ${err.details || ''}`)
+  && /column|schema cache/i.test(`${err.message || ''} ${err.details || ''}`);
+async function withTitleFallback(run, row) {
+  let res = await run(row);
+  if (missingTitle(res.error)) {
+    const { title, ...rest } = row;
+    res = await run(title ? { ...rest, feedback: `${title}\n\n${rest.feedback || ''}` } : rest);
+  }
+  return res;
+}
+
+const imagesOf = (s) => (s.images?.length ? s.images : s.png_url ? [s.png_url] : []);
+
+function ReviewSheet({ submission, users, onClose, onDone }) {
   const { user } = useAuth();
-  const fileRef  = useRef();
-
-  const [page,       setPage]       = useState(submission.page       || '');
-  const [feedback,   setFeedback]   = useState(submission.feedback   || '');
-  const [noticedBy,  setNoticedBy]  = useState(submission.noticed_by || '');
-  const [roi,        setRoi]        = useState('medium');
+  const pending = submission.status === 'pending';
+  const [title, setTitle] = useState(submission.title || '');
+  const [page, setPage] = useState(submission.page || '');
+  const [feedback, setFeedback] = useState(submission.feedback || '');
+  const [noticedBy, setNoticedBy] = useState(submission.noticed_by || '');
+  const [roi, setRoi] = useState('medium');
   const [complexity, setComplexity] = useState('medium');
   const [assigneeId, setAssigneeId] = useState('');
-  const [dueDate,    setDueDate]    = useState('');
-  const [notes,      setNotes]      = useState(submission.notes      || '');
-  const [lightboxIdx, setLightboxIdx] = useState(null);
-  const [saving,  setSaving]  = useState(false);
-  const [error,   setError]   = useState('');
-  const [action,  setAction]  = useState(null);
+  const [dueDate, setDueDate] = useState('');
+  const [notes, setNotes] = useState(submission.notes || '');
+  const [imgs, setImgs] = useState(() => imagesOf(submission).map(url => ({ url })));
+  const [zoom, setZoom] = useState(null);
+  const [saving, setSaving] = useState(null); // 'approve' | 'decline'
+  const [error, setError] = useState('');
+  const [errTick, setErrTick] = useState(0);
+  const [confirmDecline, setConfirmDecline] = useState(false);
 
-  // Multi-image state — existing URLs + pending new files
-  const initImgs = () => {
-    const urls = submission.images?.length
-      ? submission.images
-      : submission.png_url ? [submission.png_url] : [];
-    return urls.map(url => ({ url, isNew: false }));
-  };
-  const [imgs, setImgs] = useState(initImgs);
+  useEffect(() => () => imgs.forEach(i => i.preview && URL.revokeObjectURL(i.preview)), []);
 
-  const isPending  = submission.status === 'pending';
-  const isApproved = submission.status === 'approved';
-  const isDeclined = submission.status === 'declined';
-
-  const handleFiles = e => {
-    const files = Array.from(e.target.files || []);
-    fileRef.current.value = '';
-    setImgs(prev => [...prev, ...files.map(f => ({
-      isNew: true, file: f, preview: URL.createObjectURL(f),
-    }))]);
-  };
-
-  const removeImg = i => setImgs(prev => {
+  const fail = (msg) => { setError(msg); setErrTick(t => t + 1); };
+  const addFiles = (files) => setImgs(prev => [
+    ...prev,
+    ...files.filter(f => f.type.startsWith('image/')).map(f => ({ file: f, preview: URL.createObjectURL(f) })),
+  ]);
+  const removeImg = (i) => setImgs(prev => {
     const next = [...prev];
-    if (next[i].isNew) URL.revokeObjectURL(next[i].preview);
+    if (next[i].preview) URL.revokeObjectURL(next[i].preview);
     next.splice(i, 1);
     return next;
   });
@@ -65,308 +78,381 @@ function SubmissionCard({ submission, users = [], onRefresh }) {
   const resolveImgs = async () => {
     const urls = [];
     for (const img of imgs) {
-      if (img.isNew && img.file) {
-        const ext  = img.file.name.split('.').pop();
+      if (img.file) {
+        const ext = img.file.name.split('.').pop();
         const path = `submissions/reviewed-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         const { error: upErr } = await supabase.storage.from('task-images').upload(path, img.file);
         if (upErr) throw upErr;
         const { data } = supabase.storage.from('task-images').getPublicUrl(path);
         urls.push(data.publicUrl);
-      } else if (img.url) {
-        urls.push(img.url);
-      }
+      } else if (img.url) urls.push(img.url);
     }
     return urls;
   };
 
-  const handleApprove = async () => {
-    if (!page.trim()) { setError('Page is required.'); return; }
-    setSaving(true); setError('');
+  const effectiveTitle = title.trim();
+
+  const approve = async () => {
+    if (!pending || saving) return;
+    if (!effectiveTitle && !feedback.trim()) { fail('Give it a title or a description.'); return; }
+    setSaving('approve'); setError('');
     try {
-      const now       = new Date().toISOString();
+      const now = new Date().toISOString();
       const finalImgs = await resolveImgs();
-      const { error: taskErr } = await supabase.from('tasks').insert({
+      const taskRow = {
         team_id: submission.team_id,
+        title: effectiveTitle || null,
         page: page.trim(), feedback: feedback.trim(), noticed_by: noticedBy.trim(),
         png_url: finalImgs[0] || null, roi, complexity,
         status: 'open', date_received: submission.created_at, updated_at: now,
         created_by: user?.id || null, is_guest: true,
         assignee_id: assigneeId || null,
         due_date: dueDate || null,
-      });
+      };
+      const { data: task, error: taskErr } = await withTitleFallback(
+        (row) => supabase.from('tasks').insert(row).select('*').single(), taskRow,
+      );
       if (taskErr) throw taskErr;
       awardTaskCreatedXp(user?.id);
-      bumpTeamStreak(activeTeamId);
-      const { error: subErr } = await supabase.from('submissions').update({
+      const subRow = {
+        title: effectiveTitle || null,
         page: page.trim(), feedback: feedback.trim(), noticed_by: noticedBy.trim(),
         png_url: finalImgs[0] || null, images: finalImgs,
         status: 'approved', reviewed_at: now, reviewed_by: user?.id,
         notes: notes.trim() || null,
-      }).eq('id', submission.id);
+      };
+      const { error: subErr } = await withTitleFallback(
+        (row) => supabase.from('submissions').update(row).eq('id', submission.id), subRow,
+      );
       if (subErr) throw subErr;
-      onRefresh();
+      tasksChanged();
+      toast('Task created', task ? { action: { label: 'Open', onClick: () => openTask(task) } } : {});
+      onDone();
     } catch (err) {
-      setError(err.message || 'Failed to approve');
+      fail(err.message || 'Failed to approve');
     } finally {
-      setSaving(false); setAction(null);
+      setSaving(null);
     }
   };
 
-  const handleDecline = async () => {
-    setSaving(true); setError('');
+  const decline = async () => {
+    setSaving('decline'); setError('');
     try {
-      const now = new Date().toISOString();
-      const { error: subErr } = await supabase.from('submissions').update({
+      const row = {
+        title: effectiveTitle || null,
         page: page.trim(), feedback: feedback.trim(), noticed_by: noticedBy.trim(),
-        status: 'declined', reviewed_at: now, reviewed_by: user?.id,
+        status: 'declined', reviewed_at: new Date().toISOString(), reviewed_by: user?.id,
         notes: notes.trim() || null,
-      }).eq('id', submission.id);
+      };
+      const { error: subErr } = await withTitleFallback(
+        (r) => supabase.from('submissions').update(r).eq('id', submission.id), row,
+      );
       if (subErr) throw subErr;
-      onRefresh();
+      setConfirmDecline(false);
+      toast('Submission declined');
+      onDone();
     } catch (err) {
-      setError(err.message || 'Failed to decline');
+      setConfirmDecline(false);
+      fail(err.message || 'Failed to decline');
     } finally {
-      setSaving(false); setAction(null);
+      setSaving(null);
     }
   };
+
+  const reviewer = users.find(u => u.id === submission.reviewed_by);
+
+  const aside = (
+    <>
+      <div>
+        <SheetLabel>Noticed by</SheetLabel>
+        <input className="input" value={noticedBy} onChange={e => setNoticedBy(e.target.value)} readOnly={!pending} placeholder="Name" />
+      </div>
+      {pending && (
+        <>
+          <div>
+            <SheetLabel>ROI</SheetLabel>
+            <Segmented value={roi} onChange={setRoi} options={ROIS} ariaLabel="ROI" />
+          </div>
+          <div>
+            <SheetLabel>Complexity</SheetLabel>
+            <Segmented value={complexity} onChange={setComplexity} options={COMPLEXITIES} ariaLabel="Complexity" />
+          </div>
+          <div className="meta">
+            <span className="meta-k">Assignee</span>
+            <span className="meta-v"><AssigneeSelect users={users} value={assigneeId} onChange={setAssigneeId} variant="inline" /></span>
+            <span className="meta-k">Due date</span>
+            <span className="meta-v"><DatePicker value={dueDate} onChange={setDueDate} variant="inline" /></span>
+            <span className="meta-k">Received</span>
+            <span className="meta-v mono">{longDate(submission.created_at)}</span>
+          </div>
+        </>
+      )}
+      {!pending && (
+        <div className="meta">
+          <span className="meta-k">Status</span>
+          <span className="meta-v"><span className={`dot ${DOT[submission.status]}`} />{STATUS_TEXT[submission.status]}</span>
+          <span className="meta-k">Received</span>
+          <span className="meta-v mono">{longDate(submission.created_at)}</span>
+          {submission.reviewed_at && (
+            <>
+              <span className="meta-k">Reviewed</span>
+              <span className="meta-v mono">{longDate(submission.reviewed_at)}</span>
+            </>
+          )}
+          {reviewer && (
+            <>
+              <span className="meta-k">By</span>
+              <span className="meta-v">{fullName(reviewer)}</span>
+            </>
+          )}
+        </div>
+      )}
+      <div className="sheet-aside-sep" />
+      <div>
+        <SheetLabel sub="Only your team sees these.">Notes</SheetLabel>
+        <textarea className="textarea" rows={3} value={notes} onChange={e => setNotes(e.target.value)} readOnly={!pending} placeholder={pending ? 'Internal notes…' : 'No notes'} />
+      </div>
+    </>
+  );
+
+  const footer = pending ? (
+    <>
+      <button type="button" className="btn btn-danger" onClick={() => setConfirmDecline(true)} disabled={!!saving}>Decline</button>
+      <span className="sheet-foot-note hide-phone">From the guest portal · {shortDate(submission.created_at)}</span>
+      <span className="spacer" />
+      <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+      <button type="button" className="btn btn-primary" onClick={approve} disabled={!!saving}>
+        {saving === 'approve' ? <span className="spinner" /> : <Icon name="check" size={14} />}
+        Approve &amp; create task <span className="kbd">⌘↵</span>
+      </button>
+    </>
+  ) : (
+    <>
+      <span className="sheet-foot-note">{STATUS_TEXT[submission.status]}{submission.reviewed_at ? ` · ${shortDate(submission.reviewed_at)}` : ''}</span>
+      <span className="spacer" />
+      <button type="button" className="btn" onClick={onClose}>Close</button>
+    </>
+  );
 
   return (
-    <>
-      <div className={`sub-card sub-card-${submission.status}`}>
-        {/* Header */}
-        <div className="sub-card-header">
-          <span className={`sub-status-badge sub-status-${submission.status}`}>
-            {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
-          </span>
-          <span className="sub-card-date">{format(new Date(submission.created_at), 'MMM d, yyyy · h:mm a')}</span>
-        </div>
-
-        {/* Editable fields */}
-        <div className="sub-card-body">
-          <div className="sub-fields">
-            <div className="sub-field-row">
-              <div className="sub-field">
-                <label className="sub-label">Page / URL</label>
-                <input
-                  className="input"
-                  value={page}
-                  onChange={e => setPage(e.target.value)}
-                  readOnly={!isPending}
-                  placeholder="Which page?"
-                />
-              </div>
-              <div className="sub-field">
-                <label className="sub-label">Noticed by</label>
-                <input
-                  className="input"
-                  value={noticedBy}
-                  onChange={e => setNoticedBy(e.target.value)}
-                  readOnly={!isPending}
-                  placeholder="Name"
-                />
-              </div>
-            </div>
-
-            <div className="sub-field">
-              <label className="sub-label">Feedback / Issue</label>
-              <textarea
-                className="input"
-                rows={4}
-                value={feedback}
-                onChange={e => setFeedback(e.target.value)}
-                readOnly={!isPending}
-                placeholder="Describe the issue…"
-                style={{ resize: 'vertical', minHeight: 88 }}
-              />
-            </div>
-
-            {isPending && (
-              <div className="sub-field-row">
-                <div className="sub-field">
-                  <label className="sub-label">ROI / Priority</label>
-                  <select className="input" value={roi} onChange={e => setRoi(e.target.value)}>
-                    <option value="critical">Critical</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-                </div>
-                <div className="sub-field">
-                  <label className="sub-label">Complexity</label>
-                  <select className="input" value={complexity} onChange={e => setComplexity(e.target.value)}>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {isPending && (
-              <div className="sub-field-row">
-                {users.length > 0 && (
-                  <div className="sub-field">
-                    <label className="sub-label">Assignee <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: 11 }}>optional</span></label>
-                    <AssigneeSelect users={users} value={assigneeId} onChange={setAssigneeId} />
-                  </div>
-                )}
-                <div className="sub-field">
-                  <label className="sub-label">Due Date <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: 11 }}>optional</span></label>
-                  <DatePicker value={dueDate} onChange={setDueDate} />
-                </div>
-              </div>
-            )}
-
-            <div className="sub-field">
-              <label className="sub-label">Notes <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: 11 }}>internal only</span></label>
-              <textarea
-                className="input"
-                rows={2}
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                readOnly={!isPending}
-                placeholder="Internal notes…"
-                style={{ resize: 'none' }}
-              />
-            </div>
-
-            {/* Screenshots */}
-            <div className="sub-field">
-              <label className="sub-label">Screenshots</label>
-              {imgs.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                  {imgs.map((img, i) => {
-                    const src = img.isNew ? img.preview : img.url;
-                    return (
-                      <div key={i} style={{ position: 'relative', width: 100, height: 76, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', flexShrink: 0 }}>
-                        <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer', display: 'block' }} onClick={() => setLightboxIdx(i)} />
-                        {isPending && (
-                          <button type="button" onClick={() => removeImg(i)} style={{ position: 'absolute', top: 3, right: 3, background: 'rgba(0,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: 18, height: 18, cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {isPending && (
-                <button type="button" className="attach-add-btn" onClick={() => fileRef.current?.click()}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-                  </svg>
-                  {imgs.length === 0 ? 'Attach screenshots' : 'Add more'}
-                </button>
-              )}
-              {!isPending && imgs.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>No screenshots</span>}
-              <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: 'none' }} />
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        {isPending && (
-          <div className="sub-card-footer">
-            {error && <span className="error-msg" style={{ fontSize: 12 }}>⚠ {error}</span>}
-            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-              {action === 'decline' ? (
-                <>
-                  <button className="btn btn-danger btn-sm" onClick={handleDecline} disabled={saving}>
-                    {saving ? 'Declining…' : 'Confirm Decline'}
-                  </button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setAction(null)} disabled={saving}>Cancel</button>
-                </>
-              ) : (
-                <>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setAction('decline')}>Decline</button>
-                  <button className="btn btn-primary btn-sm" onClick={handleApprove} disabled={saving}>
-                    {saving ? 'Approving…' : 'Approve & Create Task'}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {(isApproved || isDeclined) && submission.reviewed_at && (
-          <div className="sub-reviewed">
-            {isApproved ? '✓ Approved' : '✕ Declined'} on {format(new Date(submission.reviewed_at), 'MMM d, yyyy')}
-            {submission.notes && <> · {submission.notes}</>}
-          </div>
+    <Sheet
+      eyebrow={<>Submission <span className={`dot ${DOT[submission.status]}`} /> {STATUS_TEXT[submission.status]}</>}
+      onClose={onClose}
+      onSubmit={pending ? approve : undefined}
+      aside={aside}
+      footer={footer}
+    >
+      <textarea
+        className="title-input"
+        rows={1}
+        value={title}
+        onChange={e => setTitle(e.target.value)}
+        readOnly={!pending}
+        placeholder={taskTitle({ feedback }) || 'Title'}
+        onInput={e => { e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`; }}
+      />
+      <div className="link-field sb-link">
+        <Icon name="link" size={15} />
+        <input value={page} onChange={e => setPage(e.target.value)} readOnly={!pending} placeholder="Page or URL" />
+        {/^https?:\/\//i.test(page.trim()) && (
+          <a className="link-open" href={page.trim()} target="_blank" rel="noopener noreferrer">Open <Icon name="arrowUpRight" size={12} /></a>
         )}
       </div>
+      <textarea
+        className="body-input sb-body"
+        value={feedback}
+        onChange={e => setFeedback(e.target.value)}
+        readOnly={!pending}
+        placeholder="Describe the issue…"
+        rows={6}
+      />
 
-      {lightboxIdx !== null && imgs[lightboxIdx] && (
-        <ModalPortal>
-        <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => setLightboxIdx(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
-            <img src={imgs[lightboxIdx].isNew ? imgs[lightboxIdx].preview : imgs[lightboxIdx].url} alt="" style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 12, boxShadow: 'var(--shadow-lg)' }} />
-            <button onClick={() => setLightboxIdx(null)} style={{ position: 'absolute', top: -12, right: -12, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '50%', width: 32, height: 32, color: 'var(--text)', cursor: 'pointer', fontSize: 16 }}>✕</button>
-          </div>
-        </div>
-        </ModalPortal>
+      {error && (
+        <div key={errTick} className="notice notice-error wiggle sb-error" role="alert"><Icon name="alert" size={15} /><span>{error}</span></div>
       )}
-    </>
+
+      <div className="sb-shots">
+        <SheetLabel>Screenshots</SheetLabel>
+        {imgs.length > 0 && (
+          <div className="attach-grid">
+            {imgs.map((img, i) => (
+              <div key={img.url || img.preview} className="attach">
+                <img className="attach-thumb" src={img.url || img.preview} alt="" onClick={() => setZoom(img.url || img.preview)} />
+                {pending && (
+                  <button type="button" className="attach-x" onClick={() => removeImg(i)} aria-label="Remove screenshot">
+                    <Icon name="x" size={11} stroke={2.4} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {pending ? (
+          <Dropzone onFiles={addFiles} accept="image/*" title="Upload or drop a screenshot" sub="PNG, JPG, WebP" row={imgs.length > 0} />
+        ) : imgs.length === 0 && <span className="t-3" style={{ fontSize: 13.5 }}>No screenshots</span>}
+      </div>
+
+      {zoom && <Lightbox src={zoom} onClose={() => setZoom(null)} />}
+      {confirmDecline && (
+        <ConfirmDialog
+          title="Decline this submission?"
+          text="It moves to Declined and no task is created. Your edits and notes are kept."
+          confirmLabel="Decline"
+          danger
+          busy={saving === 'decline'}
+          onConfirm={decline}
+          onClose={() => saving !== 'decline' && setConfirmDecline(false)}
+        />
+      )}
+    </Sheet>
   );
 }
 
 export default function Submissions() {
-  const { activeTeamId } = useTeam();
-  const [allSubmissions, setAllSubmissions] = useState([]);
+  const { activeTeam, activeTeamId } = useTeam();
+  const [all, setAll] = useState([]);
   const [users, setUsers] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [activeTab, setActiveTab] = useState('pending');
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('pending');
+  const [query, setQuery] = useState('');
+  const [openId, setOpenId] = useState(null);
+  const [settled, setSettled] = useState(false);
 
   const fetchData = useCallback(async () => {
-    if (!activeTeamId) { setAllSubmissions([]); setUsers([]); setLoading(false); return; }
-    setLoading(true);
+    if (!activeTeamId) { setAll([]); setUsers([]); setLoading(false); return; }
     const [{ data }, members] = await Promise.all([
-      supabase.from('submissions').select('*')
-        .eq('team_id', activeTeamId).order('created_at', { ascending: false }),
+      supabase.from('submissions').select('*').eq('team_id', activeTeamId).order('created_at', { ascending: false }),
       fetchTeamMembers(activeTeamId),
     ]);
-    setAllSubmissions(data || []);
+    setAll(data || []);
     setUsers(members || []);
     setLoading(false);
   }, [activeTeamId]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { setLoading(true); setSettled(false); fetchData(); }, [fetchData]);
+  useEffect(() => {
+    if (loading) return undefined;
+    const t = setTimeout(() => setSettled(true), 700);
+    return () => clearTimeout(t);
+  }, [loading, tab]);
+  useEffect(() => { setSettled(false); }, [tab]);
 
-  const counts  = { pending: 0, approved: 0, declined: 0 };
-  allSubmissions.forEach(s => { if (counts[s.status] !== undefined) counts[s.status]++; });
+  const counts = useMemo(() => {
+    const c = { pending: 0, approved: 0, declined: 0 };
+    all.forEach(s => { if (c[s.status] !== undefined) c[s.status] += 1; });
+    return c;
+  }, [all]);
 
-  const visible = allSubmissions.filter(s => s.status === activeTab);
+  const visible = useMemo(() => {
+    const list = all.filter(s => s.status === tab);
+    return query.trim()
+      ? searchRank(list, query, s => [
+        { text: taskTitle(s), weight: 3 },
+        { text: s.page || '', weight: 2 },
+        { text: s.noticed_by || '', weight: 2 },
+        { text: s.feedback || '', weight: 1 },
+      ])
+      : list;
+  }, [all, tab, query]);
+
+  const open = all.find(s => s.id === openId) || null;
+  const guestLink = activeTeam?.slug ? `${window.location.origin}/submit/${activeTeam.slug}` : '';
+
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(guestLink); toast('Guest link copied'); } catch { toast('Couldn’t reach the clipboard', { icon: 'alert' }); }
+  };
+
+  const sub = loading ? ' ' : (
+    <>
+      {counts.pending} pending<span className="sep">·</span>{counts.approved} approved<span className="sep">·</span>{counts.declined} declined
+    </>
+  );
 
   return (
-    <div className="submissions-page fade-in">
-      <div className="sub-tabs">
-        {TABS.map(t => (
-          <button
-            key={t.value}
-            className={`sub-tab ${activeTab === t.value ? 'sub-tab-active' : ''}`}
-            onClick={() => setActiveTab(t.value)}
-          >
-            {t.label}
-            <span className="sub-tab-count">{counts[t.value]}</span>
+    <div className="page">
+      {guestLink && (
+        <TopBarPortal>
+          <button type="button" className="btn" onClick={copyLink} title="Copy the guest portal link">
+            <Icon name="link" /> <span className="hide-phone">Copy guest link</span>
           </button>
-        ))}
+          <a className="btn" href={guestLink} target="_blank" rel="noopener noreferrer" title="Open the guest portal">
+            <Icon name="external" /> <span className="hide-phone">Guest portal</span>
+          </a>
+        </TopBarPortal>
+      )}
+
+      <PageHeader eyebrow="Inbox" title="Submissions" sub={sub} />
+
+      <div className="sb-bar anim-rise">
+        <Tabs value={tab} onChange={setTab} items={TABS.map(t => ({ ...t, count: loading ? undefined : counts[t.value] }))} />
+        <SearchInput value={query} onChange={setQuery} placeholder="Search submissions" className="sb-search" />
       </div>
 
-      {loading ? (
-        <div className="sub-grid">
-          {[1, 2, 3].map(i => <div key={i} className="sub-card loading-pulse" style={{ height: 320 }} />)}
+      <div className="table sb-table" style={{ '--cols': 'minmax(0, 1fr) 160px 110px 70px 120px' }}>
+        <div className="table-head">
+          <span>Submission</span>
+          <span>Noticed by</span>
+          <span>Received</span>
+          <span className="hide-phone">Shots</span>
+          <span>Status</span>
         </div>
-      ) : visible.length === 0 ? (
-        <div className="empty-state">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
-          </svg>
-          <h3>{activeTab === 'pending' ? 'No pending submissions' : activeTab === 'approved' ? 'No approved submissions' : 'No declined submissions'}</h3>
-          <p>{activeTab === 'pending' ? 'New guest submissions will appear here for review' : 'Nothing here yet'}</p>
-        </div>
-      ) : (
-        <div className="sub-grid">
-          {visible.map(s => <SubmissionCard key={s.id} submission={s} users={users} onRefresh={fetchData} />)}
-        </div>
+
+        {loading ? (
+          <SkeletonRows rows={5} widths={['46%', '14%', '9%', '4%', '10%']} />
+        ) : visible.length === 0 ? (
+          query.trim() ? (
+            <Empty icon="search" title="No matches">Nothing in {STATUS_TEXT[tab].toLowerCase()} matches “{query}”.</Empty>
+          ) : (
+            <Empty
+              icon="inbox"
+              title={tab === 'pending' ? 'Inbox zero' : `Nothing ${STATUS_TEXT[tab].toLowerCase()} yet`}
+              action={tab === 'pending' && guestLink ? <button type="button" className="btn" onClick={copyLink}><Icon name="copy" size={14} />Copy guest link</button> : null}
+            >
+              {tab === 'pending' ? 'New feedback from your guest portal shows up here for review.' : 'Reviewed submissions are kept here.'}
+            </Empty>
+          )
+        ) : (
+          <div key={tab} className={`stagger ${settled ? 'settled' : ''}`}>
+            {visible.map(s => {
+              const shots = imagesOf(s).length;
+              return (
+                <div
+                  key={s.id}
+                  className={`table-row ${openId === s.id ? 'is-selected' : ''}`}
+                  onClick={() => setOpenId(s.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter') setOpenId(s.id); }}
+                >
+                  <div className="table-cell" style={{ display: 'block' }}>
+                    <div className="table-title truncate">{taskTitle(s)}</div>
+                    <div className="table-sub">
+                      {s.page ? pageLabel(s.page) : taskPreview(s, 90)}
+                    </div>
+                  </div>
+                  <div className="table-cell truncate">{s.noticed_by || <span className="t-4">—</span>}</div>
+                  <div className="table-cell mono">{shortDate(s.created_at)}</div>
+                  <div className="table-cell mono hide-phone">
+                    {shots ? <><Icon name="image" size={13} />{shots}</> : <span className="t-4">—</span>}
+                  </div>
+                  <div className="table-cell">
+                    <span className="status"><span className={`dot ${DOT[s.status]}`} />{STATUS_TEXT[s.status]}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {open && (
+        <ReviewSheet
+          key={open.id}
+          submission={open}
+          users={users}
+          onClose={() => setOpenId(null)}
+          onDone={() => { setOpenId(null); fetchData(); }}
+        />
       )}
     </div>
   );

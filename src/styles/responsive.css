@@ -1,0 +1,99 @@
+/* ══════════════════════════════════════════════════════════════
+   Phone & tablet — the same app, laid out for a thumb
+   --------------------------------------------------------------
+   Pages mark columns that can drop on a phone with .hide-phone, and
+   columns that should only show there with .show-phone. Tables turn into
+   stacked rows; sheets become full-screen, sliding up from the bottom.
+   ══════════════════════════════════════════════════════════════ */
+
+.show-phone { display: none !important; }
+
+@media (max-width: 1180px) {
+  .sheet { width: calc(100vw - 24px); }
+  .sheet-aside { width: 360px; }
+}
+
+@media (max-width: 960px) {
+  :root { --page-pad: 28px; }
+  .sheet-aside { width: 320px; padding: 26px 22px; }
+  .sheet-main { padding: 30px 28px 24px; }
+}
+
+@media (max-width: 768px) {
+  .hide-phone { display: none !important; }
+  .show-phone { display: revert !important; }
+
+  body { font-size: 15px; }
+  .page { padding: 22px var(--page-pad) 40px; }
+  .page-head { margin-bottom: 22px; align-items: flex-start; }
+  .page-title { font-size: 30px; margin-top: 6px; }
+  .page-sub { font-size: 14.5px; margin-top: 6px; }
+  .toolbar { width: 100%; }
+  .toolbar .search { flex: 1; width: auto; }
+
+  /* Inputs at 16px so iOS doesn't zoom on focus. */
+  .input, .textarea, .select, .link-field input, .search .input { font-size: 16px; }
+
+  /* Tables → stacked rows. The first cell is the title; the rest wrap
+     underneath as a quiet meta line. */
+  .table-head { display: none; }
+  .table-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 4px;
+    padding: 13px 4px;
+    min-height: 0;
+  }
+  .table-row > .table-cell:first-child,
+  .table-row > .table-main { flex: 1 0 100%; }
+  .table-row > .table-cell:not(:first-child) { font-size: 13px; color: var(--text-3); }
+  .table-row:hover { background: transparent; }
+  .table-row:active { background: var(--hover); }
+  .table-group { padding: 22px 4px 6px; }
+
+  /* Sheets: full screen, up from the bottom. */
+  .sheet {
+    top: 0; right: 0; bottom: 0; left: 0;
+    width: 100%;
+    min-width: 0;
+    border-radius: 0;
+    border: 0;
+    animation: tf-sheet-up 0.48s var(--ease-spring) both;
+    padding-top: env(safe-area-inset-top);
+  }
+  .sheet-closing .sheet, .modal-portal-exit .sheet { animation: tf-sheet-down 0.28s var(--ease-out) forwards; }
+  .sheet-head { padding: 0 10px 0 18px; }
+  .sheet-body { flex-direction: column; overflow-y: auto; }
+  .sheet-main { overflow: visible; padding: 22px 18px 18px; flex: none; }
+  .sheet-aside { width: auto; overflow: visible; border-left: 0; border-top: 1px solid var(--border); padding: 22px 18px 28px; }
+  .sheet-foot { padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); min-height: 0; flex-wrap: wrap; }
+  .sheet-foot-note { font-size: 13px; flex-basis: 100%; }
+  .sheet-foot .btn .kbd { display: none; }
+  .title-input { font-size: 24px; }
+  .title-input.mono { font-size: 21px; }
+
+  .dialog-overlay { align-items: flex-end; padding: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+  .dialog { animation: tf-sheet-up 0.44s var(--ease-spring) both; border-radius: 18px; }
+  .modal-portal-exit .dialog { animation: tf-sheet-down 0.24s var(--ease-out) forwards; }
+  .dialog-foot .btn { flex: 1; --btn-h: 42px; }
+
+  .menu { max-width: calc(100vw - 16px); }
+  .menu-item { min-height: 42px; font-size: 15px; }
+
+  .toast-stack { bottom: calc(var(--tabbar-h) + 14px + env(safe-area-inset-bottom)); }
+
+  .tabs { gap: 20px; margin-left: calc(var(--page-pad) * -1); margin-right: calc(var(--page-pad) * -1); padding: 0 var(--page-pad); }
+  .tab { font-size: 14px; }
+
+  .meta { grid-template-columns: 96px 1fr; }
+
+  /* Bigger touch targets. */
+  .btn { --btn-h: 38px; }
+  .btn-sm { --btn-h: 32px; }
+  .seg-btn { height: 38px; }
+  .opt { height: 40px; }
+  .check { width: 19px; height: 19px; }
+  .check::after { left: 5.5px; top: 2px; }
+}

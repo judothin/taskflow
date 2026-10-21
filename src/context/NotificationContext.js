@@ -3,18 +3,18 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { useTeam } from './TeamContext';
 import { fetchUserPrefs, saveUserPrefs, saveUserPrefsDebounced } from '../lib/userPrefs';
+import { taskTitle } from '../lib/taskText';
 
 // ── Notification types ──────────────────────────────────────
-// `task_completed` is intentionally red — completions must grab attention.
+// `icon` names an Icon from src/ui; `tone` is a status dot (.dot-<tone>).
 export const NOTIF_TYPES = {
-  task_completed: { label: 'Task completed',  color: '#ef4444' },
-  task_created:   { label: 'Task created',    color: '#3b82f6' },
-  comment:        { label: 'Project comment', color: '#a78bfa' },
-  submission:     { label: 'Guest submission',color: '#f59e0b' },
-  file_added:     { label: 'File added',      color: '#2dd4bf' },
-  review_request:  { label: 'Review request',  color: '#38bdf8' },
-  review_decision: { label: 'Review decision', color: '#4ade80' },
-  review_comment:  { label: 'Review comment',  color: '#c084fc' },
+  task_completed:  { label: 'Task completed',   icon: 'done',     tone: 'completed' },
+  task_created:    { label: 'Task created',     icon: 'plus',     tone: 'open' },
+  submission:      { label: 'Guest submission', icon: 'inbox',    tone: 'on_hold' },
+  file_added:      { label: 'File added',       icon: 'fileCode', tone: 'in_progress' },
+  review_request:  { label: 'Review request',   icon: 'eye',      tone: 'open' },
+  review_decision: { label: 'Review decision',  icon: 'check',    tone: 'completed' },
+  review_comment:  { label: 'Review comment',   icon: 'message',  tone: 'in_progress' },
 };
 
 const REVIEW_TYPES = new Set(['review_request', 'review_decision', 'review_comment']);
@@ -32,7 +32,7 @@ const REVIEW_EVENT_SUBTITLE = {
 
 const DEFAULT_SETTINGS = {
   types: {
-    task_completed: true, task_created: true, comment: true, submission: true, file_added: true,
+    task_completed: true, task_created: true, submission: true, file_added: true,
     review_request: true, review_decision: true, review_comment: true,
   },
   completedScope: 'all',     // 'all' | 'selected'
@@ -90,7 +90,6 @@ export function NotificationProvider({ children }) {
   // Lookup maps for enriching realtime events that arrive without joins.
   const profilesRef = useRef({});   // id -> "First Last"
   const profileMetaRef = useRef({}); // lowercased "first last" -> { avatar_url, color }
-  const projectsRef = useRef({});   // id -> title
   const seenRef     = useRef(new Set());
   // Ready for Review: post id -> { title, created_by }, and the posts I review.
   const reviewPostsRef = useRef({});
@@ -147,7 +146,7 @@ export function NotificationProvider({ children }) {
   const buildTaskNotifs = useCallback((task) => {
     const out = [];
     if (!task) return out;
-    const title = task.page || 'Untitled task';
+    const title = taskTitle(task);
     if (task.created_at) {
       out.push({
         id: `tk-${task.id}`, type: 'task_created', createdAt: task.created_at,
@@ -199,7 +198,6 @@ export function NotificationProvider({ children }) {
     const results = await Promise.allSettled([
       supabase.from('profiles').select('id, first_name, last_name, avatar_url, color'),
       supabase.from('tasks').select('*').eq('team_id', activeTeamId).order('created_at', { ascending: false }).limit(80),
-      supabase.from('projects').select('id, title').eq('team_id', activeTeamId),
       supabase.from('submissions').select('*').eq('team_id', activeTeamId).gte('created_at', since)
         .order('created_at', { ascending: false }).limit(30),
       supabase.from('file_entries').select('*').eq('team_id', activeTeamId).gte('created_at', since)
@@ -223,35 +221,16 @@ export function NotificationProvider({ children }) {
     });
     setPeople(profs.map(p => `${p.first_name || ''} ${p.last_name || ''}`.trim()).filter(Boolean).sort());
 
-    const projs = val(2);
-    projectsRef.current = {};
-    projs.forEach(p => { projectsRef.current[p.id] = p.title; });
-
-    // project_comments has no team_id of its own — scope it to this team's
-    // project ids (fetched above) rather than the whole comments table.
-    const projectIds = projs.map(p => p.id);
-    const { data: comments } = projectIds.length
-      ? await supabase.from('project_comments').select('id, project_id, user_id, content, created_at')
-          .in('project_id', projectIds).gte('created_at', since).order('created_at', { ascending: false }).limit(40)
-      : { data: [] };
-
     const out = [];
     val(1).forEach(t => out.push(...buildTaskNotifs(t)));
-    (comments || []).forEach(c => out.push({
-      id: `cm-${c.id}`, type: 'comment', createdAt: c.created_at,
-      title: projectsRef.current[c.project_id] || 'a project',
-      subtitle: 'New comment',
-      from: profilesRef.current[c.user_id] || 'Someone',
-      data: { kind: 'comment', comment: c, projectId: c.project_id, projectTitle: projectsRef.current[c.project_id] },
-    }));
-    val(3).forEach(s => out.push({
+    val(2).forEach(s => out.push({
       id: `sb-${s.id}`, type: 'submission', createdAt: s.created_at,
       title: s.page || 'Guest submission',
       subtitle: 'Guest submission',
       from: s.noticed_by || 'a guest',
       data: { kind: 'submission', submission: s },
     }));
-    val(4).forEach(f => out.push({
+    val(3).forEach(f => out.push({
       id: `fl-${f.id}`, type: 'file_added', createdAt: f.created_at || new Date().toISOString(),
       title: f.name || f.title || 'New file',
       subtitle: 'Added to Files',
@@ -260,11 +239,11 @@ export function NotificationProvider({ children }) {
 
 
     const posts = {};
-    val(5).forEach(p => { posts[p.id] = p; });
+    val(4).forEach(p => { posts[p.id] = p; });
     reviewPostsRef.current = posts;
-    myReviewsRef.current = new Set(val(6).map(r => r.post_id));
-    val(7).forEach(e => { const n = buildReviewEventNotif(e); if (n) out.push(n); });
-    val(8).forEach(c => out.push(buildReviewCommentNotif(c)));
+    myReviewsRef.current = new Set(val(5).map(r => r.post_id));
+    val(6).forEach(e => { const n = buildReviewEventNotif(e); if (n) out.push(n); });
+    val(7).forEach(c => out.push(buildReviewCommentNotif(c)));
 
     out.forEach(n => seenRef.current.add(n.id));
     addItems(out);
@@ -291,23 +270,11 @@ export function NotificationProvider({ children }) {
 
     const teamFilter = `team_id=eq.${activeTeamId}`;
     const channel = supabase
-      .channel(`notif-feed-${activeTeamId}`)
+      .channel(`notif-feed-${activeTeamId}-${Math.random().toString(36).slice(2, 7)}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks', filter: teamFilter },
         (p) => addItems(buildTaskNotifs(p.new)))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks', filter: teamFilter },
         (p) => addItems(buildTaskNotifs(p.new)))
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'project_comments' },
-        (p) => {
-          const c = p.new;
-          if (!projectsRef.current[c.project_id]) return; // not a project in this team
-          addItems([{
-            id: `cm-${c.id}`, type: 'comment', createdAt: c.created_at || new Date().toISOString(),
-            title: projectsRef.current[c.project_id] || 'a project',
-            subtitle: 'New comment',
-            from: profilesRef.current[c.user_id] || 'Someone',
-            data: { kind: 'comment', comment: c, projectId: c.project_id, projectTitle: projectsRef.current[c.project_id] },
-          }]);
-        })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'submissions', filter: teamFilter },
         (p) => {
           const s = p.new;
@@ -351,7 +318,6 @@ export function NotificationProvider({ children }) {
     window.addEventListener('focus', backfill);
     window.addEventListener('tasks-changed', backfill);
     window.addEventListener('queue-changed', backfill);
-    window.addEventListener('project-updated', backfill);
     window.addEventListener('reviews-changed', backfill);
 
     return () => {
@@ -361,7 +327,6 @@ export function NotificationProvider({ children }) {
       window.removeEventListener('focus', backfill);
       window.removeEventListener('tasks-changed', backfill);
       window.removeEventListener('queue-changed', backfill);
-      window.removeEventListener('project-updated', backfill);
       window.removeEventListener('reviews-changed', backfill);
     };
   }, [uid, activeTeamId, backfill, addItems, buildTaskNotifs, buildReviewEventNotif, buildReviewCommentNotif, ensureReviewPost]);
@@ -402,12 +367,11 @@ export function NotificationProvider({ children }) {
   }, []);
 
   // Is this notification about something the signed-in user did themselves?
-  // task_created / comment carry the actor's id; task_completed stores a
+  // task_created / review items carry the actor's id; task_completed stores a
   // (possibly comma-separated) list of names. Guest submissions and file
   // adds aren't attributable to a signed-in teammate, so they're never "self".
   const isSelf = useCallback((n) => {
     const d = n.data || {};
-    if (n.type === 'comment') return !!uid && d.comment?.user_id === uid;
     if (n.type === 'task_created') return !!uid && d.task?.created_by === uid;
     if (REVIEW_TYPES.has(n.type)) return !!uid && d.actorId === uid;
     if (n.type === 'task_completed') {

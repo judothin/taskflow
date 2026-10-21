@@ -1,9 +1,7 @@
 import { supabase } from './supabase';
 import { awardTaskCompletedXp } from './xp';
-import { bumpTeamStreak } from './streak';
 
-// Marking a task done is more than a status write: it awards XP, bumps the
-// team streak, drops the task out of the queue, and — if it was the task in
+// Marking a task done is more than a status write: it awards XP, drops the task out of the queue, and — if it was the task in
 // progress — promotes whatever was next in the queue to take its place.
 //
 // This lives here because two surfaces do it: the desktop TaskCard's quick
@@ -26,7 +24,6 @@ export async function completeTask({ task, completedBy, userId, teamId, wasQueue
     status: task.status,
     wasQueued: wasQueued || task.status === 'in_progress',
   });
-  bumpTeamStreak(teamId);
 
   await supabase.from('queue').delete().eq('task_id', task.id);
 

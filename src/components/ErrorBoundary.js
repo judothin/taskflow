@@ -22,13 +22,14 @@ export default class ErrorBoundary extends React.Component {
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div className="error-boundary">
-        <div className="error-boundary-card">
-          <h2 className="error-boundary-title">Something went wrong on this page</h2>
-          <p className="error-boundary-msg">{String(this.state.error?.message || this.state.error)}</p>
-          <div className="error-boundary-actions">
-            <button className="btn btn-secondary" onClick={() => this.setState({ error: null })}>Try again</button>
-            <button className="btn btn-primary" onClick={() => { window.location.href = '/dashboard'; }}>Back to dashboard</button>
+      <div className="page">
+        <div className="empty">
+          <span className="empty-icon">!</span>
+          <div className="empty-title">Something went wrong on this page</div>
+          <div className="mono t-3" style={{ fontSize: 12.5, maxWidth: 520 }}>{String(this.state.error?.message || this.state.error)}</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button type="button" className="btn" onClick={() => this.setState({ error: null })}>Try again</button>
+            <button type="button" className="btn btn-primary" onClick={() => { window.location.href = '/dashboard'; }}>Back to dashboard</button>
           </div>
         </div>
       </div>

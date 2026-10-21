@@ -1,210 +1,314 @@
-/* Scan a notebook page (NoteScan.js) — classic UI. New-UI overrides are in
-   src/modern/notescan.css. */
+/* ══════════════════════════════════════════════════════════════
+   Note scan (.ns-) — photograph a notebook page, review, log.
+   Also the ScanNotifier toast body (.ns-toast-).
+   ══════════════════════════════════════════════════════════════ */
 
-.nscan { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
-.nscan-head { display: flex; align-items: flex-start; gap: 14px; }
-.nscan-icon {
-  display: flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; flex-shrink: 0;
-  border-radius: var(--radius-lg);
-  background: var(--accent-glow);
-  color: var(--accent);
+.sheet-main.ns-main { padding: 30px 32px 28px; }
+.ns-foot-slot { display: contents; }
+
+.ns-heading { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; }
+.ns-sub { margin-top: 6px; font-size: 14px; color: var(--text-2); line-height: 1.5; }
+.ns-hint { margin-top: 8px; font-size: 12.5px; color: var(--text-3); line-height: 1.45; }
+.ns-hint-tag { margin-right: 7px; vertical-align: 1px; }
+
+/* ── Capture ── */
+.ns-capture { display: flex; flex-direction: column; gap: 20px; }
+.ns-capture > * { animation: tf-rise 0.42s var(--ease-out) both; }
+.ns-capture > *:nth-child(2) { animation-delay: 40ms; }
+.ns-capture > *:nth-child(3) { animation-delay: 80ms; }
+.ns-capture > *:nth-child(4) { animation-delay: 120ms; }
+.ns-capture > *:nth-child(5) { animation-delay: 160ms; }
+
+.ns-done { align-items: center; }
+.ns-done span { flex: 1; }
+.ns-done-link { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+/* The viewfinder — corner marks, a flash on the shutter, a sweep while reading. */
+.ns-finder {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  max-height: 360px;
+  width: 100%;
+  border-radius: var(--r-xl);
+  background: var(--surface-2);
+  overflow: hidden;
+  cursor: pointer;
+  isolation: isolate;
+  transition: background-color var(--dur-2) ease, transform var(--dur-3) var(--ease-spring), box-shadow var(--dur-2) ease;
 }
-.nscan-title { font-size: 18px; font-weight: 700; color: var(--text); line-height: 1.25; }
-.nscan-sub { font-size: 13px; color: var(--text-muted); margin-top: 3px; line-height: 1.5; }
-.nscan-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.nscan-actions .btn { justify-content: center; }
-.nscan-msg { margin: 0; }
-
-.nscan-progress { display: flex; flex-direction: column; gap: 8px; }
-.nscan-progress-label { font-size: 13.5px; color: var(--text); font-weight: 500; }
-.nscan-bar { height: 6px; border-radius: 999px; background: var(--bg-4); overflow: hidden; }
-.nscan-bar > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width 0.3s ease; }
-
-/* ── Review sheet ── */
-.nscan-review { max-width: 640px; height: 94dvh; max-height: 94dvh; }
-.nscan-review-head { align-items: flex-start; gap: 12px; }
-.nscan-icon-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; flex-shrink: 0;
-  border-radius: var(--radius);
-  background: none;
-  color: var(--text-muted);
+.ns-finder:hover { background: var(--surface-3); }
+.ns-finder:hover .ns-corner { transform: scale(1.08); }
+.ns-finder.is-over { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); transform: scale(1.01); }
+.ns-finder.is-scanning { cursor: progress; }
+.ns-corner {
+  position: absolute;
+  z-index: 2;
+  width: 26px; height: 26px;
+  border: 2px solid var(--text-3);
+  pointer-events: none;
+  transition: transform var(--dur-3) var(--ease-spring), border-color var(--dur-2) ease;
+  animation: tf-pop 0.5s var(--ease-spring) 0.12s both;
 }
-.nscan-icon-btn:hover { background: var(--bg-3); color: var(--text); }
-.nscan-review-body { display: flex; flex-direction: column; gap: 18px; }
+.ns-c1 { top: 14px; left: 14px; border-right: 0; border-bottom: 0; border-top-left-radius: 9px; transform-origin: top left; }
+.ns-c2 { top: 14px; right: 14px; border-left: 0; border-bottom: 0; border-top-right-radius: 9px; transform-origin: top right; }
+.ns-c3 { bottom: 14px; left: 14px; border-right: 0; border-top: 0; border-bottom-left-radius: 9px; transform-origin: bottom left; }
+.ns-c4 { bottom: 14px; right: 14px; border-left: 0; border-top: 0; border-bottom-right-radius: 9px; transform-origin: bottom right; }
+.ns-finder.is-over .ns-corner, .ns-finder.is-scanning .ns-corner { border-color: var(--accent); }
 
-.nscan-photo-toggle {
-  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
-  padding: 6px 10px;
-  border-radius: var(--radius);
-  background: var(--bg-3);
-  color: var(--text-muted);
-  font-size: 13px; font-weight: 500;
-}
-.nscan-photo { width: 100%; border-radius: var(--radius-lg); border: 1px solid var(--border); }
-
-.nscan-section { display: flex; flex-direction: column; gap: 8px; }
-.nscan-people { display: flex; flex-wrap: wrap; gap: 8px; }
-.nscan-person {
-  display: inline-flex; align-items: center; gap: 8px;
-  min-height: 40px;
-  padding: 4px 14px 4px 5px;
+.ns-finder-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 20px; text-align: center; }
+.ns-finder-icon {
+  display: grid; place-items: center;
+  width: 48px; height: 48px;
+  margin-bottom: 8px;
+  border-radius: 14px;
+  background: var(--surface-solid);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-3);
-  color: var(--text-muted);
-  font-size: 14px; font-weight: 500;
+  color: var(--text-2);
+  box-shadow: var(--shadow-xs);
+  transition: transform var(--dur-3) var(--ease-spring);
 }
-.nscan-person-on { border-color: var(--accent); background: var(--accent-glow); color: var(--text); }
-.nscan-area-all { display: flex; gap: 8px; }
-.nscan-area-all .input { flex: 1; }
+.ns-finder:hover .ns-finder-icon { transform: translateY(-2px) rotate(-4deg); }
+.ns-finder.is-over .ns-finder-icon { transform: translateY(-3px) scale(1.1); }
+.ns-finder-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.ns-finder-sub { font-size: 13px; color: var(--text-3); }
 
-.nscan-list-head { display: flex; align-items: center; justify-content: space-between; }
-.nscan-list-head .label { margin: 0; }
-.nscan-bulk { display: flex; gap: 4px; }
-.nscan-bulk button {
-  padding: 6px 10px;
-  border-radius: var(--radius);
-  background: none;
-  color: var(--accent);
-  font-size: 13px; font-weight: 600;
+.ns-finder-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: saturate(0.6) brightness(0.8); animation: tf-fade-in 0.3s ease both; }
+.ns-sweep {
+  position: absolute;
+  z-index: 1;
+  left: 0; right: 0; top: 0;
+  height: 34%;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--ink-text) 28%, transparent) 85%, color-mix(in srgb, var(--ink-text) 70%, transparent));
+  border-bottom: 2px solid var(--ink-text);
+  animation: ns-sweep 1.7s var(--ease-io) infinite alternate;
 }
-.nscan-bulk button:hover { background: var(--bg-3); }
+:root[data-theme="dark"] .ns-sweep { border-bottom-color: var(--ink); background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--ink) 24%, transparent) 85%, color-mix(in srgb, var(--ink) 60%, transparent)); }
+@keyframes ns-sweep { from { transform: translateY(-100%); } to { transform: translateY(195%); } }
+.ns-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: var(--bg);
+  pointer-events: none;
+  animation: ns-flash 0.5s ease-out forwards;
+}
+@keyframes ns-flash { 0% { opacity: 0; } 12% { opacity: 0.95; } 100% { opacity: 0; } }
 
-.nscan-items { list-style: none; display: flex; flex-direction: column; gap: 10px; }
-.nscan-item {
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--st-completed) 40%, var(--border));
-  border-radius: var(--radius-lg);
-  background: var(--bg-2);
+/* Progress — the bar fills and shimmers while it waits on the reader. */
+.ns-progress { display: flex; flex-direction: column; gap: 9px; }
+.ns-progress-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 14px; }
+.ns-progress-top .mono { font-size: 12px; }
+.ns-progress-label { font-weight: 500; animation: tf-rise-sm var(--dur-3) var(--ease-out) both; }
+.ns-bar { position: relative; height: 6px; border-radius: var(--r-pill); background: var(--surface-3); overflow: hidden; }
+.ns-bar > span {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 55%, var(--surface-3)) 50%, var(--accent) 100%);
+  background-size: 220% 100%;
+  animation: tf-shimmer 1.2s linear infinite;
+  transition: transform 0.6s var(--ease-out);
 }
-.nscan-item-off { border-color: var(--border); background: var(--bg-3); }
-.nscan-item-off .nscan-text, .nscan-item-off .nscan-area { opacity: 0.55; }
-.nscan-item-top { display: flex; align-items: center; gap: 8px; }
-.nscan-verdict { display: flex; gap: 6px; flex: 1; }
-.nscan-approve, .nscan-deny {
-  flex: 1;
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 40px;
+
+.ns-actions { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; }
+
+/* The shutter — a ring with a disc that squishes when pressed. */
+.ns-shutter {
+  display: grid;
+  place-items: center;
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-sm);
+  animation: tf-pop 0.5s var(--ease-spring) 0.1s both;
+  transition: transform var(--dur-2) var(--ease-spring);
+}
+.ns-shutter-disc {
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: transform 0.18s var(--ease-spring);
+}
+.ns-shutter:active { transform: scale(0.94); }
+.ns-shutter:active .ns-shutter-disc { transform: scale(0.82); }
+
+.ns-tips { padding-top: 18px; border-top: 1px solid var(--border); }
+.ns-tip-list { list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; color: var(--text-2); }
+.ns-tip-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ns-tip-box { width: 14px; height: 14px; border: 1.5px solid var(--text-3); border-radius: 3px; flex-shrink: 0; }
+.ns-tip-ex { padding: 2px 7px; border-radius: var(--r-xs); background: var(--surface-3); color: var(--text); font-size: 12px; }
+
+/* ── Review ── */
+.ns-review { display: flex; flex-direction: column; gap: 16px; }
+.ns-summary { display: flex; align-items: center; gap: 16px; animation: tf-rise 0.4s var(--ease-out) both; }
+.ns-summary-text { flex: 1; min-width: 0; }
+.ns-summary .ns-sub { margin-top: 3px; font-size: 13.5px; }
+.ns-count { display: inline-block; }
+.ns-thumb {
+  position: relative;
+  width: 64px; height: 64px;
+  flex-shrink: 0;
+  border-radius: var(--r-lg);
+  overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-3);
-  color: var(--text-muted);
-  font-size: 14px; font-weight: 600;
+  background: var(--surface-2);
+  cursor: zoom-in;
+  animation: tf-pop 0.45s var(--ease-spring) both;
+  transition: transform var(--dur-3) var(--ease-spring);
 }
-.nscan-approve.nscan-on { background: var(--st-completed); border-color: var(--st-completed); color: #0b1a10; }
-.nscan-deny.nscan-on { background: color-mix(in srgb, var(--danger) 14%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger); }
-.nscan-remove {
-  display: flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; flex-shrink: 0;
-  border-radius: var(--radius);
-  background: none;
-  color: var(--text-dim);
-}
-.nscan-remove:hover { color: var(--danger); background: var(--bg-3); }
-.nscan-flags { display: flex; flex-wrap: wrap; gap: 6px; }
-.nscan-flag {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--bg-4);
-  color: var(--text-muted);
-  font-size: 11.5px; font-weight: 600;
-}
-.nscan-flag-done { background: color-mix(in srgb, var(--st-completed) 14%, transparent); color: var(--st-completed); }
-.nscan-flag-warn { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
-.nscan-text { resize: vertical; line-height: 1.45; font-family: var(--font); }
-
-.nscan-add {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 44px;
-  border: 1px dashed var(--border-light);
-  border-radius: var(--radius-lg);
-  background: none;
-  color: var(--text-muted);
-  font-size: 14px; font-weight: 500;
-}
-.nscan-add:hover { color: var(--accent); border-color: var(--accent); }
-
-/* ── Date and times in the review ── */
-.nscan-day { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.nscan-day .input { width: auto; min-width: 170px; }
-.nscan-hint { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; margin: 0; }
-.nscan-item-meta { display: flex; gap: 8px; }
-.nscan-item-meta .nscan-area { flex: 1; min-width: 0; }
-.nscan-time {
-  display: flex; align-items: center; gap: 4px; flex-shrink: 0;
-  padding: 0 4px 0 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-3);
-  color: var(--text-muted);
-}
-.nscan-time:focus-within { border-color: var(--accent); }
-.nscan-time input {
-  width: 96px; min-height: 40px;
-  border: none; background: none; outline: none;
-  color: var(--text); font: inherit; font-size: 14px;
-}
-.nscan-time-empty input { color: var(--text-dim); }
-.nscan-time button {
-  display: flex; align-items: center; justify-content: center;
-  min-width: 32px; height: 32px; padding: 0 8px;
-  border-radius: var(--radius);
-  background: none; color: var(--text-muted);
-  font-size: 13px; font-weight: 600;
-}
-.nscan-time .nscan-now { color: var(--accent); }
-.nscan-time button:hover { background: var(--bg-4); color: var(--text); }
-.nscan-view { margin-left: auto; color: var(--accent); font-weight: 600; text-decoration: none; }
-.nscan-view:hover { text-decoration: underline; }
-@media (max-width: 420px) {
-  .nscan-item-meta { flex-direction: column; }
-  .nscan-time input { flex: 1; width: auto; }
-}
-
-/* ── "Scan added N tasks" notice on your other open tabs (ScanNotifier.js) ── */
-.scan-note {
-  position: fixed; right: 20px; bottom: 20px; z-index: 1200;
-  display: flex; align-items: center; gap: 12px;
-  width: min(420px, calc(100vw - 32px));
-  padding: 10px 8px 10px 12px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  background: var(--bg-2);
+.ns-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ns-thumb:hover { transform: rotate(-2deg) scale(1.04); }
+.ns-thumb-zoom {
+  position: absolute; right: 4px; bottom: 4px;
+  display: grid; place-items: center;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--surface-solid);
   color: var(--text);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
-  animation: scan-note-in 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: var(--shadow-sm);
 }
-.scan-note-out { animation: scan-note-out 0.18s ease forwards; }
-@keyframes scan-note-in { from { opacity: 0; transform: translateY(14px) scale(0.97); } }
-@keyframes scan-note-out { to { opacity: 0; transform: translateY(8px) scale(0.98); } }
-.scan-note-icon {
-  display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; flex-shrink: 0;
-  border-radius: var(--radius);
-  background: var(--accent-glow);
-  color: var(--accent);
+.ns-rescan { flex-shrink: 0; }
+
+.ns-bulk { display: flex; flex-wrap: wrap; gap: 2px; margin: 0 -10px -6px; }
+
+.ns-lines { list-style: none; border-top: 1px solid var(--border); }
+.ns-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 4px 14px 2px;
+  border-bottom: 1px solid var(--border);
+  transition: opacity var(--dur-2) ease, background-color var(--dur-1) ease;
 }
-.scan-note-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.scan-note-body b { font-size: 14px; font-weight: 650; }
-.scan-note-sample { font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scan-note-view {
-  flex-shrink: 0; height: 32px; padding: 0 12px;
-  border-radius: var(--radius);
-  background: var(--accent); color: #fff;
-  font-size: 13px; font-weight: 600;
+.ns-line:hover { background: color-mix(in srgb, var(--hover) 60%, transparent); }
+.ns-approve { margin-top: 3px; cursor: pointer; transition: background-color var(--dur-1) ease, border-color var(--dur-1) ease, transform var(--dur-2) var(--ease-spring); }
+.ns-approve:hover { border-color: var(--text-3); }
+.ns-approve:active { transform: scale(0.86); }
+.ns-line-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.ns-line-text {
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  resize: none;
+  overflow: hidden;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text);
+  transition: color var(--dur-2) ease;
 }
-.scan-note-view:hover { filter: brightness(1.08); }
-.scan-note-x {
-  display: flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; flex-shrink: 0;
-  border-radius: var(--radius);
-  background: none; color: var(--text-dim);
+.ns-line-text::placeholder { color: var(--text-4); }
+.ns-line.is-off .ns-line-text { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--text-4); }
+.ns-line.is-off .ns-line-meta, .ns-line.is-off .ns-flags { opacity: 0.5; }
+.ns-flags { display: flex; flex-wrap: wrap; gap: 5px; }
+.ns-flags .tag { animation: tf-pop 0.34s var(--ease-spring) both; }
+.ns-line-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ns-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-sm);
+  background: var(--surface-solid);
+  color: var(--text-3);
+  transition: border-color var(--dur-1) ease, box-shadow var(--dur-2) ease;
 }
-.scan-note-x:hover { background: var(--bg-3); color: var(--text); }
+.ns-field:hover { border-color: var(--border-strong); }
+.ns-field:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong)); box-shadow: 0 0 0 3px var(--accent-ring); color: var(--text); }
+.ns-field input {
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text);
+}
+.ns-field input::placeholder { color: var(--text-4); }
+.ns-field-area { flex: 1 1 170px; min-width: 140px; }
+.ns-field-area input { width: 100%; }
+.ns-field-time input { width: 82px; }
+.ns-field-time.is-empty input { color: var(--text-4); }
+.ns-mini {
+  display: inline-grid; place-items: center;
+  height: 30px; min-width: 30px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-3);
+  transition: background-color var(--dur-1) ease, color var(--dur-1) ease, transform var(--dur-2) var(--ease-spring);
+}
+.ns-mini:hover { background: var(--hover); color: var(--text); }
+.ns-mini:active { transform: scale(0.92); }
+.ns-now { color: var(--text-2); }
+.ns-remove {
+  display: grid; place-items: center;
+  width: 30px; height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--r-sm);
+  color: var(--text-4);
+  transition: background-color var(--dur-1) ease, color var(--dur-1) ease, transform var(--dur-2) var(--ease-spring);
+}
+.ns-remove:hover { background: var(--danger-soft); color: var(--danger); }
+.ns-remove:active { transform: scale(0.9); }
+
+.ns-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--r-lg);
+  font-size: 13.5px;
+  color: var(--text-2);
+  transition: border-color var(--dur-2) ease, background-color var(--dur-2) ease, color var(--dur-1) ease, transform var(--dur-2) var(--ease-spring);
+}
+.ns-add:hover { border-color: var(--text-3); background: var(--hover); color: var(--text); }
+.ns-add:active { transform: scale(0.98); }
+
+.ns-details {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  margin-top: 8px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+  animation: tf-rise 0.42s var(--ease-out) 0.12s both;
+}
+.ns-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.ns-area-all { display: flex; gap: 8px; }
+.ns-person { padding-left: 4px; }
+.ns-person .avatar { box-shadow: 0 0 0 1.5px var(--surface-solid); }
+.ns-chip-skel { height: 32px; border-radius: var(--r-pill); }
+
+.ns-foot-warn { color: var(--warning); }
+.ns-armed { color: var(--danger); font-weight: 500; }
+
+/* ── ScanNotifier toast body ── */
+.ns-toast { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ns-toast-sample { font-size: 12.5px; font-weight: 400; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+
 @media (max-width: 768px) {
-  .scan-note { left: 16px; right: 16px; width: auto; bottom: calc(var(--dock-clear, 0px) + 12px); }
+  .sheet-main.ns-main { padding: 20px 16px 22px; }
+  .ns-finder { aspect-ratio: 3 / 4; max-height: 46vh; cursor: default; }
+  .ns-actions { gap: 18px; }
+  .ns-actions .btn { --btn-h: 44px; }
+  .ns-detail-grid { grid-template-columns: 1fr; }
+  .ns-field { height: 36px; }
+  .ns-field input { font-size: 16px; }
+  .ns-field-time input { width: 96px; }
+  .ns-mini, .ns-remove { height: 36px; min-width: 36px; }
+  .ns-line-text { font-size: 16px; }
+  .ns-summary { flex-wrap: wrap; }
+  .ns-toast-sample { max-width: 220px; }
 }
-@media (prefers-reduced-motion: reduce) { .scan-note, .scan-note-out { animation: none; } }

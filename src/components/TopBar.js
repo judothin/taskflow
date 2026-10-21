@@ -1,103 +1,179 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { format, differenceInDays, differenceInMonths } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
+import { useTeam } from '../context/TeamContext';
 import { usePets } from '../context/PetContext';
-import { useTopBar } from '../context/TopBarContext';
-import { loadShownBadges } from '../lib/badgePrefs';
-import { NAV_ITEMS } from '../lib/navLayout';
+import { useTheme } from '../context/ThemeContext';
+import { useThemeCustomization } from '../context/ThemeCustomizationContext';
 import { useHeaderActions } from '../context/HeaderActionsContext';
-import { useStreak } from '../context/StreakContext';
-import { useSpecialBadges } from '../context/SpecialBadgesContext';
-import StreakBar from './StreakBar';
-import TopBarMenu from './TopBarMenu';
-import useIsPhone from '../lib/useIsPhone';
-import RankBadges from './PetBadges';
-import LevelRing from './LevelRing';
-import { DashboardClock } from './dashboardWidgets';
-import './TopBar.css';
+import { useNotifications } from '../context/NotificationContext';
+import { userXpToNext } from '../lib/xp';
+import { openSearch, openNotifications } from '../lib/events';
+import { Icon, Avatar, Menu, MenuItem, MenuSep, MenuLabel, useMenu, fullName } from '../ui';
 
-// Map the first path segment → a page title (from the nav registry, plus a few
-// routes that aren't in the sidebar).
-const SEGMENT_TITLES = Object.values(NAV_ITEMS).reduce((m, i) => {
-  m[i.to.replace(/^\//, '')] = i.label;
-  return m;
-}, {
-  tasks: 'Tasks',
-  // Companion routes — not in the nav registry (they're dock-only), so they
-  // need their titles spelled out here or they'd render as raw slugs.
-  focus: 'Current Focus',
-  stats: 'Stats',
-  quicklog: 'Quick Log',
-});
-
-function routeTitle(pathname) {
+// First path segment → the page name in the breadcrumb.
+const TITLES = {
+  dashboard: 'Dashboard', tasks: 'Tasks', completed: 'Completed', review: 'Ready for review',
+  context: 'Context', files: 'Files', 'team-activity': 'Team activity', submissions: 'Submissions',
+  settings: 'Settings',
+};
+export const routeTitle = (pathname) => {
   const seg = pathname.split('/').filter(Boolean)[0] || 'dashboard';
-  return SEGMENT_TITLES[seg] || seg.charAt(0).toUpperCase() + seg.slice(1);
+  return TITLES[seg] || seg.charAt(0).toUpperCase() + seg.slice(1);
+};
+
+/** "6 mo" — how long you've been on TaskFlow (profile start date, else signup). */
+export function tenureLabel(since) {
+  if (!since) return null;
+  const d = new Date(since);
+  if (Number.isNaN(d.getTime())) return null;
+  const days = Math.max(0, differenceInDays(new Date(), d));
+  if (days < 30) return `${days} d`;
+  const months = differenceInMonths(new Date(), d);
+  if (months < 12) return `${months} mo`;
+  const yrs = Math.floor(months / 12);
+  const rem = months % 12;
+  return rem ? `${yrs} yr ${rem} mo` : `${yrs} yr`;
 }
 
-// The persistent status bar shown at the top of every page: the current page
-// breadcrumb on the left, and your rank badges, level bar, and date/time on
-// the right. Sticky + frosted.
-export default function TopBar() {
-  const { user, profile } = useAuth();
+/** Level pill: a ring that fills toward the next level, "Lv 45". */
+export function LevelPill() {
   const { userLevel, gamificationEnabled } = usePets();
-  const { display } = useTopBar();
-  const { pathname } = useLocation();
-  const isPhone = useIsPhone();
-  const headerActions = useHeaderActions();
-  const { days: streakDays, best: streakBest, paused: streakPaused, teamId: streakTeamId } = useStreak();
-  const { specialFlags } = useSpecialBadges();
-  const [shown, setShown] = useState(null);
+  const [pulse, setPulse] = useState(0);
+  const [gain, setGain] = useState(null);
 
   useEffect(() => {
-    if (!user?.id) return undefined;
-    setShown(loadShownBadges(user.id));
-    const h = () => setShown(loadShownBadges(user.id));
-    window.addEventListener('badges-changed', h);
-    return () => window.removeEventListener('badges-changed', h);
-  }, [user?.id]);
+    const on = (e) => {
+      const n = e.detail?.userXpGained;
+      if (!n) return;
+      setPulse(p => p + 1);
+      setGain({ n, k: Date.now() });
+    };
+    window.addEventListener('xp-awarded', on);
+    return () => window.removeEventListener('xp-awarded', on);
+  }, []);
 
-  // On a phone the task detail screen carries its own back button, status and
-  // title — the breadcrumb above it would be a third stacked header saying
-  // less than either.
-  if (isPhone && /^\/tasks\/[^/]+$/.test(pathname)) return null;
+  if (!gamificationEnabled) return null;
+  const level = userLevel?.level || 1;
+  const xp = userLevel?.xp || 0;
+  const next = userXpToNext(level);
+  const pct = Math.max(0, Math.min(1, xp / Math.max(1, next)));
+  const r = 7;
+  const c = 2 * Math.PI * r;
+  return (
+    <span
+      key={pulse}
+      className={`pill pill-level ${pulse ? 'is-pulsing' : ''}`}
+      style={{ position: 'relative' }}
+      title={`Level ${level} · ${Math.round(xp)}/${next} XP to level ${level + 1}`}
+    >
+      <svg className="ring" viewBox="0 0 18 18" aria-hidden="true">
+        <circle className="ring-track" cx="9" cy="9" r={r} strokeWidth="2.2" />
+        <circle
+          className="ring-fill" cx="9" cy="9" r={r} strokeWidth="2.2"
+          strokeDasharray={c} strokeDashoffset={c * (1 - pct)}
+          transform="rotate(-90 9 9)"
+        />
+      </svg>
+      Lv {level}
+      {gain && <span key={gain.k} className="xp-float" onAnimationEnd={() => setGain(null)}>+{gain.n} XP</span>}
+    </span>
+  );
+}
+
+export function TenurePill() {
+  const { user, profile } = useAuth();
+  const label = tenureLabel(profile?.start_date || user?.created_at);
+  if (!label) return null;
+  return (
+    <span className="pill pill-mono" title="Time on TaskFlow">
+      <Icon name="clock" size={13} />{label}
+    </span>
+  );
+}
+
+export function AccountMenu() {
+  const { user, profile, signOut } = useAuth();
+  const { teams, activeTeam, switchTeam } = useTeam();
+  const { mode } = useTheme();
+  const { setThemeMode } = useThemeCustomization();
+  const navigate = useNavigate();
+  const menu = useMenu();
+  const me = profile || { email: user?.email };
 
   return (
-    <div className="app-topbar">
-      <div className="app-topbar-left">
-        <div className="app-topbar-crumb">
-          <span className="app-topbar-crumb-root">TaskFlow</span>
-          <svg className="app-topbar-crumb-sep" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-          {/* Keyed by title so a new page's name animates in (TopBar.css). */}
-          <span key={routeTitle(pathname)} className="app-topbar-crumb-current">{routeTitle(pathname)}</span>
+    <>
+      <button ref={menu.anchorRef} type="button" className="me-btn" onClick={menu.toggle} aria-label="Account menu" aria-expanded={menu.open}>
+        <Avatar person={me} size={32} />
+      </button>
+      <Menu {...menu.props} align="end" width={264}>
+        <div className="menu-head">
+          <Avatar person={me} size={34} />
+          <div style={{ minWidth: 0 }}>
+            <div className="truncate" style={{ fontWeight: 600, fontSize: 14 }}>{fullName(profile) || 'You'}</div>
+            <div className="truncate t-3" style={{ fontSize: 12.5 }}>{user?.email}</div>
+          </div>
         </div>
-        {/* After the page name, so the title reads first. On a phone the
-            streak is the ring in the app header instead (Layout). */}
-        {!isPhone && (
-          <StreakBar key={streakTeamId} days={streakDays} best={streakBest} paused={streakPaused} />
+        <MenuSep />
+        {teams.length > 0 && <MenuLabel>Team</MenuLabel>}
+        {teams.map(t => (
+          <MenuItem key={t.id} icon="users" checked={t.id === activeTeam?.id} onClick={() => switchTeam(t.id)}>{t.name}</MenuItem>
+        ))}
+        <MenuSep />
+        <MenuLabel>Theme</MenuLabel>
+        <MenuItem icon="sun" checked={mode === 'light'} onClick={() => setThemeMode('light')} keepOpen>Light</MenuItem>
+        <MenuItem icon="moon" checked={mode === 'dark'} onClick={() => setThemeMode('dark')} keepOpen>Dark</MenuItem>
+        <MenuItem icon="monitor" checked={mode === 'system'} onClick={() => setThemeMode('system')} keepOpen>System</MenuItem>
+        <MenuSep />
+        <MenuItem icon="search" kbd="/" onClick={openSearch}>Search</MenuItem>
+        <MenuItem icon="settings" onClick={() => navigate('/settings')}>Settings</MenuItem>
+        {activeTeam?.slug && (
+          <MenuItem icon="external" onClick={() => window.open(`/submit/${activeTeam.slug}`, '_blank', 'noopener')}>Guest portal</MenuItem>
         )}
+        <MenuSep />
+        <MenuItem icon="logout" danger onClick={async () => { await signOut(); navigate('/login'); }}>Sign out</MenuItem>
+      </Menu>
+    </>
+  );
+}
+
+function NotifButton() {
+  const { unreadCount } = useNotifications();
+  return (
+    <button type="button" className="topbar-icon" onClick={openNotifications} aria-label="Notifications" title="Notifications">
+      <Icon name="bell" size={17} />
+      {unreadCount > 0 && <span key={unreadCount} className="rail-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+    </button>
+  );
+}
+
+// The bar across the top of every page: where you are, the page's own
+// actions, then your level, tenure, notifications and account.
+export default function TopBar() {
+  const { pathname } = useLocation();
+  const actions = useHeaderActions();
+  const title = routeTitle(pathname);
+  return (
+    <header className="topbar">
+      <span className="mobile-logo" aria-hidden="true">T</span>
+      <div className="crumb">
+        <span className="crumb-root">TaskFlow</span>
+        <span className="crumb-sep">/</span>
+        <span key={title} className="crumb-page">{title}</span>
       </div>
-      <div className="app-topbar-right">
-        {headerActions && <div className="app-topbar-actions">{headerActions}</div>}
-        <div className="app-topbar-cluster">
-          {gamificationEnabled && (
-            <RankBadges
-            level={userLevel?.level}
-            createdAt={profile?.start_date || user?.created_at}
-            tasksDone={userLevel?.tasks_completed}
-            specialFlags={specialFlags}
-            compact size={46} shown={shown}
-          />
-          )}
-          {/* Phone: the level ring is in the app header, and the phone's own
-              status bar already shows the time. */}
-          {gamificationEnabled && !isPhone && <LevelRing size={34} />}
-          {!isPhone && <DashboardClock showDate={display.date} showTime={display.time} />}
-        </div>
-        {/* Quick Log, Save context and the page's own extras. The phone has
-            the dock for those instead. */}
-        {!isPhone && <TopBarMenu />}
+      <div className="topbar-right">
+        <span className="topbar-date">{format(new Date(), 'EEE d MMM')}</span>
+        {actions && <div className="topbar-actions">{actions}</div>}
+        <span className="topbar-sep" />
+        <LevelPill />
+        <span className="hide-phone"><TenurePill /></span>
+        <button type="button" className="topbar-icon hide-phone" onClick={openSearch} aria-label="Search" title="Search (/)">
+          <Icon name="search" size={17} />
+        </button>
+        <NotifButton />
+        <AccountMenu />
       </div>
-    </div>
+    </header>
   );
 }

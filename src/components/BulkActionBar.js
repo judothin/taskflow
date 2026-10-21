@@ -4,8 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { useAuth } from '../context/AuthContext';
 import { awardTaskCompletedXp } from '../lib/xp';
-import { bumpTeamStreak } from '../lib/streak';
-import Avatar from './Avatar';
+import { Avatar, Icon, Dialog, ConfirmDialog, fullName } from '../ui';
 import './BulkActionBar.css';
 
 const now = () => new Date().toISOString();
@@ -27,9 +26,8 @@ function BarPortal({ children }) {
   return createPortal(children, elRef.current);
 }
 
-// Floating action bar shown while one or more task cards are selected.
-// Mirrors the single-card queue/complete/delete behaviour in TaskCard,
-// applied to every selected task at once.
+// Floating action bar while tasks are selected: queue, complete or delete
+// them all at once.
 export default function BulkActionBar({ selectedTasks = [], users = [], onChanged, onClear, onExit }) {
   const { activeTeamId } = useTeam();
   const { user } = useAuth();
@@ -48,17 +46,6 @@ export default function BulkActionBar({ selectedTasks = [], users = [], onChange
     setCompletedBy([]);
   }, [count]);
 
-  useEffect(() => {
-    if (!completeOpen) return;
-    const handler = (e) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
-        setCompleteOpen(false);
-        setCompletedBy([]);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [completeOpen]);
 
   if (count === 0) return null;
 
@@ -126,12 +113,11 @@ export default function BulkActionBar({ selectedTasks = [], users = [], onChange
       updated_at: now(),
     }).in('id', ids);
 
-    // Sequential (not forEach) so per-user XP + streak/first-of-day bonuses
+    // Sequential (not forEach) so per-user XP + first-of-day bonuses
     // accumulate correctly instead of racing on the same user_levels row.
     for (const t of completable) {
       await awardTaskCompletedXp(user?.id, t.complexity, { roi: t.roi, status: t.status, wasQueued: t.status === 'in_progress' });
     }
-    if (completable.length) bumpTeamStreak(activeTeamId);
     await supabase.from('queue').delete().in('task_id', ids);
 
     // If we just completed whatever was in progress, promote the next queued
@@ -177,111 +163,60 @@ export default function BulkActionBar({ selectedTasks = [], users = [], onChange
   return (
     <BarPortal>
       <div className="bulk-bar" role="toolbar" aria-label="Bulk actions">
-        <div className="bulk-bar-count">
-          <span className="bulk-bar-count-num">{count}</span>
-          selected
-        </div>
-
-        <div className="bulk-bar-divider" />
-
-        <div className="bulk-bar-actions">
-          {/* Add to queue */}
-          <button
-            className="bulk-bar-btn"
-            onClick={handleQueue}
-            disabled={busy || queueableCount === 0}
-            title={queueableCount === 0 ? 'None can be queued' : `Add ${queueableCount} to queue`}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-            Add to Queue
-          </button>
-
-          {/* Complete */}
-          <div style={{ position: 'relative' }}>
-            <button
-              className={`bulk-bar-btn ${completeOpen ? 'bulk-bar-btn-active' : ''}`}
-              onClick={() => { setCompleteOpen(v => !v); setCompletedBy([]); setConfirmDelete(false); }}
-              disabled={busy || completableCount === 0}
-              title={completableCount === 0 ? 'All already completed' : `Complete ${completableCount}`}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-              Complete
-            </button>
-
-            {completeOpen && (
-              <div className="complete-popover bulk-complete-popover" ref={popoverRef}>
-                <p className="complete-popover-label">
-                  Completed by
-                  {completedBy.length > 0 && <span className="complete-popover-count">{completedBy.length}</span>}
-                </p>
-                <div className="complete-popover-people">
-                  {users.map(u => {
-                    const name = `${u.first_name} ${u.last_name}`;
-                    const checked = completedBy.includes(name);
-                    return (
-                      <label key={u.id} className={`complete-person-row ${checked ? 'complete-person-row-checked' : ''}`}>
-                        <input type="checkbox" checked={checked} onChange={() => togglePerson(name)} className="complete-person-checkbox" />
-                        <Avatar src={u.avatar_url} color={u.color || '#6366f1'} initials={`${u.first_name[0]}${u.last_name[0]}`} size={28} style={{ flexShrink: 0 }} />
-                        <span className="complete-person-name">{u.first_name} {u.last_name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-                <div className="complete-popover-actions">
-                  <button
-                    className="task-action-btn task-action-btn-confirm"
-                    onClick={handleComplete}
-                    disabled={!completedBy.length || busy}
-                    style={{ width: '100%' }}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    {busy ? 'Saving…' : `Complete ${completableCount}`}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Delete */}
-          {!confirmDelete ? (
-            <button
-              className="bulk-bar-btn bulk-bar-btn-danger"
-              onClick={() => { setConfirmDelete(true); setCompleteOpen(false); }}
-              disabled={busy}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
-                <path d="M10 11v6 M14 11v6" />
-                <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
-              </svg>
-              Delete
-            </button>
-          ) : (
-            <div className="bulk-bar-confirm">
-              <span>Delete {count}?</span>
-              <button className="bulk-bar-btn bulk-bar-btn-danger" onClick={handleDelete} disabled={busy}>
-                {busy ? 'Deleting…' : 'Yes, delete'}
-              </button>
-              <button className="bulk-bar-btn" onClick={() => setConfirmDelete(false)} disabled={busy}>Cancel</button>
-            </div>
-          )}
-        </div>
-
-        <button className="bulk-bar-close" onClick={() => (onExit || onClear)?.()} title="Exit select mode" aria-label="Exit select mode">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
+        <span className="bulk-count"><b key={count} className="bump">{count}</b> selected</span>
+        <span className="bulk-sep" />
+        <button type="button" className="bulk-btn" onClick={handleQueue} disabled={busy || queueableCount === 0}>
+          <Icon name="queue" size={15} /><span className="hide-phone">Add to queue</span>
         </button>
+        <button type="button" className="bulk-btn" onClick={() => setCompleteOpen(true)} disabled={busy || completableCount === 0}>
+          <Icon name="check" size={15} /><span className="hide-phone">Complete</span>
+        </button>
+        <button type="button" className="bulk-btn bulk-danger" onClick={() => setConfirmDelete(true)} disabled={busy}>
+          <Icon name="trash" size={15} /><span className="hide-phone">Delete</span>
+        </button>
+        <span className="bulk-sep" />
+        <button type="button" className="bulk-btn" onClick={onExit || onClear} aria-label="Clear selection"><Icon name="x" size={15} /></button>
       </div>
+
+      {completeOpen && (
+        <Dialog
+          title={`Complete ${completableCount} task${completableCount === 1 ? '' : 's'}`}
+          text="Who completed them?"
+          onClose={() => { setCompleteOpen(false); setCompletedBy([]); }}
+          footer={(
+            <>
+              <button type="button" className="btn btn-ghost" onClick={() => { setCompleteOpen(false); setCompletedBy([]); }}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={handleComplete} disabled={busy || !completedBy.length}>
+                {busy ? <span className="spinner" /> : 'Mark complete'}
+              </button>
+            </>
+          )}
+        >
+          <div className="bulk-people stagger" ref={popoverRef}>
+            {users.map(u => {
+              const name = fullName(u);
+              const on = completedBy.includes(name);
+              return (
+                <button key={u.id} type="button" className={`bulk-person ${on ? 'is-on' : ''}`} onClick={() => togglePerson(name)}>
+                  <Avatar person={u} size={28} />
+                  <span className="truncate" style={{ flex: 1 }}>{name}</span>
+                  <span className={`check-round ${on ? 'is-on' : ''}`} />
+                </button>
+              );
+            })}
+          </div>
+        </Dialog>
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete ${count} task${count === 1 ? '' : 's'}?`}
+          text="They’re removed for the whole team. This can’t be undone."
+          confirmLabel="Delete"
+          danger busy={busy}
+          onConfirm={handleDelete}
+          onClose={() => setConfirmDelete(false)}
+        />
+      )}
     </BarPortal>
   );
 }

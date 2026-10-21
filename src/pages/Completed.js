@@ -1,371 +1,396 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { format, isSameDay, parseISO } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
-import { format, isSameDay, parseISO } from 'date-fns';
-import ContextMenu from '../components/ContextMenu';
-import TaskForm from '../components/TaskForm';
-import Avatar from '../components/Avatar';
-import CompletionCalendar from '../components/CompletionCalendar';
-import FeedbackContent from '../components/FeedbackContent';
-import MobileTaskList from '../components/MobileTaskList';
+import { openTask, tasksChanged, TASKS_CHANGED } from '../lib/events';
+import { taskTitle, taskPreview, pageLabel, isUrl } from '../lib/taskText';
+import { TopBarPortal } from '../context/HeaderActionsContext';
 import useIsPhone from '../lib/useIsPhone';
-import ModalPortal from '../components/ModalPortal';
-import './Dashboard.css';
-import './Tasks.css';
+import CompletionCalendar from '../components/CompletionCalendar';
+import {
+  Icon, Menu, MenuItem, MenuSep, useMenu, ConfirmDialog, Lightbox, toast,
+  Avatar, Empty, SearchInput, SkeletonRows, shortDate, fullName, cap,
+} from '../ui';
 import './Completed.css';
 
-const ALL_PURPLE = 'var(--accent)';
-const ROI_MAP = { critical: 'badge-critical', high: 'badge-high', medium: 'badge-medium', low: 'badge-low' };
+// ══════════════════════════════════════════════════════════════
+// Completed — every finished task, filtered by day (calendar) and by who
+// completed it. Completions are credited by name: tasks.completed_by is the
+// comma-separated list of names picked when the task was marked done.
+// ══════════════════════════════════════════════════════════════
 
-const isUrl = (str) => { try { return Boolean(new URL(str)) && /^https?:\/\//i.test(str); } catch { return false; } };
-const shortenUrl = (url) => { try { const u = new URL(url); const path = u.pathname.replace(/\/$/, ''); return u.hostname + (path.length > 28 ? path.slice(0, 28) + '…' : path); } catch { return url; } };
-const namesOf = (t) => (t.completed_by || '').split(',').map(s => s.trim()).filter(Boolean);
+const PAGE_SIZE = 100;
+const SORTS = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'page', label: 'Page A–Z' },
+];
 
-function CompletedRow({ task, users = [], onEdit, onDeleted }) {
-  const [imgOpen, setImgOpen] = useState(false);
-  const [ctxMenu, setCtxMenu] = useState(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const assignee = users.find(u => u.id === task.assignee_id) || null;
-
-  const handleDelete = async () => {
-    await supabase.from('tasks').delete().eq('id', task.id);
-    onDeleted?.();
-  };
-
-  return (
-    <>
-      <div
-        className="completed-row"
-        onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
-      >
-        {/* Main content + meta */}
-        <div className="completed-row-inner">
-          <div className="completed-row-main">
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <span className={`badge ${ROI_MAP[task.roi] || ''}`}>{task.roi}</span>
-              <span className="badge" style={{ background: 'var(--bg-4)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
-                {task.complexity} complexity
-              </span>
-            </div>
-            <div className="completed-page-label">
-              {isUrl(task.page) ? (
-                <a href={task.page} target="_blank" rel="noreferrer"
-                  style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 700 }}
-                  onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
-                  onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
-                >
-                  {shortenUrl(task.page)}
-                </a>
-              ) : task.page}
-            </div>
-            <FeedbackContent taskId={task.id} html={task.feedback} className="completed-feedback" onSaved={onDeleted} />
-          </div>
-
-          <div className="completed-row-meta">
-            <div className="meta-item">
-              <span className="meta-label">Noticed By</span>
-              <span className="meta-value">{task.noticed_by || '—'}</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">Completed By</span>
-              <span className="meta-value" style={{ color: 'var(--success)' }}>{task.completed_by || '—'}</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">Assignee</span>
-              {assignee ? (
-                <span className="meta-value" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Avatar
-                    src={assignee.avatar_url}
-                    color={assignee.color || '#6366f1'}
-                    initials={`${assignee.first_name[0]}${assignee.last_name[0]}`}
-                    size={18}
-                  />
-                  {assignee.first_name} {assignee.last_name}
-                </span>
-              ) : (
-                <span className="meta-value">—</span>
-              )}
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">Posted</span>
-              <span className="meta-value mono">{(task.date_received || task.created_at) ? format(new Date(task.date_received || task.created_at), 'MMM d, yyyy') : '—'}</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">Completed</span>
-              <span className="meta-value mono" style={{ color: 'var(--success)' }}>
-                {task.date_completed ? format(new Date(task.date_completed), 'MMM d, yyyy') : '—'}
-              </span>
-            </div>
-            {task.png_url && (
-              <button className="btn btn-ghost btn-sm" onClick={() => setImgOpen(true)}>📎 View</button>
-            )}
-          </div>
-        </div>
-
-        {/* Action sidebar */}
-        <div className="task-card-actions" style={{ borderLeft: '1px solid var(--border)', borderRadius: '0 var(--radius-lg) var(--radius-lg) 0' }}>
-          <button className="task-action-btn" data-tooltip="Edit" onClick={() => onEdit?.(task)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-          </button>
-
-          {!confirmDelete ? (
-            <button className="task-action-btn task-action-btn-danger" data-tooltip="Delete" onClick={() => setConfirmDelete(true)}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-                <path d="M10 11v6M14 11v6"/>
-                <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-              </svg>
-            </button>
-          ) : (
-            <>
-              <button className="task-action-btn task-action-btn-confirm" data-tooltip="Confirm" onClick={handleDelete}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </button>
-              <button className="task-action-btn" data-tooltip="Cancel" onClick={() => setConfirmDelete(false)}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {ctxMenu && (
-        <ContextMenu
-          task={task}
-          x={ctxMenu.x}
-          y={ctxMenu.y}
-          onClose={() => setCtxMenu(null)}
-          onEdit={onEdit}
-          onDeleted={onDeleted}
-        />
-      )}
-
-      {imgOpen && (
-        <ModalPortal>
-        <div className="modal-overlay" style={{ zIndex: 2000 }} onClick={() => setImgOpen(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
-            <img src={task.png_url} alt="Task screenshot" style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 12, boxShadow: 'var(--shadow-lg)' }} />
-            <button onClick={() => setImgOpen(false)} style={{ position: 'absolute', top: -12, right: -12, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '50%', width: 32, height: 32, color: 'var(--text)', cursor: 'pointer', fontSize: 16 }}>✕</button>
-          </div>
-        </div>
-        </ModalPortal>
-      )}
-    </>
-  );
+const namesOf = (t) => String(t.completed_by || '').split(',').map(s => s.trim()).filter(Boolean);
+async function fetchCompleted(teamId) {
+  // Page through so a big team isn't silently cut off at 1000 rows.
+  const out = [];
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await supabase.from('tasks').select('*')
+      .eq('team_id', teamId).eq('status', 'completed')
+      .order('date_completed', { ascending: false })
+      .range(from, from + 999);
+    if (error) throw new Error(error.message);
+    out.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
 }
 
 export default function Completed() {
   const location = useLocation();
   const { activeTeamId } = useTeam();
   const isPhone = useIsPhone();
+
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState('date_completed_desc');
-  const [personFilter, setPersonFilter] = useState('all');
-  // Default to today's completions; users can click "View all completed tasks"
-  // to clear the date filter and see everything.
+  const [sort, setSort] = useState('newest');
+  const [person, setPerson] = useState('all');
   const [selectedDate, setSelectedDate] = useState(() =>
-    location.state?.date ? parseISO(location.state.date) : new Date()
-  );
-  const [editTask, setEditTask] = useState(null);
+    (location.state?.date ? parseISO(location.state.date) : new Date()));
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [shot, setShot] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const sortMenu = useMenu();
 
-  const fetchData = useCallback(async () => {
+  const load = useCallback(async (quiet) => {
     if (!activeTeamId) { setTasks([]); setUsers([]); setLoading(false); return; }
-    setLoading(true);
-    const [{ data: allTasks }, allUsers] = await Promise.all([
-      supabase.from('tasks').select('*').eq('team_id', activeTeamId).eq('status', 'completed').order('date_completed', { ascending: false }),
-      fetchTeamMembers(activeTeamId),
-    ]);
-    setTasks(allTasks || []);
-    setUsers(allUsers || []);
+    if (!quiet) setLoading(true);
+    try {
+      const [list, members] = await Promise.all([fetchCompleted(activeTeamId), fetchTeamMembers(activeTeamId)]);
+      setTasks(list);
+      setUsers(members || []);
+      setError('');
+    } catch (e) {
+      setError(e.message || 'Could not load completed tasks.');
+    }
     setLoading(false);
   }, [activeTeamId]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-  // Quick Log and new tasks from the top bar menu / shortcuts are app-wide
-  // forms, so they announce saves rather than calling back into this page.
+  useEffect(() => { load(false); }, [load]);
+  // App-wide forms (task sheet, Quick Log, scans) announce their saves.
   useEffect(() => {
-    window.addEventListener('tasks-changed', fetchData);
-    return () => window.removeEventListener('tasks-changed', fetchData);
-  }, [fetchData]);
+    const h = () => load(true);
+    window.addEventListener(TASKS_CHANGED, h);
+    return () => window.removeEventListener(TASKS_CHANGED, h);
+  }, [load]);
 
-  // Unique individual completers (handles "A, B" multi-credit).
-  const completors = [...new Set(tasks.flatMap(namesOf))].sort();
+  // Everyone credited on a completion, with their totals (all dates).
+  const people = useMemo(() => {
+    const counts = new Map();
+    for (const t of tasks) for (const n of new Set(namesOf(t))) counts.set(n, (counts.get(n) || 0) + 1);
+    return [...counts.entries()]
+      .map(([name, count]) => ({
+        name, count,
+        user: users.find(u => fullName(u).toLowerCase() === name.toLowerCase()) || null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [tasks, users]);
 
-  // Colour drives the calendar markers: a person's own colour, else dark purple.
-  const calColor = (() => {
-    if (personFilter === 'all') return ALL_PURPLE;
-    const u = users.find(x => `${x.first_name} ${x.last_name}` === personFilter);
-    return u?.color || ALL_PURPLE;
-  })();
+  const personTasks = useMemo(
+    () => (person === 'all' ? tasks : tasks.filter(t => namesOf(t).includes(person))),
+    [tasks, person],
+  );
 
-  // Tasks that feed the calendar (person-scoped, so per-day counts reflect them).
-  const personTasks = personFilter === 'all'
-    ? tasks
-    : tasks.filter(t => namesOf(t).includes(personFilter));
+  // Lower-cased search text per task, built once per load (HTML parsing
+  // isn't free across a thousand rows).
+  const haystack = useMemo(() => {
+    const m = new Map();
+    for (const t of tasks) {
+      m.set(t.id, [taskTitle(t), taskPreview(t, 2000), t.page, t.noticed_by, t.completed_by]
+        .map(v => String(v || '')).join(' • ').toLowerCase());
+    }
+    return m;
+  }, [tasks]);
 
-  const filtered = personTasks
-    .filter(t => {
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const list = personTasks.filter(t => {
       if (selectedDate && !(t.date_completed && isSameDay(new Date(t.date_completed), selectedDate))) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        return (
-          t.page?.toLowerCase().includes(q) ||
-          t.feedback?.toLowerCase().includes(q) ||
-          t.noticed_by?.toLowerCase().includes(q) ||
-          t.completed_by?.toLowerCase().includes(q)
-        );
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'date_completed_asc') return new Date(a.date_completed || 0) - new Date(b.date_completed || 0);
-      return new Date(b.date_completed || 0) - new Date(a.date_completed || 0);
+      return !q || (haystack.get(t.id) || '').includes(q);
     });
+    const time = (t) => new Date(t.date_completed || 0).getTime();
+    if (sort === 'oldest') list.sort((a, b) => time(a) - time(b));
+    else if (sort === 'page') list.sort((a, b) => String(a.page || '').localeCompare(String(b.page || '')) || time(b) - time(a));
+    else list.sort((a, b) => time(b) - time(a));
+    return list;
+  }, [personTasks, selectedDate, search, sort, haystack]);
 
-  const dateLabel = selectedDate ? format(selectedDate, 'MMM d, yyyy') : null;
+  const filterKey = `${person}|${selectedDate ? format(selectedDate, 'yyyy-MM-dd') : 'all'}|${search}|${sort}`;
+  useEffect(() => { setLimit(PAGE_SIZE); }, [filterKey]);
+
+  // ── Actions ──
+  const reopen = async (task) => {
+    const prev = { status: task.status, date_completed: task.date_completed, completed_by: task.completed_by };
+    const { error: err } = await supabase.from('tasks')
+      .update({ status: 'open', date_completed: null, completed_by: null, updated_at: new Date().toISOString() })
+      .eq('id', task.id);
+    if (err) { toast(err.message, { icon: 'alert' }); return; }
+    tasksChanged();
+    toast('Task reopened', {
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          await supabase.from('tasks').update({ ...prev, updated_at: new Date().toISOString() }).eq('id', task.id);
+          tasksChanged();
+        },
+      },
+    });
+  };
+
+  const remove = async () => {
+    if (!confirmDel) return;
+    setBusy(true);
+    const { error: err } = await supabase.from('tasks').delete().eq('id', confirmDel.id);
+    setBusy(false);
+    setConfirmDel(null);
+    if (err) { toast(err.message, { icon: 'alert' }); return; }
+    toast('Task deleted');
+    tasksChanged();
+  };
+
+  const pickDate = (d) => setSelectedDate(prev => (prev && isSameDay(prev, d) ? null : d));
+  const selectedPerson = people.find(p => p.name === person);
+  const eyebrow = `${selectedDate ? format(selectedDate, 'MMM d, yyyy') : 'All dates'} · ${person === 'all' ? 'All team members' : person}`;
+  const sortLabel = SORTS.find(s => s.value === sort)?.label;
+  const filtering = !!(search || person !== 'all' || selectedDate);
+
+  const sortButton = (
+    <>
+      <button type="button" ref={sortMenu.anchorRef} className="btn cp-sort" onClick={sortMenu.toggle} aria-haspopup="menu" aria-expanded={sortMenu.open}>
+        {sortLabel}
+        <Icon name="chevronDown" size={13} className={`cp-caret ${sortMenu.open ? 'is-up' : ''}`} />
+      </button>
+      <Menu {...sortMenu.props} align="end">
+        {SORTS.map(s => (
+          <MenuItem key={s.value} checked={sort === s.value} onClick={() => setSort(s.value)}>{s.label}</MenuItem>
+        ))}
+      </Menu>
+    </>
+  );
 
   return (
-    <div className="dashboard fade-in">
-      <div className="completed-layout">
-        {/* ── Left: calendar + people ── */}
-        <aside className="completed-side">
-          <div className="completed-cal-card">
-            <CompletionCalendar
-              tasks={personTasks}
-              selectedDate={selectedDate}
-              onSelectDate={(d) => setSelectedDate(prev => (prev && isSameDay(prev, d) ? null : d))}
-              color={calColor}
-            />
-            {selectedDate && (
-              <button className="completed-clear-date" onClick={() => setSelectedDate(null)}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-                  <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-                </svg>
-                View all completed tasks
-              </button>
+    <div className="cp-page">
+      {!isPhone && (
+        <TopBarPortal>
+          <SearchInput value={search} onChange={setSearch} placeholder="Search completed tasks" className="cp-topsearch" />
+          {sortButton}
+        </TopBarPortal>
+      )}
+
+      {/* ── Left: calendar + who completed ── */}
+      <aside className="cp-side">
+        <div className="cp-cal anim-rise">
+          <CompletionCalendar
+            tasks={personTasks}
+            selectedDate={selectedDate}
+            onSelectDate={pickDate}
+            onToday={() => setSelectedDate(new Date())}
+            onAllDates={() => setSelectedDate(null)}
+            compact={isPhone}
+          />
+        </div>
+
+        <div className="cp-people anim-rise" style={{ animationDelay: '60ms' }}>
+          <div className="eyebrow cp-people-label">Completed by</div>
+          <div className={`cp-people-list ${loading ? '' : 'stagger'}`}>
+            {loading ? (
+              [0, 1, 2].map(i => <span key={i} className="skel cp-person-skel" />)
+            ) : (
+              <>
+                <PersonButton
+                  label="All team members"
+                  count={tasks.length}
+                  active={person === 'all'}
+                  onClick={() => setPerson('all')}
+                  avatar={<span className="avatar cp-all-avatar" style={{ width: 24, height: 24 }}>All</span>}
+                />
+                {people.map(p => (
+                  <PersonButton
+                    key={p.name}
+                    label={p.name}
+                    count={p.count}
+                    active={person === p.name}
+                    onClick={() => setPerson(person === p.name ? 'all' : p.name)}
+                    avatar={<Avatar person={p.user} name={p.name} size={24} />}
+                  />
+                ))}
+              </>
             )}
           </div>
+        </div>
+      </aside>
 
-          <div className="completed-people">
-            <button
-              className={`completed-person-row ${personFilter === 'all' ? 'completed-person-active' : ''}`}
-              style={personFilter === 'all' ? { borderColor: ALL_PURPLE } : undefined}
-              onClick={() => setPersonFilter('all')}
-            >
-              <span className="completed-person-swatch" style={{ background: ALL_PURPLE }} />
-              <span className="completed-person-name">All Team Members</span>
-              <span className="completed-person-count">{tasks.length}</span>
-            </button>
-            {completors.map(person => {
-              const u = users.find(x => `${x.first_name} ${x.last_name}` === person);
-              const color = u?.color || ALL_PURPLE;
-              const count = tasks.filter(t => namesOf(t).includes(person)).length;
-              const active = personFilter === person;
-              return (
-                <button
-                  key={person}
-                  className={`completed-person-row ${active ? 'completed-person-active' : ''}`}
-                  style={active ? { borderColor: color } : undefined}
-                  onClick={() => setPersonFilter(active ? 'all' : person)}
-                >
-                  <Avatar
-                    src={u?.avatar_url}
-                    color={color}
-                    initials={person.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                    size={26}
-                  />
-                  <span className="completed-person-name">{person}</span>
-                  <span className="completed-person-count">{count}</span>
-                </button>
-              );
-            })}
+      {/* ── Right: the list ── */}
+      <section className="cp-main">
+        <header className="cp-head anim-rise">
+          <div className="eyebrow" key={eyebrow}><span className="cp-eyebrow">{eyebrow}</span></div>
+          <h1 className="page-title cp-title">
+            Completed
+            {!loading && (
+              <span key={filtered.length} className="cp-title-count bump">
+                {filtered.length} {filtered.length === 1 ? 'task' : 'tasks'}
+              </span>
+            )}
+          </h1>
+        </header>
+
+        {isPhone && (
+          <div className="cp-phone-tools anim-rise">
+            <SearchInput value={search} onChange={setSearch} placeholder="Search completed tasks" />
+            {sortButton}
           </div>
-        </aside>
+        )}
 
-        {/* ── Right: search + sort + list ── */}
-        <div className="completed-main">
-          <div className="filters-row">
-            <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }}>
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input className="input" placeholder="Search completed tasks..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 38 }} />
-            </div>
+        {error && <div className="notice notice-error cp-error"><Icon name="alert" size={15} />{error}</div>}
 
-            <select className="input" style={{ width: 'auto' }} value={personFilter} onChange={e => setPersonFilter(e.target.value)}>
-              <option value="all">All People</option>
-              {completors.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-
-            <select className="input" style={{ width: 'auto' }} value={sortBy} onChange={e => setSortBy(e.target.value)}>
-              <option value="date_completed_desc">Completed: Newest</option>
-              <option value="date_completed_asc">Completed: Oldest</option>
-            </select>
+        <div className="table cp-table">
+          <div className="table-head">
+            <span>Task</span>
+            <span>Page</span>
+            <span>ROI</span>
+            <span>Complexity</span>
+            <span>Noticed by</span>
+            <span>Completed</span>
+            <span />
           </div>
 
           {loading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {[1,2,3].map(i => <div key={i} className="task-skeleton loading-pulse" style={{ height: 120 }} />)}
-            </div>
+            <SkeletonRows rows={6} widths={['38%', '12%', '8%', '9%', '12%', '7%']} />
           ) : filtered.length === 0 ? (
-            <div className="empty-state">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 11-5.93-9.14 M22 4L12 14.01l-3-3" />
-              </svg>
-              <h3>{search || personFilter !== 'all' || selectedDate ? 'No matches' : 'No completed tasks yet'}</h3>
-              <p>{search || personFilter !== 'all' || selectedDate ? 'Try adjusting the date, person, or search' : 'Tasks marked as complete will appear here'}</p>
-            </div>
-          ) : (
-            <div className="completed-results">
-              <div className="completed-results-count">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</div>
-              {isPhone ? (
-                /* Done is one of the five dock tabs, so it gets the same row
-                   treatment as the other lists rather than the desktop card —
-                   it was the last mobile screen still rendering desktop
-                   density. Already-completed rows don't swipe. */
-                <MobileTaskList tasks={filtered} users={users} onChanged={fetchData} />
-              ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {filtered.map(task => (
-                  <CompletedRow
-                    key={task.id}
-                    task={task}
-                    users={users}
-                    onEdit={setEditTask}
-                    onDeleted={fetchData}
-                  />
-                ))}
-              </div>
+            <Empty icon="done" title={filtering ? 'No matches' : 'No completed tasks yet'}
+              action={filtering && (
+                <button type="button" className="btn btn-sm" onClick={() => { setSearch(''); setPerson('all'); setSelectedDate(null); }}>
+                  Clear filters
+                </button>
               )}
+            >
+              {filtering
+                ? (selectedDate && !search && person === 'all'
+                  ? `Nothing was completed on ${format(selectedDate, 'MMM d')}.`
+                  : 'Try another date, person or search.')
+                : 'Tasks marked as complete will show up here.'}
+            </Empty>
+          ) : (
+            <div className="stagger" key={filterKey}>
+              {filtered.slice(0, limit).map(t => (
+                <CompletedRow
+                  key={t.id}
+                  task={t}
+                  onReopen={() => reopen(t)}
+                  onDelete={() => setConfirmDel(t)}
+                  onShot={() => setShot(t.png_url)}
+                />
+              ))}
+            </div>
+          )}
+          {!loading && filtered.length > limit && (
+            <div className="cp-more-row">
+              <button type="button" className="btn btn-sm" onClick={() => setLimit(l => l + PAGE_SIZE)}>
+                Show more <span className="count">{filtered.length - limit} left</span>
+              </button>
             </div>
           )}
         </div>
-      </div>
+        {selectedPerson && !loading && (
+          <p className="cp-foot t-3">
+            {selectedPerson.name} has completed <span className="mono">{selectedPerson.count}</span> {selectedPerson.count === 1 ? 'task' : 'tasks'} in all.
+          </p>
+        )}
+      </section>
 
-      {editTask && (
-        <TaskForm
-          task={editTask}
-          onClose={() => setEditTask(null)}
-          onSaved={fetchData}
-          users={users}
+      {shot && <Lightbox src={shot} onClose={() => setShot(null)} />}
+      {confirmDel && (
+        <ConfirmDialog
+          title="Delete this task?"
+          text={`“${taskTitle(confirmDel)}” will be removed for everyone. This can't be undone.`}
+          confirmLabel="Delete"
+          danger
+          busy={busy}
+          onConfirm={remove}
+          onClose={() => setConfirmDel(null)}
         />
       )}
+    </div>
+  );
+}
 
+function PersonButton({ label, count, active, onClick, avatar }) {
+  return (
+    <button type="button" className={`cp-person ${active ? 'is-on' : ''}`} onClick={onClick} aria-pressed={active}>
+      {avatar}
+      <span className="cp-person-name truncate">{label}</span>
+      <span key={count} className="cp-person-count bump">{count}</span>
+    </button>
+  );
+}
+
+function CompletedRow({ task, onReopen, onDelete, onShot }) {
+  const menu = useMenu();
+  const inside = (e) => e.currentTarget.contains(e.target);
+  const title = taskTitle(task);
+  const prio = task.roi === 'high' || task.roi === 'critical' ? 'prio-high' : '';
+
+  return (
+    <div
+      className={`table-row cp-row ${menu.open ? 'is-selected' : ''}`}
+      role="button"
+      tabIndex={0}
+      // The menu is portalled, but React still bubbles its clicks up here —
+      // only react to events that really happened inside the row.
+      onClick={(e) => { if (inside(e)) openTask(task); }}
+      onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) openTask(task); }}
+      onContextMenu={(e) => { if (!inside(e)) return; e.preventDefault(); menu.setOpen(true); }}
+    >
+      <div className="table-cell cp-task">
+        <span className="cp-check" aria-hidden="true"><Icon name="check" size={11} stroke={3} /></span>
+        <span className="table-title cp-task-title">{title}</span>
+        {task.png_url && <Icon name="image" size={13} className="t-4 cp-has-shot" />}
+      </div>
+      <div className="table-cell cp-page-cell">
+        {isUrl(task.page) ? (
+          <a href={task.page} target="_blank" rel="noreferrer" className="cp-link truncate" onClick={(e) => e.stopPropagation()}>
+            {pageLabel(task.page)}
+          </a>
+        ) : <span className="truncate">{pageLabel(task.page) || '—'}</span>}
+      </div>
+      <div className={`table-cell hide-phone ${prio}`}>{cap(task.roi) || '—'}</div>
+      <div className="table-cell hide-phone">{cap(task.complexity) || '—'}</div>
+      <div className="table-cell"><span className="truncate">{task.noticed_by || '—'}</span></div>
+      <div className="table-cell cp-date" title={task.date_completed ? format(new Date(task.date_completed), 'MMM d, yyyy · h:mm a') : ''}>
+        {shortDate(task.date_completed) || '—'}
+      </div>
+      <div className="table-cell cp-actions">
+        <button
+          type="button"
+          ref={menu.anchorRef}
+          className="btn btn-ghost btn-sm btn-icon cp-more"
+          onClick={(e) => { e.stopPropagation(); menu.toggle(); }}
+          aria-label="Task actions"
+          aria-haspopup="menu"
+          aria-expanded={menu.open}
+        >
+          <Icon name="more" size={15} />
+        </button>
+        <Menu {...menu.props} align="end">
+          <MenuItem icon="arrowUpRight" onClick={() => openTask(task)}>Open</MenuItem>
+          {task.png_url && <MenuItem icon="image" onClick={onShot}>View screenshot</MenuItem>}
+          <MenuItem icon="undo" onClick={onReopen}>Reopen</MenuItem>
+          <MenuSep />
+          <MenuItem icon="trash" danger onClick={onDelete}>Delete</MenuItem>
+        </Menu>
+      </div>
     </div>
   );
 }

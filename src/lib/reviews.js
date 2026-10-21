@@ -11,12 +11,32 @@ import { useEffect, useState } from 'react';
 import { supabase } from './supabase';
 import useRefresh from './useRefresh';
 
+// `dot` is the shared .dot-* class; `short` is the tab / eyebrow word.
 export const REVIEW_STATUS = {
-  pending:    { label: 'Waiting for review', short: 'Open',           tone: 'open' },
-  approved:   { label: 'Reviewed — ready for live', short: 'Ready for live', tone: 'approved' },
-  needs_work: { label: 'Reviewed — needs work', short: 'Needs work',  tone: 'needs-work' },
-  live:       { label: 'Live', short: 'Live', tone: 'live' },
+  pending:    { label: 'Waiting for review', short: 'Open',           dot: 'open' },
+  approved:   { label: 'Ready for live',     short: 'Ready for live', dot: 'completed' },
+  needs_work: { label: 'Needs work',         short: 'Needs work',     dot: 'in_progress' },
+  live:       { label: 'Live',               short: 'Live',           dot: 'live' },
 };
+
+// Row label for one person: an open post they're a reviewer on reads
+// "Needs your review" (red) rather than "Waiting for review".
+export function reviewStatusFor(post, uid) {
+  if (isWaitingOn(post, uid)) return { label: 'Needs your review', dot: 'needs' };
+  const s = REVIEW_STATUS[post.status] || REVIEW_STATUS.pending;
+  return { label: s.label, dot: s.dot };
+}
+
+// "Files to push" (merged in from Go Live): one file per line, anything
+// after a spaced dash is a note about that file.
+const NOTE_SPLIT = /\s+[—–-]\s+/;
+export function parseFiles(text) {
+  return (text || '').split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+    const m = line.match(NOTE_SPLIT);
+    if (!m) return { path: line, note: '' };
+    return { path: line.slice(0, m.index), note: line.slice(m.index + m[0].length) };
+  });
+}
 
 // Fired after any change made from this tab, so lists elsewhere on screen
 // (widget, badge) refresh without waiting for realtime.
@@ -83,10 +103,13 @@ async function rpc(name, args) {
   return data;
 }
 
-export const createReview = ({ teamId, title, url, description, screenshots, reviewers }) =>
+// p_files only goes over the wire when there are files, so posting still
+// works against a database that hasn't had the Go Live merge SQL yet.
+export const createReview = ({ teamId, title, url, description, screenshots, reviewers, files }) =>
   rpc('review_create', {
     p_team_id: teamId, p_title: title, p_url: normalizeUrl(url), p_description: description,
     p_screenshots: screenshots, p_reviewers: reviewers,
+    ...(files && files.trim() ? { p_files: files.trim() } : {}),
   });
 export const decideReview = (postId, verdict, note) =>
   rpc('review_decide', { p_post_id: postId, p_verdict: verdict, p_note: note || '' });
@@ -211,7 +234,7 @@ export function useWaitingOnMeCount(teamId, uid) {
     if (!teamId || !uid) return undefined;
     const filter = `team_id=eq.${teamId}`;
     const channel = supabase
-      .channel(`review-badge-${teamId}`)
+      .channel(`review-badge-${teamId}-${Math.random().toString(36).slice(2, 7)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'review_posts', filter }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'review_reviewers', filter }, refresh)
       .subscribe();
@@ -224,13 +247,3 @@ export function useWaitingOnMeCount(teamId, uid) {
 
   return count;
 }
-
-// The pre-check: what the author confirms before posting (or resubmitting)
-// something for review. Shown as a checklist in the new-post form and the
-// resubmit form, and from the page's "Pre-check" button any time.
-export const REVIEW_PRECHECK = [
-  { id: 'responsive', label: 'Responsive', hint: 'Works on mobile, tablet, and desktop widths' },
-  { id: 'resolved',   label: 'Tasks and comments resolved', hint: 'Nothing open on the related tasks or from earlier feedback' },
-  { id: 'keyboard',   label: 'Keyboard navigation works', hint: 'Tab order, focus states, Enter/Escape behave' },
-  { id: 'debug',      label: 'No leftover debug logs', hint: 'No console.log / debugger / test output left behind' },
-];

@@ -1,604 +1,254 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { useTheme } from '../context/ThemeContext';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
-import { supabase } from '../lib/supabase';
-import { fetchUserPrefs, saveUserPrefs, saveUserPrefsDebounced } from '../lib/userPrefs';
-import { NAV_ITEMS, MOBILE_NAV_IDS, navItemAllowed, sanitizeNavLayout, loadNavLayoutCache, saveNavLayoutCache } from '../lib/navLayout';
-import CreateMenu from './CreateMenu';
+import { useNotifications } from '../context/NotificationContext';
+import { HeaderActionsProvider } from '../context/HeaderActionsContext';
+import { useWaitingOnMeCount } from '../lib/reviews';
+import useIsPhone from '../lib/useIsPhone';
+import {
+  openNewTask, openQuickLog, openQuickContext, openSearch, openNotifications, openNoteScan,
+} from '../lib/events';
+import { Icon, Avatar, ToastHost, fullName } from '../ui';
+import ModalPortal from './ModalPortal';
 import ScrollMemory from './ScrollMemory';
-import QueuePanel from './QueuePanel';
-import Avatar from './Avatar';
-import GlobalSearch, { OPEN_EVENT } from './GlobalSearch';
+import GlobalSearch from './GlobalSearch';
 import GlobalShortcuts from './GlobalShortcuts';
 import ScanNotifier from './ScanNotifier';
-import TopBar from './TopBar';
-import { HeaderActionsProvider } from '../context/HeaderActionsContext';
+import QuickContext from './QuickContext';
+import NotificationCenter from './NotificationCenter';
+import NoteScan from './NoteScan';
+import TopBar, { TenurePill } from './TopBar';
 import ErrorBoundary from './ErrorBoundary';
-import StreakRing from './StreakRing';
-import LevelRing from './LevelRing';
-import QuickContext, { OPEN_QUICK_CONTEXT } from './QuickContext';
-import { useStreak } from '../context/StreakContext';
-import { usePets } from '../context/PetContext';
-import { streakTier } from '../lib/streak';
-import { useWaitingOnMeCount } from '../lib/reviews';
-import './Layout.css';
-import './MobileMotion.css';
+import { useEscapeStack } from '../ui/Sheet';
 
-const openSearch = () => window.dispatchEvent(new CustomEvent(OPEN_EVENT));
-
-const NavIcon = ({ d }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d={d} />
-  </svg>
-);
-
-// The phone dock's five tabs, in thumb order: what you're on now, then the
-// wider lists, then the numbers, then the one place you can write. Labels are
-// one word so five fit across a phone without truncating.
-const COMPANION_TABS = [
-  { to: '/focus',     label: 'Focus',
-    icon: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z' },
-  { to: '/active',    label: 'Tasks',
-    icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 M9 12h6 M9 16h4' },
-  { to: '/completed', label: 'Done',
-    icon: 'M22 11.08V12a10 10 0 11-5.93-9.14 M22 4L12 14.01l-3-3' },
-  { to: '/stats',     label: 'Stats',
-    icon: 'M12 20V10 M18 20V4 M6 20v-4' },
-  // Not a page: opens the quick-save Context sheet over whatever you're on.
-  { action: OPEN_QUICK_CONTEXT, label: 'Context',
-    icon: 'M4 19.5A2.5 2.5 0 016.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z' },
-  { to: '/quicklog',  label: 'Log',
-    // A pen writing a line: "jot something down".
-    icon: 'M12 20h9 M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z' },
+// The rail, top to bottom. `phone` = also a tab in the phone tab bar.
+const NAV = [
+  { to: '/dashboard', label: 'Dashboard', icon: 'home' },
+  { to: '/tasks', label: 'Tasks', icon: 'tasks' },
+  { to: '/completed', label: 'Completed', icon: 'done' },
+  { to: '/review', label: 'Ready for review', icon: 'eye', badge: 'review' },
+  { to: '/context', label: 'Context', icon: 'book' },
+  { to: '/files', label: 'Files', icon: 'fileCode' },
+  { to: '/submissions', label: 'Submissions', icon: 'inbox' },
+  { to: '/team-activity', label: 'Team activity', icon: 'activity', adminOnly: true },
 ];
 
-// Which tab a path belongs to, so a task opened from Tasks keeps Tasks lit.
-const activeTabIndex = (pathname) =>
-  COMPANION_TABS.findIndex(t => t.to && (pathname === t.to || pathname.startsWith(`${t.to}/`)));
+// Badge counts are computed once, in the shell, and handed down — each count
+// hook holds a realtime subscription, so one per nav item would be wasteful.
+const BadgeContext = React.createContext({});
+const useBadge = (kind) => React.useContext(BadgeContext)[kind] || 0;
 
-// Bottom tab bar. One highlight slides between tabs (driven by --dock-i)
-// rather than each tab fading its own background in and out, so switching
-// reads as movement from A to B.
-function MobileDock({ onNavigate }) {
-  const { pathname } = useLocation();
-  const active = activeTabIndex(pathname);
-
+function RailItem({ item }) {
+  const count = useBadge(item.badge);
   return (
-    <nav
-      className="mobile-dock"
-      aria-label="Primary"
-      style={{ '--dock-i': Math.max(active, 0), '--dock-n': COMPANION_TABS.length }}
-    >
-      <span
-        className={`dock-indicator ${active < 0 ? 'dock-indicator-hidden' : ''}`}
-        aria-hidden="true"
-      />
-      {COMPANION_TABS.map(tab => (tab.action ? (
-        <button
-          key={tab.label}
-          type="button"
-          className="dock-item"
-          onClick={() => { onNavigate(); window.dispatchEvent(new CustomEvent(tab.action)); }}
-        >
-          <span className="dock-icon"><NavIcon d={tab.icon} /></span>
-          <span className="dock-label">{tab.label}</span>
-        </button>
-      ) : (
-        <NavLink
-          key={tab.to}
-          to={tab.to}
-          className={({ isActive }) =>
-            `dock-item ${isActive ? 'dock-item-active' : ''}`}
-          onClick={onNavigate}
-        >
-          <span className="dock-icon"><NavIcon d={tab.icon} /></span>
-          <span className="dock-label">{tab.label}</span>
-        </NavLink>
-      )))}
-    </nav>
+    <NavLink to={item.to} className={({ isActive }) => `rail-item ${isActive ? 'is-on' : ''}`} aria-label={item.label}>
+      <Icon name={item.icon} size={18} />
+      {count > 0 && <span key={count} className="rail-badge">{count > 9 ? '9+' : count}</span>}
+      <span className="rail-tip">{item.label}</span>
+    </NavLink>
   );
 }
 
-function ProjectsNavBadge({ userId, teamId }) {
-  const [count, setCount] = useState(0);
-
-  const refresh = useCallback(async () => {
-    if (!userId || !teamId) return;
-    const [{ data: projs }, { data: reads }] = await Promise.all([
-      supabase.from('projects').select('id, updated_at').eq('team_id', teamId),
-      supabase.from('project_reads').select('project_id, last_read_at').eq('user_id', userId),
-    ]);
-    const readsMap = {};
-    (reads || []).forEach(r => { readsMap[r.project_id] = r.last_read_at; });
-    const unread = (projs || []).filter(p => {
-      const last = readsMap[p.id];
-      return !last || new Date(p.updated_at) > new Date(last);
-    });
-    setCount(unread.length);
-  }, [userId, teamId]);
-
-  useEffect(() => {
-    refresh();
-    const handler = () => refresh();
-    window.addEventListener('project-read', handler);
-    window.addEventListener('project-updated', handler);
-    return () => {
-      window.removeEventListener('project-read', handler);
-      window.removeEventListener('project-updated', handler);
-    };
-  }, [refresh]);
-
-  if (!count) return null;
-  return <span className="nav-unread-badge">{count}</span>;
-}
-
-function ReviewNavBadge({ userId, teamId }) {
-  const count = useWaitingOnMeCount(teamId, userId);
-  if (!count) return null;
-  return <span className="nav-unread-badge" title={`${count} waiting on your review`}>{count}</span>;
-}
-
-// A nav item's count, by the item's `badge` kind (see lib/navLayout.js).
-function NavBadge({ kind, userId, teamId }) {
-  if (kind === 'review') return <ReviewNavBadge userId={userId} teamId={teamId} />;
-  if (kind === 'projects') return <ProjectsNavBadge userId={userId} teamId={teamId} />;
-  return null;
-}
-
-function TeamSwitcher() {
-  const { teams, activeTeam, switchTeam } = useTeam();
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+function Rail({ nav }) {
   const navigate = useNavigate();
+  return (
+    <aside className="rail" aria-label="Primary">
+      <button type="button" className="rail-logo" onClick={() => navigate('/dashboard')} aria-label="TaskFlow home">T</button>
+      <nav className="rail-nav">
+        {nav.map(item => <RailItem key={item.to} item={item} />)}
+      </nav>
+      <div className="rail-foot">
+        <NavLink to="/settings" className={({ isActive }) => `rail-item ${isActive ? 'is-on' : ''}`} aria-label="Settings">
+          <Icon name="settings" size={18} />
+          <span className="rail-tip">Settings</span>
+        </NavLink>
+      </div>
+    </aside>
+  );
+}
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+// ── Phone ────────────────────────────────────────────────────────
 
-  if (!activeTeam) return null;
+function CreateSheet({ onClose }) {
+  useEscapeStack(onClose);
+  const navigate = useNavigate();
+  const go = (fn) => { onClose(); setTimeout(fn, 140); };
+  const items = [
+    { icon: 'plus', label: 'New task', run: () => openNewTask() },
+    { icon: 'done', label: 'Log a completed task', run: openQuickLog },
+    { icon: 'camera', label: 'Scan notebook notes', run: openNoteScan },
+    { icon: 'book', label: 'Save context', run: openQuickContext },
+    { icon: 'eye', label: 'Post for review', run: () => navigate('/review?new=1') },
+  ];
+  return (
+    <ModalPortal onDismiss={onClose}>
+      <div className="more-sheet-overlay" onClick={onClose} />
+      <div className="more-sheet stagger" role="dialog" aria-label="Create">
+        <div className="more-grabber" />
+        {items.map(it => (
+          <button key={it.label} type="button" className="more-item" onClick={() => go(it.run)}>
+            <Icon name={it.icon} size={19} />{it.label}
+          </button>
+        ))}
+      </div>
+    </ModalPortal>
+  );
+}
+
+function MoreSheet({ nav, onClose }) {
+  useEscapeStack(onClose);
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { user, profile, signOut } = useAuth();
+  const { teams, activeTeam, switchTeam } = useTeam();
+  const { mode } = useTheme();
+  const { setThemeMode } = useThemeCustomization();
+  const { unreadCount } = useNotifications();
+  const go = (to) => { onClose(); navigate(to); };
+  const later = (fn) => { onClose(); setTimeout(fn, 140); };
+  const nextMode = { light: 'dark', dark: 'system', system: 'light' }[mode];
 
   return (
-    <div className="team-switcher" ref={ref}>
-      <button className="team-switcher-trigger" onClick={() => setOpen(v => !v)}>
-        <span className="team-switcher-name">{activeTeam.name}</span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points={open ? '18 15 12 9 6 15' : '6 9 12 15 18 9'} />
-        </svg>
-      </button>
-      {open && (
-        <div className="team-switcher-popover">
-          {teams.map(t => (
-            <button
-              key={t.id}
-              className={`team-switcher-option ${t.id === activeTeam.id ? 'team-switcher-option-active' : ''}`}
-              onClick={() => { switchTeam(t.id); setOpen(false); }}
-            >
-              <span style={{ flex: 1, textAlign: 'left' }}>{t.name}</span>
-              {t.id === activeTeam.id && (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              )}
+    <ModalPortal onDismiss={onClose}>
+      <div className="more-sheet-overlay" onClick={onClose} />
+      <div className="more-sheet" role="dialog" aria-label="Menu">
+        <div className="more-grabber" />
+        <div className="more-head">
+          <Avatar person={profile || { email: user?.email }} size={38} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="truncate" style={{ fontWeight: 600 }}>{fullName(profile) || 'You'}</div>
+            <div className="truncate t-3" style={{ fontSize: 13 }}>{activeTeam?.name}</div>
+          </div>
+          <TenurePill />
+        </div>
+        <div className="stagger">
+          {nav.map(item => (
+            <button key={item.to} type="button" className={`more-item ${pathname.startsWith(item.to) ? 'is-on' : ''}`} onClick={() => go(item.to)}>
+              <Icon name={item.icon} size={19} />{item.label}
             </button>
           ))}
-          <div className="team-switcher-divider" />
-          <button className="team-switcher-option team-switcher-manage" onClick={() => { setOpen(false); navigate('/settings?section=teams'); }}>
-            Manage teams
+          <button type="button" className={`more-item ${pathname.startsWith('/settings') ? 'is-on' : ''}`} onClick={() => go('/settings')}>
+            <Icon name="settings" size={19} />Settings
           </button>
         </div>
-      )}
+        <div className="more-sep" />
+        <button type="button" className="more-item" onClick={() => later(openNotifications)}>
+          <Icon name="bell" size={19} />Notifications
+          {unreadCount > 0 && <span className="rail-badge">{unreadCount}</span>}
+        </button>
+        <button type="button" className="more-item" onClick={() => later(openSearch)}>
+          <Icon name="search" size={19} />Search
+        </button>
+        <button type="button" className="more-item" onClick={() => setThemeMode(nextMode)}>
+          <Icon name={mode === 'dark' ? 'moon' : mode === 'system' ? 'monitor' : 'sun'} size={19} />
+          Theme: {mode.charAt(0).toUpperCase() + mode.slice(1)}
+        </button>
+        {teams.length > 1 && (
+          <>
+            <div className="more-sep" />
+            {teams.map(t => (
+              <button key={t.id} type="button" className={`more-item ${t.id === activeTeam?.id ? 'is-on' : ''}`} onClick={() => { switchTeam(t.id); onClose(); }}>
+                <Icon name="users" size={19} />{t.name}
+                {t.id === activeTeam?.id && <Icon name="check" size={16} style={{ marginLeft: 'auto' }} />}
+              </button>
+            ))}
+          </>
+        )}
+        <div className="more-sep" />
+        <button type="button" className="more-item" style={{ color: 'var(--danger)' }} onClick={async () => { onClose(); await signOut(); navigate('/login'); }}>
+          <Icon name="logout" size={19} />Sign out
+        </button>
+      </div>
+    </ModalPortal>
+  );
+}
+
+function TabBar({ nav }) {
+  const [sheet, setSheet] = useState(null); // 'create' | 'more'
+  const reviewCount = useBadge('review');
+  const tab = (to, label, icon, count) => (
+    <NavLink to={to} className={({ isActive }) => `tabbar-item ${isActive ? 'is-on' : ''}`}>
+      <Icon name={icon} size={21} />
+      {count > 0 && <span key={count} className="rail-badge">{count > 9 ? '9+' : count}</span>}
+      {label}
+    </NavLink>
+  );
+  return (
+    <>
+      <nav className="tabbar" aria-label="Primary">
+        {tab('/dashboard', 'Home', 'home')}
+        {tab('/tasks', 'Tasks', 'tasks')}
+        <button type="button" className="tabbar-item" onClick={() => setSheet('create')} aria-label="Create">
+          <span className={`tabbar-add ${sheet === 'create' ? 'is-open' : ''}`}><Icon name="plus" size={20} stroke={2.2} /></span>
+        </button>
+        {tab('/review', 'Review', 'eye', reviewCount)}
+        <button type="button" className="tabbar-item" onClick={() => setSheet('more')}>
+          <Icon name="menu" size={21} />More
+        </button>
+      </nav>
+      {sheet === 'create' && <CreateSheet onClose={() => setSheet(null)} />}
+      {sheet === 'more' && <MoreSheet nav={nav.filter(n => !['/dashboard', '/tasks', '/review'].includes(n.to))} onClose={() => setSheet(null)} />}
+    </>
+  );
+}
+
+// ── Shell ────────────────────────────────────────────────────────
+
+function PageOutlet() {
+  const { pathname } = useLocation();
+  const section = pathname.split('/')[1] || 'dashboard';
+  return (
+    <div key={section} className="app-page page-enter">
+      <ErrorBoundary><Outlet /></ErrorBoundary>
     </div>
   );
 }
 
 export default function Layout() {
-  const { profile, user, signOut } = useAuth();
-  const uid = user?.id;
-  const { activeTeam, isAdmin } = useTeam();
-  const { theme, toggle } = useTheme();
-  const { activeColors: colors } = useThemeCustomization();
-  const streak = useStreak();
-  const { gamificationEnabled } = usePets();
-  const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // ── Sidebar nav customization (reorder + show/hide, synced to Supabase) ──
-  const [navLayout, setNavLayout] = useState(() => loadNavLayoutCache(uid));
-  const [navEditing, setNavEditing] = useState(false);
-  const [reorderId, setReorderId] = useState(null);
-  const [dropTarget, setDropTarget] = useState(null); // { id, after }
+  const { user } = useAuth();
+  const { isAdmin, activeTeam } = useTeam();
+  const reviewCount = useWaitingOnMeCount(activeTeam?.id, user?.id);
+  const badges = React.useMemo(() => ({ review: reviewCount }), [reviewCount]);
+  const isPhone = useIsPhone();
+  const nav = NAV.filter(n => !n.adminOnly || isAdmin);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
 
   useEffect(() => {
-    if (!uid) return;
-    let cancelled = false;
-    setNavLayout(loadNavLayoutCache(uid));
-    (async () => {
-      const prefs = await fetchUserPrefs(uid);
-      if (cancelled) return;
-      if (prefs && prefs.nav_layout) {
-        const remote = sanitizeNavLayout(prefs.nav_layout);
-        setNavLayout(remote);
-        saveNavLayoutCache(uid, remote);
-      } else {
-        saveUserPrefs(uid, { nav_layout: loadNavLayoutCache(uid) });
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [uid]);
-
-  const persistNav = (next) => {
-    const sanitized = sanitizeNavLayout(next);
-    setNavLayout(sanitized);
-    saveNavLayoutCache(uid, sanitized);
-    saveUserPrefsDebounced(uid, { nav_layout: sanitized });
-  };
-
-  const toggleNavVisible = (id) => {
-    if (NAV_ITEMS[id].locked) return;
-    persistNav(navLayout.map(b => (b.id === id ? { ...b, visible: !b.visible } : b)));
-  };
-
-  const handleNavDragStart = (e, id) => {
-    setReorderId(id);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', id);
-  };
-  const handleNavDragOver = (e, id) => {
-    if (!reorderId || id === reorderId) return;
-    e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
-    setDropTarget({ id, after: e.clientY > rect.top + rect.height / 2 });
-  };
-  const handleNavDrop = (e, targetId) => {
-    e.preventDefault();
-    if (!reorderId || reorderId === targetId) { setReorderId(null); setDropTarget(null); return; }
-    const rect = e.currentTarget.getBoundingClientRect();
-    const insertAfter = e.clientY > rect.top + rect.height / 2;
-    const arr = [...navLayout];
-    const fromIdx = arr.findIndex(b => b.id === reorderId);
-    const [moved] = arr.splice(fromIdx, 1);
-    const toIdx = arr.findIndex(b => b.id === targetId);
-    arr.splice(insertAfter ? toIdx + 1 : toIdx, 0, moved);
-    persistNav(arr);
-    setReorderId(null);
-    setDropTarget(null);
-  };
-  const handleNavDragEnd = () => { setReorderId(null); setDropTarget(null); };
-
-  // Collapsible nav: a small edge tab toggles it; the choice is cached.
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tf-nav-collapsed') === '1');
-  const toggleCollapsed = () => setCollapsed(c => {
-    const next = !c;
-    try { localStorage.setItem('tf-nav-collapsed', next ? '1' : '0'); } catch {}
-    return next;
-  });
-  // A custom background/text = the user has set their own theme, so the
-  // light/dark toggle no longer applies. Otherwise it works as before. The
-  // new UI ignores custom colours, and there the toggle picks the preset's
-  // light or dark palette.
-  const hasCustomTheme = !colors?.modernUi && Boolean(colors?.bg || colors?.text);
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
-  };
-
-  const initials  = profile ? `${profile.first_name?.[0] || ''}${profile.last_name?.[0] || ''}`.toUpperCase() : '?';
-  const userColor = profile?.color || '#6366f1';
-
-  // The 'pets' nav item is always force-hidden when gamification is off
-  // (personally opted out, or the active team has it disabled) — it's
-  // filtered out of BOTH the visible list and the customize/edit list, so
-  // there's nothing to toggle back on for something the user can't reach
-  // anyway (going to /pets directly also redirects away, see Pets.js).
-  // Admin-only items (Team Activity) are left out for everyone else.
-  const effectiveNavLayout = navLayout.filter(b => navItemAllowed(NAV_ITEMS[b.id], isAdmin));
-  const visibleNavLayout = effectiveNavLayout.filter(b => b.visible);
+    const onNotif = () => setNotifOpen(true);
+    const onScan = () => setScanOpen(true);
+    window.addEventListener('open-notifications', onNotif);
+    window.addEventListener('open-note-scan', onScan);
+    return () => {
+      window.removeEventListener('open-notifications', onNotif);
+      window.removeEventListener('open-note-scan', onScan);
+    };
+  }, []);
 
   return (
-    <div className={`layout ${collapsed ? 'nav-collapsed' : ''}`}>
-
-      <button
-        className="nav-toggle-tab"
-        onClick={toggleCollapsed}
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points={collapsed ? '9 18 15 12 9 6' : '15 18 9 12 15 6'} />
-        </svg>
-      </button>
-
-      <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''} ${collapsed ? 'sidebar-collapsed' : ''}`}>
-        <div className="sidebar-logo">
-          <img src="/logo.png" alt="TaskFlow" className="logo-mark" />
-          <span className="logo-text">TaskFlow</span>
-        </div>
-
-        <TeamSwitcher />
-
-        <button className="nav-search-btn" onClick={openSearch} title="Search (press /)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <span className="nav-search-label">Search</span>
-          <kbd className="nav-search-kbd">/</kbd>
-        </button>
-
-        <nav className="sidebar-nav">
-          {!navEditing ? (
-            visibleNavLayout.map(({ id }) => {
-              const item = NAV_ITEMS[id];
-              return (
-                <NavLink
-                  key={id}
-                  to={item.to}
-                  className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''}`}
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <NavIcon d={item.icon} />
-                  <span className="nav-label">{item.label}</span>
-                  {item.badge && <NavBadge kind={item.badge} userId={user?.id} teamId={activeTeam?.id} />}
-                  <span className="nav-tip" aria-hidden="true">{item.label}</span>
-                </NavLink>
-              );
-            })
-          ) : (
-            effectiveNavLayout.map(({ id, visible }) => {
-              const item = NAV_ITEMS[id];
-              const isTarget = dropTarget?.id === id;
-              return (
-                <div
-                  key={id}
-                  className={[
-                    'nav-edit-row',
-                    !visible ? 'nav-edit-row-hidden' : '',
-                    reorderId === id ? 'nav-edit-row-dragging' : '',
-                    isTarget && !dropTarget.after ? 'nav-edit-row-insert-before' : '',
-                    isTarget && dropTarget.after ? 'nav-edit-row-insert-after' : '',
-                  ].filter(Boolean).join(' ')}
-                  draggable
-                  onDragStart={e => handleNavDragStart(e, id)}
-                  onDragOver={e => handleNavDragOver(e, id)}
-                  onDrop={e => handleNavDrop(e, id)}
-                  onDragEnd={handleNavDragEnd}
-                >
-                  <span className="nav-edit-grip" aria-hidden="true">
-                    <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
-                      <circle cx="7" cy="4" r="1.5"/><circle cx="13" cy="4" r="1.5"/>
-                      <circle cx="7" cy="10" r="1.5"/><circle cx="13" cy="10" r="1.5"/>
-                      <circle cx="7" cy="16" r="1.5"/><circle cx="13" cy="16" r="1.5"/>
-                    </svg>
-                  </span>
-                  <NavIcon d={item.icon} />
-                  <span className="nav-label">{item.label}</span>
-                  {item.locked ? (
-                    <span className="nav-edit-locked">Always shown</span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="nav-edit-toggle"
-                      onClick={() => toggleNavVisible(id)}
-                      aria-label={visible ? `Hide ${item.label}` : `Show ${item.label}`}
-                      aria-pressed={visible}
-                    >
-                      {visible ? (
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                        </svg>
-                      ) : (
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/>
-                          <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
-                          <line x1="1" y1="1" x2="23" y2="23"/>
-                        </svg>
-                      )}
-                    </button>
-                  )}
-                </div>
-              );
-            })
-          )}
-
-          <button
-            type="button"
-            className="nav-customize-btn"
-            onClick={() => setNavEditing(v => !v)}
-          >
-            {navEditing ? (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                Done
-              </>
-            ) : (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9 M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
-                Customize
-              </>
-            )}
-          </button>
-        </nav>
-
-        <div className="sidebar-queue">
-          <QueuePanel />
-        </div>
-
-        <div className="sidebar-footer">
-          {!hasCustomTheme && (
-            <button className="theme-toggle" onClick={toggle} aria-label="Toggle theme">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="theme-icon-sun">
-                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-              </svg>
-              <div className="theme-track">
-                <div className={`theme-thumb ${theme === 'light' ? 'theme-thumb-light' : ''}`} />
-              </div>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="theme-icon-moon">
-                <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
-              </svg>
-            </button>
-          )}
-
-          {activeTeam && (
-            <a href={`/submit/${activeTeam.slug}`} target="_blank" rel="noreferrer" className="guest-link">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6 M15 3h6v6 M10 14L21 3" />
-              </svg>
-              <span className="guest-link-text">Guest Portal</span>
-            </a>
-          )}
-
-          <div className="user-info">
-            <Avatar src={profile?.avatar_url} color={userColor} initials={initials} size={34} />
-            <div className="user-details">
-              <span className="user-name">{profile?.first_name} {profile?.last_name}</span>
-              <button onClick={handleSignOut} className="sign-out-btn">Sign out</button>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <main className="main-content">
-        <header className="mobile-header">
-          {/* The streak ring takes the logo's spot (the logo comes back when
-              there's no streak to show), with the level ring beside it. */}
-          <div className="mobile-header-left">
-            {streakTier(streak.days)
-              ? <StreakRing key={streak.teamId} days={streak.days} paused={streak.paused} size={30} />
-              : <img src="/logo.png" alt="TaskFlow" className="mobile-logo-img" />}
-            {gamificationEnabled && <LevelRing size={36} />}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <CreateMenu compact />
-            <button className="mobile-search-btn" onClick={openSearch} aria-label="Search">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="mobile-menu-btn"
-              onClick={() => setSidebarOpen(v => !v)}
-              aria-label="Menu"
-              aria-expanded={sidebarOpen}
-            >
-              <Avatar src={profile?.avatar_url} color={userColor} initials={initials} size={32} />
-            </button>
-          </div>
-        </header>
+    <BadgeContext.Provider value={badges}>
+    <div className="app">
+      <Rail nav={nav} />
+      <main className="app-main">
         <HeaderActionsProvider>
           <ScrollMemory />
           <TopBar />
-          <div className="page-content">
-            <ErrorBoundary><Outlet /></ErrorBoundary>
-          </div>
+          <PageOutlet />
         </HeaderActionsProvider>
       </main>
-
-      {/* ── Mobile dock (bottom tab bar) ──────────────────────────
-          Fixed companion tabs, NOT the customizable sidebar layout: the
-          phone build has one job (see what's on your plate, tick it off as
-          you go), and these five are it. Everything else — settings, teams,
-          projects, files — is still reachable from the avatar menu in the
-          header, which is also why all five slots can be tabs instead of
-          spending one on "More". */}
-      <MobileDock onNavigate={() => setSidebarOpen(false)} />
-
-      {/* ── Full-screen mobile menu (opened from the dock's "More") ── */}
-      {sidebarOpen && (
-        <div className="mobile-menu">
-          <div className="mobile-menu-head">
-            <img src="/logo.png" alt="TaskFlow" className="mobile-menu-logo" />
-            <span className="mobile-menu-title">Menu</span>
-            <button className="mobile-menu-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-
-          <div className="mobile-menu-body">
-            <TeamSwitcher />
-
-            <button className="mobile-menu-search" onClick={() => { openSearch(); setSidebarOpen(false); }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              Search
-              <kbd className="mobile-menu-kbd">/</kbd>
-            </button>
-
-            <nav className="mobile-menu-nav">
-              {/* Only pages built for a phone. The rest redirect to Focus
-                  (see DesktopOnly in App.js), so listing them here would just
-                  be links that bounce somewhere else. */}
-              {visibleNavLayout.filter(({ id }) => MOBILE_NAV_IDS.has(id)).map(({ id }) => {
-                const item = NAV_ITEMS[id];
-                return (
-                  <NavLink
-                    key={id}
-                    to={item.to}
-                    className={({ isActive }) => `mobile-menu-item ${isActive ? 'mobile-menu-item-active' : ''}`}
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <NavIcon d={item.icon} />
-                    <span>{item.label}</span>
-                    {item.badge && <NavBadge kind={item.badge} userId={user?.id} teamId={activeTeam?.id} />}
-                  </NavLink>
-                );
-              })}
-              <NavLink
-                to="/appearance"
-                className={({ isActive }) => `mobile-menu-item ${isActive ? 'mobile-menu-item-active' : ''}`}
-                onClick={() => setSidebarOpen(false)}
-              >
-                <NavIcon d="M12 2a10 10 0 000 20c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.2-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16a6 6 0 006-6c0-5-4.5-9-10-9z" />
-                <span>Appearance</span>
-              </NavLink>
-            </nav>
-          </div>
-
-          <div className="mobile-menu-footer">
-            {!hasCustomTheme && (
-              <button className="theme-toggle" onClick={toggle} aria-label="Toggle theme">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="theme-icon-sun">
-                  <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                </svg>
-                <div className="theme-track"><div className={`theme-thumb ${theme === 'light' ? 'theme-thumb-light' : ''}`} /></div>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="theme-icon-moon">
-                  <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
-                </svg>
-              </button>
-            )}
-
-            {activeTeam && (
-              <a href={`/submit/${activeTeam.slug}`} target="_blank" rel="noreferrer" className="guest-link" onClick={() => setSidebarOpen(false)}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6 M15 3h6v6 M10 14L21 3" />
-                </svg>
-                <span className="guest-link-text">Guest Portal</span>
-              </a>
-            )}
-
-            <div className="user-info">
-              <Avatar src={profile?.avatar_url} color={userColor} initials={initials} size={38} />
-              <div className="user-details">
-                <span className="user-name">{profile?.first_name} {profile?.last_name}</span>
-                <button onClick={handleSignOut} className="sign-out-btn">Sign out</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {isPhone && <TabBar nav={nav} />}
 
       <GlobalSearch />
       <GlobalShortcuts />
       <ScanNotifier />
-      {/* The Context sheet, opened by event — from the dock on a phone and
-          the top bar's ⋯ menu on desktop. Mounted once, here, so one event
-          can't open two sheets. */}
       <QuickContext hideTrigger />
+      {notifOpen && <NotificationCenter onClose={() => setNotifOpen(false)} />}
+      {scanOpen && <NoteScan onClose={() => setScanOpen(false)} />}
+      <ToastHost />
     </div>
+    </BadgeContext.Provider>
   );
 }

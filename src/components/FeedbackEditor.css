@@ -1,0 +1,30 @@
+/* Rich-text description field (task sheet, quick log). */
+.fb-editor {
+  min-height: 120px;
+  outline: none;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+  word-break: break-word;
+  cursor: text;
+}
+.fb-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-3);
+  pointer-events: none;
+}
+.fb-editor b, .fb-editor strong { font-weight: 650; }
+.fb-editor a { text-decoration: underline; text-underline-offset: 3px; }
+.fb-editor ul, .fb-editor ol { padding-left: 1.3em; }
+.fb-editor-boxed {
+  min-height: 110px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--r);
+  background: var(--surface-solid);
+  font-size: 14px;
+  transition: border-color var(--dur-1) ease, box-shadow var(--dur-2) ease;
+}
+.fb-editor-boxed:hover { border-color: var(--border-strong); }
+.fb-editor-boxed:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong)); box-shadow: 0 0 0 3px var(--accent-ring); }
+@media (max-width: 768px) { .fb-editor { font-size: 16px; } }

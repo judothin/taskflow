@@ -1,34 +1,53 @@
 import React from 'react';
+import '../pages/Settings.css';
 
-// Small building blocks shared by the Settings panels. They live outside the
-// page so section components (which render inside it) can use the same
-// controls instead of re-implementing the markup.
+// Small building blocks shared by the Settings panels (the page itself and
+// the section components that render inside it — TeamSettings,
+// SubtaskPresetsCard), so every row has the same 5.png layout:
+// bold label + muted description on the left, the control on the right.
 
-// Label + description on the left, control on the right.
-export function SettingRow({ label, desc, children }) {
+export function SettingRow({ label, desc, children, top, col, className = '' }) {
   return (
-    <div className="settings-row">
-      <div className="settings-row-text">
-        <div className="settings-row-label">{label}</div>
-        {desc && <div className="settings-row-desc">{desc}</div>}
+    <div className={`st-row ${top ? 'is-top' : ''} ${className}`}>
+      <div className="st-row-text">
+        <div className="st-row-label">{label}</div>
+        {desc && <div className="st-row-desc">{desc}</div>}
       </div>
-      {children}
+      <div className={`st-row-ctrl ${col ? 'is-col' : ''}`}>{children}</div>
     </div>
   );
 }
 
+/** The shared .switch, as a controlled toggle. */
 export function Toggle({ on, onClick, disabled, label }) {
   return (
-    <button
-      type="button"
-      className={`nc-toggle ${on ? 'nc-toggle-on' : ''}`}
-      onClick={onClick}
-      disabled={disabled}
+    <input
+      type="checkbox"
+      className="switch"
       role="switch"
+      checked={!!on}
+      onChange={() => onClick?.()}
+      disabled={disabled}
       aria-checked={!!on}
       aria-label={label}
-    >
-      <span className="nc-toggle-thumb" />
-    </button>
+    />
+  );
+}
+
+/** Range input with the accent fill drawn up to the thumb. */
+export function Range({ value, min, max, step, onChange, label }) {
+  const pct = ((Number(value) - min) / (max - min)) * 100;
+  return (
+    <input
+      type="range"
+      className="st-range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      aria-label={label}
+      style={{ '--fill': `${Math.min(100, Math.max(0, pct))}%` }}
+    />
   );
 }

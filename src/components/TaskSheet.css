@@ -1,0 +1,82 @@
+/* Task popout (new + detail). Layout comes from .sheet in components.css. */
+.ts-page { margin-top: 20px; }
+.ts-body { margin-top: 24px; flex: 1; display: flex; flex-direction: column; min-height: 140px; }
+.ts-body .fb-editor { flex: 1; }
+.ts-bottom {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.ts-attach { margin-bottom: 2px; }
+.ts-checks { display: flex; flex-direction: column; gap: 16px; }
+.ts-meta { grid-template-columns: 92px 1fr; }
+.ts-meta-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  margin: -5px -8px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  transition: background-color var(--dur-1) ease, border-color var(--dur-1) ease;
+}
+.ts-meta-input:hover { background: var(--hover); }
+.ts-meta-input:focus { background: var(--surface-solid); border-color: var(--border-strong); box-shadow: 0 0 0 3px var(--accent-ring); }
+.ts-meta-input::placeholder { color: var(--text-3); }
+
+.ts-activity { display: flex; flex-direction: column; gap: 14px; }
+.ts-act { display: flex; gap: 11px; align-items: flex-start; font-size: 14px; color: var(--text-2); line-height: 1.4; }
+.ts-act b { color: var(--text); font-weight: 600; }
+.ts-act-when { font-size: 13px; color: var(--text-3); margin-top: 2px; }
+.ts-act-ico { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-3); flex-shrink: 0; }
+.ts-act-ico.is-ok { background: var(--success-soft); color: var(--success); }
+
+.ts-err { margin-right: 6px; max-width: 320px; }
+
+/* Drag-over: the whole sheet becomes the drop target. */
+.ts-dragging { box-shadow: 0 0 0 2px var(--accent), var(--shadow-lg); }
+.ts-drop {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: color-mix(in srgb, var(--surface-solid) 86%, transparent);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  pointer-events: none;
+  animation: tf-fade-in var(--dur-2) ease;
+}
+.ts-drop svg { animation: tf-bump 0.6s var(--ease-spring) infinite alternate; }
+
+/* "Who completed it?" */
+.ts-people { display: flex; flex-direction: column; gap: 2px; margin: 16px -8px 0; max-height: 300px; overflow-y: auto; }
+.ts-person {
+  display: flex; align-items: center; gap: 11px;
+  min-height: 44px; padding: 0 10px;
+  border-radius: var(--r);
+  font-size: 14px;
+  text-align: left;
+  transition: background-color var(--dur-1) ease, transform var(--dur-2) var(--ease-spring);
+}
+.ts-person:hover { background: var(--hover); }
+.ts-person:active { transform: scale(0.98); }
+.ts-person.is-on { background: var(--surface-2); }
+
+@media (max-width: 768px) {
+  .ts-body { min-height: 110px; }
+  .ts-err { flex-basis: 100%; order: -1; max-width: none; }
+}

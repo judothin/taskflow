@@ -1,97 +1,92 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
-import TaskForm from './TaskForm';
+import { consumeNewTaskDeepLink, clearDeepLinkFromUrl } from '../lib/deepLink';
+import { OPEN_NEW_TASK, OPEN_TASK, OPEN_QUICK_LOG, OPEN_SEARCH, openSearch } from '../lib/events';
+import { toast } from '../ui';
+import TaskSheet from './TaskSheet';
 import QuickLogModal from '../pages/QuickLog';
-import { OPEN_EVENT as OPEN_SEARCH } from './GlobalSearch';
 
-// This component already owns app-wide instances of both modals, so anything
-// that wants to open one fires the matching event rather than mounting its own
-// copy (the + menu in the nav, a page toolbar, a deep link).
-export const OPEN_NEW_TASK = 'open-new-task';
-export const OPEN_QUICK_LOG = 'open-quick-log';
+export { OPEN_NEW_TASK, OPEN_QUICK_LOG };
 
-// True when the keystroke is meant for a text field (or rich-text editor),
-// where our single-key shortcuts must not hijack the input.
-function isTypingTarget(el) {
-  if (!el) return false;
-  if (el.isContentEditable) return true;
-  const tag = el.tagName;
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-}
+const isTyping = (el) => !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+const overlayOpen = () => [...document.querySelectorAll('.sheet, .dialog, .gs-overlay, .more-sheet')]
+  .some(el => !el.closest('.modal-portal-exit'));
 
-// App-wide single-key shortcuts:
-//   /  → focus/open global search
-//   n  → new task
-//   q  → quick log
-// Owns global instances of the New Task and Quick Log modals so the shortcuts
-// work on every page, not just the ones with their own toolbar buttons.
+// Owns the app-wide task sheet and quick log, and the single-key shortcuts:
+//   /  search      n  new task      q  log a completed task
+// Anything that wants one of these fires the event in lib/events.js.
 export default function GlobalShortcuts() {
   const { activeTeamId } = useTeam();
-  const [showNewTask, setShowNewTask] = useState(false);
-  const [showQuickLog, setShowQuickLog] = useState(false);
+  const [sheet, setSheet] = useState(null); // { task?, prefill?, key }
+  const [quickLog, setQuickLog] = useState(false);
   const [users, setUsers] = useState([]);
-  const [projects, setProjects] = useState([]);
+  const usersFor = useRef(null);
 
-  const loadFormData = useCallback(async () => {
-    if (!activeTeamId) return;
-    const [members, { data: projs }] = await Promise.all([
-      fetchTeamMembers(activeTeamId),
-      supabase.from('projects').select('id, title').eq('team_id', activeTeamId).order('title'),
-    ]);
+  const loadUsers = useCallback(async () => {
+    if (!activeTeamId || usersFor.current === activeTeamId) return;
+    usersFor.current = activeTeamId;
+    const members = await fetchTeamMembers(activeTeamId);
     setUsers((members || []).sort((a, b) => (a.first_name || '').localeCompare(b.first_name || '')));
-    setProjects(projs || []);
   }, [activeTeamId]);
 
+  useEffect(() => { usersFor.current = null; loadUsers(); }, [activeTeamId, loadUsers]);
+
+  // A deep link (?new=1&page=…) opens a pre-filled new task once signed in.
   useEffect(() => {
+    let dl = null;
+    try { dl = consumeNewTaskDeepLink(); } catch { dl = null; }
+    if (!dl) return;
+    setSheet({ prefill: dl, key: Date.now() });
+    clearDeepLinkFromUrl();
+  }, []);
+
+  useEffect(() => {
+    const openNew = (e) => { loadUsers(); setSheet({ prefill: e.detail || null, key: Date.now() }); };
+    const openOne = async (e) => {
+      loadUsers();
+      const d = e.detail || {};
+      if (d.task) { setSheet({ task: d.task, key: Date.now() }); return; }
+      if (!d.id) return;
+      const { data, error } = await supabase.from('tasks').select('*').eq('id', d.id).maybeSingle();
+      if (error || !data) { toast('That task couldn’t be found', { icon: 'alert' }); return; }
+      setSheet({ task: data, key: Date.now() });
+    };
+    const openLog = () => setQuickLog(true);
     const onKey = (e) => {
-      // Let browser/OS chords and modifier combos through untouched.
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isTypingTarget(e.target)) return;
-      // Don't fire while any modal (ours or a page's) or the search palette is open.
-      if (showNewTask || showQuickLog) return;
-      // A closing modal's frozen copy (ModalPortal) doesn't count as open.
-      const modalOpen = [...document.querySelectorAll('.modal-overlay, .gs-overlay')]
-        .some(el => !el.closest('.modal-portal-exit'));
-      if (modalOpen) return;
-
-      if (e.key === '/') {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent(OPEN_SEARCH));
-      } else if (e.key === 'n' || e.key === 'N') {
-        e.preventDefault();
-        loadFormData();
-        setShowNewTask(true);
-      } else if (e.key === 'q' || e.key === 'Q') {
-        e.preventDefault();
-        setShowQuickLog(true);
-      }
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || overlayOpen()) return;
+      if (e.key === '/') { e.preventDefault(); openSearch(); }
+      else if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openNew({ detail: null }); }
+      else if (e.key === 'q' || e.key === 'Q') { e.preventDefault(); openLog(); }
     };
-    const openTask = () => { loadFormData(); setShowNewTask(true); };
-    const openLog = () => setShowQuickLog(true);
-
-    window.addEventListener('keydown', onKey);
-    window.addEventListener(OPEN_NEW_TASK, openTask);
+    window.addEventListener(OPEN_NEW_TASK, openNew);
+    window.addEventListener(OPEN_TASK, openOne);
     window.addEventListener(OPEN_QUICK_LOG, openLog);
+    window.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener(OPEN_NEW_TASK, openTask);
+      window.removeEventListener(OPEN_NEW_TASK, openNew);
+      window.removeEventListener(OPEN_TASK, openOne);
       window.removeEventListener(OPEN_QUICK_LOG, openLog);
+      window.removeEventListener('keydown', onKey);
     };
-  }, [showNewTask, showQuickLog, loadFormData]);
+  }, [loadUsers]);
 
   return (
     <>
-      {showNewTask && (
-        <TaskForm
-          onClose={() => setShowNewTask(false)}
-          onSaved={() => { setShowNewTask(false); window.dispatchEvent(new CustomEvent('tasks-changed')); }}
+      {sheet && (
+        <TaskSheet
+          key={sheet.key}
+          task={sheet.task}
+          prefill={sheet.prefill}
           users={users}
-          projects={projects}
+          onClose={() => setSheet(null)}
         />
       )}
-      {showQuickLog && <QuickLogModal onClose={() => setShowQuickLog(false)} />}
+      {quickLog && <QuickLogModal onClose={() => setQuickLog(false)} />}
     </>
   );
 }
+
+// Kept for older imports of the search event name.
+export { OPEN_SEARCH };

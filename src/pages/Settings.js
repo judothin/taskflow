@@ -1,892 +1,729 @@
-import React, { useState, useRef, useMemo, useLayoutEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTeam } from '../context/TeamContext';
 import { usePets } from '../context/PetContext';
-import Avatar from '../components/Avatar';
-import AvatarCrop from '../components/AvatarCrop';
-import RankBadges from '../components/PetBadges';
-import AccountStatsCard from '../components/AccountStatsCard';
-import SubtaskPresetsCard from '../components/SubtaskPresetsCard';
-import TeamSettings from '../components/TeamSettings';
-import { SettingRow, Toggle } from '../components/SettingsControls';
-import { getRankBadges } from '../lib/petBadges';
-import { useSpecialBadges } from '../context/SpecialBadgesContext';
-import { loadShownBadges, saveShownBadges } from '../lib/badgePrefs';
-import ModalPortal from '../components/ModalPortal';
 import { useThemeCustomization } from '../context/ThemeCustomizationContext';
-import { useTheme } from '../context/ThemeContext';
-import UiPresetPicker from '../components/UiPresetPicker';
+import { Icon, Segmented, ConfirmDialog, initialsOf, longDate, toast } from '../ui';
+import AvatarCrop from '../components/AvatarCrop';
+import TeamSettings from '../components/TeamSettings';
+import SubtaskPresetsCard from '../components/SubtaskPresetsCard';
+import ColorSwatches, { PERSON_COLORS } from '../components/ColorSwatches';
+import { SettingRow, Toggle, Range } from '../components/SettingsControls';
 import {
-  THEME_FIELDS, STATUS_FIELDS, FONT_SCALES,
-  DEFAULT_BG_TINT, MAX_BG_TINT_OPACITY,
+  ACCENTS, FONT_SCALES, DEFAULT_BG_TINT, MAX_BG_TINT_OPACITY, contrastText,
 } from '../lib/themeColors';
 import { SETTINGS_SECTIONS as SECTIONS, resolveSettingsSection } from '../lib/settingsSections';
-import { sectionTransition } from '../lib/pageTransitions';
-import './Dashboard.css';
-import './Auth.css';
+import './Settings.css';
 
-const PRESET_COLORS = [
-  '#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6',
-  '#8b5cf6','#ef4444','#06b6d4','#84cc16','#f97316'
-];
+const DAY = 86400000;
+const daysSince = (d) => (d ? Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / DAY)) : 0);
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
-function Icon({ d, size = 17 }) {
+// Error line that wiggles in whenever its message changes.
+function ErrorNote({ msg }) {
+  if (!msg) return null;
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {d.split(' M').map((seg, i) => <path key={i} d={i === 0 ? seg : `M${seg}`} />)}
-    </svg>
-  );
-}
-
-// Module-level so its identity is stable — if it were defined inside Settings,
-// every color change would re-render Settings, remount the <input type="color">,
-// and close the native picker mid-drag. Group/SettingRow live out here for the
-// same reason: they wrap those inputs.
-function ColorRow({ field, value, custom, onChange, onReset }) {
-  return (
-    <div className="theme-color-row">
-      <input
-        type="color"
-        className="theme-color-input"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        title={field.label}
-      />
-      <div className="settings-row-text">
-        <div className="settings-row-label">{field.label}</div>
-        {field.desc && <div className="settings-row-desc">{field.desc}</div>}
-      </div>
-      <span className="theme-color-hex">{value}</span>
-      {custom && (
-        <button type="button" className="theme-color-reset" onClick={onReset}>Reset</button>
-      )}
+    <div key={msg} className="notice notice-error wiggle" role="alert">
+      <Icon name="alert" size={15} /><span>{msg}</span>
     </div>
   );
 }
 
-// Collapsible sub-group inside a card, so long panels stay scannable.
-function Group({ title, count, defaultOpen = true, children }) {
+/** Primary button that turns into a green "✓ Saved" for a moment. */
+function SaveButton({ saving, saved, disabled, children = 'Save changes', type = 'submit', onClick, className = '' }) {
   return (
-    <details className="settings-group" open={defaultOpen}>
-      <summary className="settings-group-summary">
-        <svg className="settings-group-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M9 18l6-6-6-6" />
-        </svg>
-        <span className="settings-group-title">{title}</span>
-        {count != null && <span className="settings-group-count">{count}</span>}
-      </summary>
-      <div className="settings-group-body">{children}</div>
-    </details>
+    <button
+      type={type}
+      className={`btn btn-primary st-save ${saved ? 'is-saved' : ''} ${className}`}
+      disabled={disabled || saving || saved}
+      onClick={onClick}
+    >
+      {saving ? <span key="s"><span className="spinner" />Saving…</span>
+        : saved ? <span key="d"><Icon name="check" size={15} stroke={2.6} />Saved</span>
+          : <span key="i">{children}</span>}
+    </button>
   );
 }
 
-export default function Settings() {
-  const { profile, refreshProfile, user } = useAuth();
-  const { userGamificationEnabled, setGamificationEnabled, userLevel } = usePets();
-  const { specialFlags } = useSpecialBadges();
-  const [shownBadges, setShownBadges] = useState(() => loadShownBadges(user?.id));
-  const {
-    getColor, setColor, setColorValues, resetColor, resetAll, isCustom, colors,
-    backgrounds, maxBackgrounds, setBackground, uploadBackground, deleteBackground,
-    savedThemes, saveTheme, applyTheme, deleteTheme, backgroundUsage, mobileColors,
-    modernUi, preset, setModernUi, setPreset,
-  } = useThemeCustomization();
-  const { theme, setTheme } = useTheme();
-  const mobileOverrideCount = Object.keys(mobileColors || {}).length;
-  const avatarRef = useRef();
-  const bgInputRef = useRef();
-  const logoChoice = colors.logo || 'auto';
-  const [savingGamification, setSavingGamification] = useState(false);
+function useFlash(ms = 1700) {
+  const [on, setOn] = useState(false);
+  const t = useRef(null);
+  useEffect(() => () => clearTimeout(t.current), []);
+  const flash = () => { setOn(true); clearTimeout(t.current); t.current = setTimeout(() => setOn(false), ms); };
+  return [on, flash];
+}
 
-  // The open section lives in the URL (?section=appearance) so it survives a
-  // refresh, works with the back button, and can be linked to directly.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const section = resolveSettingsSection(searchParams.get('section'));
-  const activeSection = useMemo(() => SECTIONS.find(s => s.id === section), [section]);
+// ─────────────────────────────── Profile ───────────────────────────────
 
-  // One highlight that slides to the active tab, rather than each tab
-  // switching its own background. Measured from the active button so it
-  // works for the vertical rail and the narrow-screen horizontal strip alike.
-  const navRef = useRef(null);
-  const [pill, setPill] = useState(null);
-  useLayoutEffect(() => {
-    const nav = navRef.current;
-    if (!nav) return undefined;
-    const measure = () => {
-      const el = nav.querySelector('.settings-nav-item-active');
-      if (!el) return;
-      setPill(p => ({
-        x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight,
-        // Only animate once it has a position to animate from.
-        animate: !!p,
-      }));
-      // On the horizontal strip, bring an off-screen tab into view.
-      if (nav.scrollWidth > nav.clientWidth) {
-        const left = el.offsetLeft - nav.scrollLeft;
-        if (left < 0 || left + el.offsetWidth > nav.clientWidth) {
-          nav.scrollTo({ left: el.offsetLeft - 16, behavior: 'smooth' });
-        }
-      }
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(nav);
-    return () => ro.disconnect();
-  }, [section]);
-  // Switching sections crossfades the panel (a view transition — see
-  // sectionTransition). Where that isn't available the new panel fades in
-  // instead, using fallbackDir.
-  const fallbackDir = useRef(null);
-  const goTo = (id) => {
-    if (id === section) return;
-    const from = SECTIONS.findIndex(s => s.id === section);
-    const to = SECTIONS.findIndex(s => s.id === id);
-    const dir = to > from ? 'down' : 'up';
-    const next = new URLSearchParams(searchParams);
-    next.set('section', id);
-    const change = () => setSearchParams(next, { replace: true });
-    fallbackDir.current = null;
-    if (!sectionTransition(dir, change)) fallbackDir.current = dir;
-  };
+// Fixed shape for the colour preview — a fortnight of made-up activity.
+const PREVIEW_BARS = [2, 1, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 3, 5, 3, 3, 0, 0, 0, 4, 4, 0];
 
-  const handleToggleGamification = async () => {
-    setSavingGamification(true);
-    try {
-      await setGamificationEnabled(!userGamificationEnabled);
-    } finally {
-      setSavingGamification(false);
-    }
-  };
+function ProfileSection() {
+  const { profile, user, refreshProfile } = useAuth();
+  const fileRef = useRef(null);
 
-  const [bgError, setBgError]   = useState('');
-  const [bgBusy, setBgBusy]     = useState(false);
-  const [themeName, setThemeName] = useState('');
-  const [confirmDeleteBg, setConfirmDeleteBg] = useState(null); // { bg, desktop, phone, themes }
-  const [deletingBg, setDeletingBg] = useState(false);
-  const [deleteBgError, setDeleteBgError] = useState('');
-
-  const handleBgUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (bgInputRef.current) bgInputRef.current.value = '';
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { setBgError('Image must be 5 MB or smaller.'); return; }
-    setBgError(''); setBgBusy(true);
-    try {
-      const url = await uploadBackground(file);
-      if (url) setBackground(url);
-    } catch (err) { setBgError(err.message || 'Upload failed.'); }
-    finally { setBgBusy(false); }
-  };
-
-  // Deleting is permanent (the file goes from storage too), so it always
-  // asks — and says what else will change.
-  const requestDeleteBg = (bg) => {
-    setDeleteBgError('');
-    setConfirmDeleteBg({ bg, ...backgroundUsage(bg.url) });
-  };
-  const closeDeleteBg = () => { if (!deletingBg) setConfirmDeleteBg(null); };
-  const confirmDeleteBackground = async () => {
-    setDeletingBg(true);
-    setDeleteBgError('');
-    try {
-      await deleteBackground(confirmDeleteBg.bg);
-      setConfirmDeleteBg(null);
-    } catch (err) {
-      setDeleteBgError(err?.message || "Couldn't delete it. Try again.");
-    } finally {
-      setDeletingBg(false);
-    }
-  };
-
-  const handleSaveTheme = async () => {
-    if (!themeName.trim()) return;
-    await saveTheme(themeName);
-    setThemeName('');
-  };
-
-  const [form, setForm] = useState({
+  const base = useMemo(() => ({
     first_name: profile?.first_name || '',
-    last_name:  profile?.last_name  || '',
-    color:      profile?.color      || '#6366f1',
+    last_name: profile?.last_name || '',
+    color: profile?.color || '#6366f1',
     start_date: profile?.start_date || '',
-  });
+  }), [profile?.first_name, profile?.last_name, profile?.color, profile?.start_date]);
 
-  // Avatar state
-  const [avatarFile,     setAvatarFile]     = useState(null);
-  const [avatarPreview,  setAvatarPreview]  = useState(profile?.avatar_url || null);
-  const [avatarError,    setAvatarError]    = useState('');
-  const [cropSrc,        setCropSrc]        = useState(null); // raw file src waiting for crop
+  const [form, setForm] = useState(base);
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(profile?.avatar_url || null);
+  const [cropSrc, setCropSrc] = useState(null);
+  const [avatarError, setAvatarError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, flashSaved] = useFlash();
 
-  const [pwForm,   setPwForm]   = useState({ next: '', confirm: '' });
-  const [saving,   setSaving]   = useState(false);
-  const [pwSaving, setPwSaving] = useState(false);
-  const [msg,      setMsg]      = useState('');
-  const [pwMsg,    setPwMsg]    = useState('');
-  const [error,    setError]    = useState('');
-  const [pwError,  setPwError]  = useState('');
+  // A fresh profile (first load, or after saving) becomes the new baseline.
+  useEffect(() => {
+    setForm(base);
+    setAvatarFile(null);
+    setAvatarPreview(profile?.avatar_url || null);
+  }, [base, profile?.avatar_url]);
 
-  const set   = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
-  const setPw = (k) => (e) => setPwForm(f => ({ ...f, [k]: e.target.value }));
+  const avatarDirty = !!avatarFile || (avatarPreview || null) !== (profile?.avatar_url || null);
+  const dirty = avatarDirty || Object.keys(base).some(k => (form[k] || '') !== (base[k] || ''));
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  // Tenure badges run off the editable start date (e.g. hire date), falling
-  // back to the account creation date.
-  const effectiveStart = profile?.start_date || user?.created_at;
-  const daysSince = (d) => (d ? Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / 86400000)) : 0);
-  const todayStr = new Date().toISOString().slice(0, 10);
-
-  const handleAvatarChange = (e) => {
-    const file = e.target.files[0];
+  const pickFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    if (file.size > 4 * 1024 * 1024) {
-      setAvatarError('Image must be 4 MB or smaller.');
-      avatarRef.current.value = '';
-      return;
-    }
+    if (file.size > 4 * 1024 * 1024) { setAvatarError('Image must be 4 MB or smaller.'); return; }
     setAvatarError('');
-    // Open crop UI instead of using the file directly
     setCropSrc(URL.createObjectURL(file));
-    if (avatarRef.current) avatarRef.current.value = '';
   };
 
-  const handleCropConfirm = (blob) => {
+  const onCropped = (blob) => {
     setCropSrc(null);
-    const croppedFile = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
-    setAvatarFile(croppedFile);
+    setAvatarFile(new File([blob], 'avatar.jpg', { type: 'image/jpeg' }));
     setAvatarPreview(URL.createObjectURL(blob));
   };
 
-  const handleCropCancel = () => {
-    setCropSrc(null);
-  };
+  const removePhoto = () => { setAvatarFile(null); setAvatarPreview(null); setAvatarError(''); };
 
-  const removeAvatar = (e) => {
-    e.stopPropagation();
+  const discard = () => {
+    setForm(base);
     setAvatarFile(null);
-    setAvatarPreview(null);
-    setAvatarError('');
-    if (avatarRef.current) avatarRef.current.value = '';
+    setAvatarPreview(profile?.avatar_url || null);
+    setError(''); setAvatarError('');
   };
 
   const uploadAvatar = async () => {
-    if (!avatarFile) {
-      // null means removed; otherwise return existing URL unchanged
-      return avatarPreview;
-    }
-    // Always store as .jpg (crop always outputs JPEG)
+    if (!avatarFile) return avatarPreview; // unchanged URL, or null = removed
     const path = `avatars/${profile.id}.jpg`;
-    const { error: uploadError } = await supabase.storage
+    const { error: upErr } = await supabase.storage
       .from('task-images')
       .upload(path, avatarFile, { upsert: true, contentType: 'image/jpeg' });
-    if (uploadError) throw uploadError;
-    // Bust the CDN cache so the new image shows immediately
+    if (upErr) throw upErr;
     const { data } = supabase.storage.from('task-images').getPublicUrl(path);
-    return `${data.publicUrl}?t=${Date.now()}`;
+    return `${data.publicUrl}?t=${Date.now()}`; // bust the CDN cache
   };
 
-  const handleProfileSave = async (e) => {
+  const save = async (e) => {
     e.preventDefault();
-    setError(''); setMsg('');
-    setSaving(true);
+    if (!dirty || !profile) return;
+    if (!form.first_name.trim() || !form.last_name.trim()) { setError('First and last name are both needed.'); return; }
+    setSaving(true); setError('');
     try {
       const avatar_url = await uploadAvatar();
-      const { error } = await supabase
-        .from('profiles')
-        .update({ first_name: form.first_name, last_name: form.last_name, color: form.color, avatar_url, start_date: form.start_date || null })
-        .eq('id', profile.id);
-      if (error) throw error;
-      setAvatarFile(null);
+      const { error: upErr } = await supabase.from('profiles').update({
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        color: form.color,
+        avatar_url,
+        start_date: form.start_date || null,
+      }).eq('id', profile.id);
+      if (upErr) throw upErr;
       await refreshProfile();
-      setMsg('Profile updated successfully!');
+      flashSaved();
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Could not save your profile.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handlePasswordChange = async (e) => {
+  const initials = initialsOf(`${form.first_name} ${form.last_name}`.trim() || profile?.email || '?');
+  const start = form.start_date;
+  const days = daysSince(start || user?.created_at);
+
+  return (
+    <form onSubmit={save}>
+      <div className="st-rows stagger">
+        <SettingRow label="Photo" desc="Falls back to your initials and color.">
+          <div className="st-photo">
+            <span
+              key={avatarPreview || 'none'}
+              className={`st-avatar ${avatarFile ? 'is-new' : ''}`}
+              style={{ '--av': form.color, color: contrastText(form.color) }}
+            >
+              {avatarPreview ? <img src={avatarPreview} alt="" /> : initials}
+            </span>
+            <div className="st-photo-btns">
+              <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
+                <Icon name="upload" size={14} />{avatarPreview ? 'Replace photo' : 'Upload photo'}
+              </button>
+              {avatarPreview && (
+                <button type="button" className="btn btn-ghost anim-pop" onClick={removePhoto}>Remove</button>
+              )}
+            </div>
+            {avatarError ? <span className="st-photo-hint t-bad wiggle">{avatarError}</span>
+              : avatarFile ? <span className="st-photo-hint">New photo — save to apply it.</span>
+                : null}
+            <input ref={fileRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif" onChange={pickFile} />
+          </div>
+        </SettingRow>
+
+        <SettingRow label="Name" desc="Shown on tasks and reviews." top>
+          <div className="st-pair">
+            <label>
+              <span className="st-mini-label">First name</span>
+              <input className="input" value={form.first_name} onChange={set('first_name')} autoComplete="given-name" />
+            </label>
+            <label>
+              <span className="st-mini-label">Last name</span>
+              <input className="input" value={form.last_name} onChange={set('last_name')} autoComplete="family-name" />
+            </label>
+          </div>
+        </SettingRow>
+
+        <SettingRow label="Email" desc="Change it under Account.">
+          <span className="st-value">{profile?.email || user?.email}</span>
+        </SettingRow>
+
+        <SettingRow label="Start date" desc="E.g. your hire date. Sets your tenure badge in the top bar.">
+          <input type="date" className="input input-mono st-date" value={start} max={todayStr()} onChange={set('start_date')} />
+          <span key={start} className="st-note anim-fade">
+            {start
+              ? <>Day <strong>{(days + 1).toLocaleString()}</strong> · {days.toLocaleString()} day{days === 1 ? '' : 's'} as a member</>
+              : <>Using your sign-up date · {days.toLocaleString()} day{days === 1 ? '' : 's'}</>}
+          </span>
+        </SettingRow>
+
+        <SettingRow label="Chart color" desc="Shown when no photo is set, and used on the activity chart." top>
+          <div style={{ minWidth: 0 }}>
+            <ColorSwatches
+              value={form.color}
+              onChange={(c) => setForm(f => ({ ...f, color: c }))}
+              options={PERSON_COLORS}
+              custom
+              label="Chart color"
+            />
+            <div className="st-chart-wrap">
+              <div className="st-chart" style={{ '--c': form.color }} aria-hidden="true">
+                {PREVIEW_BARS.map((v, i) => (
+                  <span key={i} className={v ? '' : 'is-zero'} style={{ height: `${v * 6.5}px`, '--i': i }} />
+                ))}
+              </div>
+              <span className="st-chart-label">Preview</span>
+            </div>
+          </div>
+        </SettingRow>
+      </div>
+
+      <div className="st-foot">
+        <ErrorNote msg={error} />
+        <button type="button" className="btn btn-ghost" disabled={!dirty || saving} onClick={discard}>Discard</button>
+        <SaveButton saving={saving} saved={saved} disabled={!dirty} />
+      </div>
+
+      {cropSrc && <AvatarCrop src={cropSrc} onConfirm={onCropped} onCancel={() => setCropSrc(null)} />}
+    </form>
+  );
+}
+
+// ─────────────────────────────── Account ───────────────────────────────
+
+function AccountSection() {
+  const { user, profile, signOut } = useAuth();
+  const { userLevel } = usePets();
+  const navigate = useNavigate();
+
+  const [email, setEmail] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [emailSent, setEmailSent] = useState('');
+
+  const [pw, setPw] = useState({ next: '', confirm: '' });
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwError, setPwError] = useState('');
+  const [pwSaved, flashPw] = useFlash();
+  const [confirmOut, setConfirmOut] = useState(false);
+
+  const current = profile?.email || user?.email || '';
+
+  const changeEmail = async (e) => {
     e.preventDefault();
-    setPwError(''); setPwMsg('');
-    if (pwForm.next !== pwForm.confirm) { setPwError('Passwords do not match'); return; }
-    if (pwForm.next.length < 6)         { setPwError('Password must be at least 6 characters'); return; }
-    setPwSaving(true);
+    const next = email.trim();
+    if (!next || next.toLowerCase() === current.toLowerCase()) { setEmailError('Enter a different email address.'); return; }
+    setEmailBusy(true); setEmailError(''); setEmailSent('');
     try {
-      const { error } = await supabase.auth.updateUser({ password: pwForm.next });
+      const { error } = await supabase.auth.updateUser({ email: next });
       if (error) throw error;
-      setPwMsg('Password updated!');
-      setPwForm({ next: '', confirm: '' });
+      setEmailSent(next);
+      setEmail('');
     } catch (err) {
-      setPwError(err.message);
+      setEmailError(err.message || 'Could not change your email.');
     } finally {
-      setPwSaving(false);
+      setEmailBusy(false);
     }
   };
 
-  const initials = `${form.first_name[0] || ''}${form.last_name[0] || ''}`.toUpperCase();
-
-  // Which badges show in the top bar. Default (uncustomized) = the highest
-  // earned per track; toggling a badge makes the selection explicit.
-  const rb = getRankBadges(userLevel?.level, effectiveStart, userLevel?.tasks_completed, specialFlags);
-  const autoKeys = [
-    [...rb.levelBadges].reverse().find(b => b.earned)?.key,
-    [...rb.taskBadges].reverse().find(b => b.earned)?.key,
-    [...rb.ageBadges].reverse().find(b => b.earned)?.key,
-    ...rb.specialBadges.filter(b => b.earned).map(b => b.key),
-  ].filter(Boolean);
-  const effectiveShown = shownBadges ?? autoKeys;
-  const toggleBadge = (key) => {
-    const base = shownBadges ?? autoKeys;
-    const next = base.includes(key) ? base.filter(k => k !== key) : [...base, key];
-    setShownBadges(next);
-    saveShownBadges(user?.id, next);
+  const changePassword = async (e) => {
+    e.preventDefault();
+    setPwError('');
+    if (pw.next.length < 6) { setPwError('Password must be at least 6 characters.'); return; }
+    if (pw.next !== pw.confirm) { setPwError('Passwords don’t match.'); return; }
+    setPwBusy(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: pw.next });
+      if (error) throw error;
+      setPw({ next: '', confirm: '' });
+      flashPw();
+    } catch (err) {
+      setPwError(err.message || 'Could not update your password.');
+    } finally {
+      setPwBusy(false);
+    }
   };
 
-  // How many colors the user has overridden — shown on the "Reset all" button
-  // so it's obvious whether there's anything to reset.
-  const customCount = [...THEME_FIELDS, ...STATUS_FIELDS].filter(f => isCustom(f.key)).length;
+  const doSignOut = async () => { await signOut(); navigate('/login'); };
 
-  // Background tint — a color wash over the image. Strength 0 means off, so
-  // picking a color while it sits at 0 would look like nothing happened; give
-  // it a visible starting strength in that case (both keys in one commit, or
-  // the second write would read a stale colors ref and drop the first).
+  return (
+    <>
+      <div className="st-rows stagger">
+        <SettingRow label="Email" desc="The address you sign in with. We’ll send a link to confirm a new one." top col>
+          <span className="st-value">{current}</span>
+          <form className="st-inline-form" onSubmit={changeEmail}>
+            <input
+              type="email" className="input" placeholder="New email address" value={email}
+              onChange={(e) => { setEmail(e.target.value); setEmailError(''); }} autoComplete="email"
+            />
+            <button type="submit" className="btn" disabled={!email.trim() || emailBusy}>
+              {emailBusy ? <span className="spinner" /> : 'Change email'}
+            </button>
+          </form>
+          <ErrorNote msg={emailError} />
+          {emailSent && (
+            <div className="notice notice-ok"><Icon name="send" size={15} />
+              <span>Check <strong>{emailSent}</strong> (and your current inbox) for a confirmation link. Your email changes once it’s confirmed.</span>
+            </div>
+          )}
+        </SettingRow>
+
+        <SettingRow label="Password" desc="At least 6 characters." top col>
+          <form onSubmit={changePassword} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="st-pair">
+              <label>
+                <span className="st-mini-label">New password</span>
+                <input type="password" className="input" value={pw.next} autoComplete="new-password"
+                  onChange={(e) => { setPw(p => ({ ...p, next: e.target.value })); setPwError(''); }} />
+              </label>
+              <label>
+                <span className="st-mini-label">Confirm</span>
+                <input type="password" className="input" value={pw.confirm} autoComplete="new-password"
+                  onChange={(e) => { setPw(p => ({ ...p, confirm: e.target.value })); setPwError(''); }} />
+              </label>
+            </div>
+            <ErrorNote msg={pwError} />
+            <div>
+              <SaveButton saving={pwBusy} saved={pwSaved} disabled={!pw.next || !pw.confirm}>Update password</SaveButton>
+            </div>
+          </form>
+        </SettingRow>
+
+        <SettingRow label="Member since" desc="When you created your TaskFlow account.">
+          <span className="st-value">{user?.created_at ? longDate(user.created_at) : '—'}</span>
+          {userLevel?.tasks_completed != null && (
+            <span className="chip">{Number(userLevel.tasks_completed).toLocaleString()} tasks completed</span>
+          )}
+        </SettingRow>
+
+        <SettingRow label="Sign out" desc="Signs you out on this device.">
+          <button type="button" className="btn" onClick={() => setConfirmOut(true)}>
+            <Icon name="logout" size={14} />Sign out
+          </button>
+        </SettingRow>
+      </div>
+
+      {confirmOut && (
+        <ConfirmDialog
+          title="Sign out of TaskFlow?"
+          text="You can sign back in any time with your email and password."
+          confirmLabel="Sign out"
+          onConfirm={doSignOut}
+          onClose={() => setConfirmOut(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// ────────────────────────────── Appearance ─────────────────────────────
+
+const THEME_OPTIONS = [
+  { value: 'light', label: 'Light', icon: 'sun' },
+  { value: 'dark', label: 'Dark', icon: 'moon' },
+  { value: 'system', label: 'System', icon: 'monitor' },
+];
+
+function AppearanceSection() {
+  const {
+    mode, setThemeMode, accent, setAccent, colors, setColorValues,
+    backgrounds, uploadBackground, setBackground, deleteBackground, maxBackgrounds,
+  } = useThemeCustomization();
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [bgError, setBgError] = useState('');
+  const [over, setOver] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const full = backgrounds.length >= maxBackgrounds;
+  const active = colors.background || null;
+
+  const upload = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setBgError('That isn’t an image.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setBgError('Image must be 5 MB or smaller.'); return; }
+    setBgError(''); setBusy(true);
+    try {
+      const url = await uploadBackground(file);
+      if (url) setBackground(url);
+    } catch (err) {
+      setBgError(err.message || 'Upload failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteBackground(confirmDel);
+      setConfirmDel(null);
+      toast('Background deleted');
+    } catch (err) {
+      setBgError(err.message || 'Couldn’t delete it. Try again.');
+      setConfirmDel(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const glassOpacity = Math.min(Math.max(Number(colors.glassOpacity) || 0.72, 0.1), 0.98);
+  const glassBlur = colors.glassBlur == null ? 14 : Number(colors.glassBlur);
   const tintColor = colors.bgTint || DEFAULT_BG_TINT;
   const tintOpacity = Math.min(Math.max(Number(colors.bgTintOpacity) || 0, 0), MAX_BG_TINT_OPACITY);
-  const handleTintColor = (hex) => {
-    if (tintOpacity > 0) setColor('bgTint', hex);
-    else setColorValues({ bgTint: hex, bgTintOpacity: 0.3 });
+  // Picking a tint while its strength sits at 0 would look like nothing
+  // happened, so give it a visible start (one commit, both keys).
+  const pickTint = (hex) => setColorValues(tintOpacity > 0 ? { bgTint: hex } : { bgTint: hex, bgTintOpacity: 0.3 });
+
+  return (
+    <>
+      <div className="st-rows stagger">
+        <SettingRow label="Theme" desc="System follows your device’s light or dark setting.">
+          <Segmented
+            className="st-seg"
+            value={mode}
+            onChange={setThemeMode}
+            options={THEME_OPTIONS}
+            ariaLabel="Theme"
+          />
+        </SettingRow>
+
+        <SettingRow label="Accent color" desc="Primary buttons, selected segments, switches and highlights." top col>
+          <ColorSwatches
+            value={accent}
+            onChange={setAccent}
+            onCustom={(hex) => setColorValues({ accent: hex })}
+            options={ACCENTS}
+            custom
+            label="Accent color"
+          />
+          <div className="st-preview" aria-hidden="true">
+            <span className="btn btn-primary btn-sm">Save changes</span>
+            <input type="checkbox" className="switch" checked readOnly tabIndex={-1} />
+            <span className="st-preview-tag">Selected</span>
+            {accent ? (
+              <span className="st-accent-hex" style={{ marginLeft: 'auto' }}>{accent.toUpperCase()}</span>
+            ) : <span className="st-accent-hex" style={{ marginLeft: 'auto' }}>Ink · default</span>}
+          </div>
+          {accent && (
+            <div>
+              <button type="button" className="btn btn-ghost btn-sm anim-pop" onClick={() => setAccent('')}>
+                <Icon name="undo" size={13} />Reset to ink
+              </button>
+            </div>
+          )}
+        </SettingRow>
+
+        <SettingRow label="Background" desc="An image behind frosted-glass surfaces. Synced to your account." top col>
+          <div
+            className="st-bg-grid"
+            onDragOver={(e) => { if (Array.from(e.dataTransfer?.types || []).includes('Files')) { e.preventDefault(); setOver(true); } }}
+            onDragLeave={() => setOver(false)}
+            onDrop={(e) => { e.preventDefault(); setOver(false); if (!full) upload(e.dataTransfer.files?.[0]); }}
+          >
+            <button
+              type="button"
+              className={`st-bg-tile st-bg-none ${!active ? 'is-on' : ''}`}
+              onClick={() => setBackground(null)}
+              aria-pressed={!active}
+            >
+              <span>None</span>
+            </button>
+            {backgrounds.map((bg, i) => (
+              <div
+                key={bg.id}
+                role="button"
+                tabIndex={0}
+                className={`st-bg-tile ${active === bg.url ? 'is-on' : ''}`}
+                style={{ backgroundImage: `url("${bg.url}")`, '--i': i + 1 }}
+                onClick={() => setBackground(bg.url)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBackground(bg.url); } }}
+                aria-pressed={active === bg.url}
+                aria-label="Use this background"
+              >
+                {active === bg.url && <span className="st-bg-on"><Icon name="check" size={12} stroke={2.8} /></span>}
+                <button
+                  type="button"
+                  className="st-bg-x"
+                  onClick={(e) => { e.stopPropagation(); setConfirmDel(bg); }}
+                  aria-label="Delete background"
+                >
+                  <Icon name="x" size={12} stroke={2.4} />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className={`st-bg-tile st-bg-add ${over ? 'is-over' : ''}`}
+              onClick={() => fileRef.current?.click()}
+              disabled={busy || full}
+              style={{ '--i': backgrounds.length + 1 }}
+            >
+              {busy ? <span className="spinner spinner-sm" /> : <Icon name="upload" size={16} />}
+              {busy ? 'Uploading…' : full ? 'Library full' : 'Upload'}
+            </button>
+          </div>
+          <div className="st-bg-meta">
+            <span className="mono">{backgrounds.length}/{maxBackgrounds}</span>
+            <span>saved · drop an image here, up to 5 MB</span>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; upload(f); }} />
+          <ErrorNote msg={bgError} />
+        </SettingRow>
+
+        {active && (
+          <SettingRow label="Glass" desc="How solid the panels over your image are, how much it’s blurred, and an optional colour wash." top>
+            <div className="st-sliders">
+              <div>
+                <div className="st-slider-head"><span>Glass opacity</span><span className="st-slider-val">{Math.round(glassOpacity * 100)}%</span></div>
+                <Range value={glassOpacity} min={0.1} max={0.98} step={0.01} label="Glass opacity"
+                  onChange={(v) => setColorValues({ glassOpacity: v })} />
+              </div>
+              <div>
+                <div className="st-slider-head"><span>Blur</span><span className="st-slider-val">{glassBlur}px</span></div>
+                <Range value={glassBlur} min={0} max={40} step={1} label="Background blur"
+                  onChange={(v) => setColorValues({ glassBlur: v })} />
+              </div>
+              <div>
+                <div className="st-slider-head">
+                  <span>Tint</span>
+                  <span className="st-slider-val">{tintOpacity > 0 ? `${tintColor.toUpperCase()} · ${Math.round(tintOpacity * 100)}%` : 'Off'}</span>
+                </div>
+                <div className="st-tint-row">
+                  <label className="st-tint-swatch" style={{ '--sw': tintColor }} title="Tint colour">
+                    <input type="color" value={tintColor} onChange={(e) => pickTint(e.target.value)} aria-label="Tint colour" />
+                  </label>
+                  <Range value={tintOpacity} min={0} max={MAX_BG_TINT_OPACITY} step={0.01} label="Tint strength"
+                    onChange={(v) => setColorValues({ bgTintOpacity: v })} />
+                </div>
+              </div>
+            </div>
+          </SettingRow>
+        )}
+      </div>
+
+      {confirmDel && (
+        <ConfirmDialog
+          title="Delete this background?"
+          text={active === confirmDel.url
+            ? 'It’s your current background, so the app will switch to plain. The image is removed from your account for good.'
+            : 'The image is removed from your account for good. This can’t be undone.'}
+          confirmLabel="Delete"
+          danger
+          busy={deleting}
+          onConfirm={doDelete}
+          onClose={() => !deleting && setConfirmDel(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// ───────────────────────────── Accessibility ───────────────────────────
+
+const reduceQuery = typeof window !== 'undefined' && window.matchMedia
+  ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+
+function AccessibilitySection() {
+  const { colors, setColorValues } = useThemeCustomization();
+  const { userGamificationEnabled, setGamificationEnabled } = usePets();
+  const { activeTeam } = useTeam();
+  const [savingXp, setSavingXp] = useState(false);
+  const [reduced, setReduced] = useState(() => !!reduceQuery?.matches);
+
+  useEffect(() => {
+    if (!reduceQuery) return undefined;
+    const on = (e) => setReduced(e.matches);
+    reduceQuery.addEventListener('change', on);
+    return () => reduceQuery.removeEventListener('change', on);
+  }, []);
+
+  const toggleXp = async () => {
+    setSavingXp(true);
+    try { await setGamificationEnabled(!userGamificationEnabled); } finally { setSavingXp(false); }
+  };
+  const teamOff = activeTeam?.gamification_enabled === false;
+
+  return (
+    <div className="st-rows stagger">
+      <SettingRow label="Text size" desc="Scales every label, heading and line of text.">
+        <Segmented
+          className="st-seg"
+          value={Number(colors.fontScale) || 1}
+          onChange={(v) => setColorValues({ fontScale: v }, true)}
+          options={FONT_SCALES.map(f => ({ value: f.key, label: f.label }))}
+          ariaLabel="Text size"
+        />
+      </SettingRow>
+
+      <SettingRow label="Bold text" desc="Heavier body text for readability.">
+        <Toggle on={!!colors.bold} onClick={() => setColorValues({ bold: !colors.bold }, true)} label="Bold text" />
+      </SettingRow>
+
+      <SettingRow label="Subtask columns" desc="Checklists on task cards. Narrow cards and phones stay single-column.">
+        <Segmented
+          className="st-seg"
+          value={Number(colors.subtaskColumns) === 2 ? 2 : 1}
+          onChange={(v) => setColorValues({ subtaskColumns: v }, true)}
+          options={[{ value: 1, label: '1 column' }, { value: 2, label: '2 columns' }]}
+          ariaLabel="Subtask columns"
+        />
+      </SettingRow>
+
+      <SettingRow label="Reduce motion" desc="TaskFlow follows your device’s reduce-motion setting and turns animations down to a fade.">
+        <span key={String(reduced)} className={`chip st-motion-tag ${reduced ? '' : 't-3'}`}>
+          {reduced ? 'On — from your device' : 'Off — from your device'}
+        </span>
+      </SettingRow>
+
+      <SettingRow
+        label="Show levels & XP"
+        desc={teamOff
+          ? `Turned off for ${activeTeam?.name || 'this team'} by an admin. Your XP still adds up in the background.`
+          : 'The level ring in the top bar and the XP you earn for tasks. Off pauses it; you pick up where you left off.'}
+      >
+        <Toggle on={userGamificationEnabled} onClick={toggleXp} disabled={savingXp} label="Show levels and XP" />
+      </SettingRow>
+    </div>
+  );
+}
+
+// ──────────────────────────────── Page ─────────────────────────────────
+
+export default function Settings() {
+  const [params, setParams] = useSearchParams();
+  const section = resolveSettingsSection(params.get('section'));
+  const current = SECTIONS.find(s => s.id === section);
+
+  // One highlight that glides to the active item — measured, so it works for
+  // the vertical list and the phone's horizontal chip row alike.
+  const listRef = useRef(null);
+  const [pill, setPill] = useState(null);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return undefined;
+    const measure = () => {
+      const el = list.querySelector('.st-nav-item.is-on');
+      if (!el) return;
+      setPill(p => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight, anim: !!p }));
+      if (list.scrollWidth > list.clientWidth) {
+        const left = el.offsetLeft - list.scrollLeft;
+        if (left < 0 || left + el.offsetWidth > list.clientWidth) {
+          list.scrollTo({ left: el.offsetLeft - 16, behavior: 'smooth' });
+        }
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(list);
+    return () => ro.disconnect();
+  }, [section]);
+
+  const go = (id) => {
+    if (id === section) return;
+    const next = new URLSearchParams(params);
+    next.set('section', id);
+    setParams(next, { replace: true });
+    if (window.innerWidth <= 768) window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
-    <div className="dashboard fade-in settings-page">
-      <div className="settings-shell">
-
-        {/* ── Section nav ───────────────────────────────────── */}
-        <nav ref={navRef} className={`settings-nav ${pill ? 'settings-nav-has-pill' : ''}`} aria-label="Settings sections">
-          {pill && (
-            <span
-              className={`settings-nav-pill ${pill.animate ? 'settings-nav-pill-anim' : ''}`}
-              style={{ width: pill.w, height: pill.h, transform: `translate(${pill.x}px, ${pill.y}px)` }}
-              aria-hidden="true"
-            />
-          )}
-          {SECTIONS.map(s => (
-            <button
-              key={s.id}
-              type="button"
-              className={`settings-nav-item ${section === s.id ? 'settings-nav-item-active' : ''}`}
-              onClick={() => goTo(s.id)}
-              aria-current={section === s.id ? 'page' : undefined}
-            >
-              <span className="settings-nav-icon"><Icon d={s.icon} /></span>
-              <span className="settings-nav-label">{s.label}</span>
-            </button>
-          ))}
-        </nav>
-
-        {/* ── Active section ────────────────────────────────── */}
-        <div
-          key={section}
-          className={`settings-panel ${fallbackDir.current ? 'settings-panel-fade' : ''}`}
-        >
-          <header className="settings-panel-head">
-            <h1 className="settings-panel-title">{activeSection.label}</h1>
-            <p className="settings-panel-sub">{activeSection.blurb}</p>
-          </header>
-
-          {/* ─────────────────────────────── Profile ────────── */}
-          {section === 'profile' && (
-            <>
-              <div className="card">
-                <div className="settings-identity">
-                  <div
-                    className="avatar-upload-zone"
-                    onClick={() => avatarRef.current?.click()}
-                    title="Click to change photo"
-                  >
-                    <Avatar src={avatarPreview} color={form.color} initials={initials || '?'} size={64} />
-                    <div className="avatar-upload-overlay">
-                      <Icon d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z M16 13a4 4 0 11-8 0 4 4 0 018 0z" size={18} />
-                    </div>
-                    {avatarPreview && (
-                      <button className="avatar-remove-btn" onClick={removeAvatar} title="Remove photo">✕</button>
-                    )}
-                  </div>
-                  <input
-                    ref={avatarRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
-                    onChange={handleAvatarChange}
-                    style={{ display: 'none' }}
-                  />
-
-                  <div className="settings-identity-text">
-                    <div className="settings-identity-name">{form.first_name} {form.last_name}</div>
-                    <div className="settings-identity-email">{profile?.email}</div>
-                    <div className="settings-identity-hint">
-                      {avatarPreview
-                        ? (avatarFile ? 'New photo selected — save below to apply' : 'Click the photo to replace it, ✕ to remove')
-                        : 'Click the circle to add a photo — PNG, JPG, WebP or GIF, max 4 MB'}
-                    </div>
-                    {avatarError && <div className="settings-identity-err">⚠ {avatarError}</div>}
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <h2 className="settings-card-title">Details</h2>
-                <form onSubmit={handleProfileSave} className="form-grid">
-                  <div className="form-grid form-grid-2">
-                    <div className="form-group">
-                      <label className="label">First Name</label>
-                      <input className="input" value={form.first_name} onChange={set('first_name')} required />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Last Name</label>
-                      <input className="input" value={form.last_name} onChange={set('last_name')} required />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="label">
-                      Start Date
-                      <span className="label-note"> — e.g. your hire date; sets your tenure badges</span>
-                    </label>
-                    <input type="date" className="input" value={form.start_date} onChange={set('start_date')} max={todayStr} />
-                    <div className="form-hint">
-                      {form.start_date
-                        ? <>Day <strong>{daysSince(form.start_date) + 1}</strong> — {daysSince(form.start_date).toLocaleString()} day{daysSince(form.start_date) !== 1 ? 's' : ''} as a member.</>
-                        : <>No start date set — using your account creation date ({daysSince(user?.created_at).toLocaleString()} days).</>}
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="label">Fallback / Chart Color</label>
-                    <p className="form-hint form-hint-top">Shown when no photo is set, and used on the activity chart.</p>
-                    <div className="color-picker-row">
-                      {PRESET_COLORS.map(c => (
-                        <button key={c} type="button"
-                          className={`color-swatch ${form.color === c ? 'color-swatch-active' : ''}`}
-                          style={{ background: c }}
-                          onClick={() => setForm(f => ({ ...f, color: c }))}
-                        />
-                      ))}
-                      <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
-                        className="color-custom-input" title="Custom color" />
-                    </div>
-                  </div>
-
-                  {msg   && <div className="success-msg">✓ {msg}</div>}
-                  {error && <div className="error-msg">⚠ {error}</div>}
-
-                  <button type="submit" className="btn btn-primary settings-submit" disabled={saving}>
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </form>
-              </div>
-            </>
-          )}
-
-          {/* ─────────────────────────────── Account ────────── */}
-          {section === 'account' && (
-            <>
-              <AccountStatsCard userId={user?.id} tasksCompleted={userLevel?.tasks_completed} />
-
-              <div className="card">
-                <h2 className="settings-card-title">Sign-in</h2>
-                <SettingRow label="Email" desc="The address you sign in with.">
-                  <span className="settings-row-value">{profile?.email}</span>
-                </SettingRow>
-              </div>
-
-              <div className="card">
-                <h2 className="settings-card-title">Change Password</h2>
-                <form onSubmit={handlePasswordChange} className="form-grid">
-                  <div className="form-grid form-grid-2">
-                    <div className="form-group">
-                      <label className="label">New Password</label>
-                      <input type="password" className="input" placeholder="Min. 6 characters" value={pwForm.next} onChange={setPw('next')} required />
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Confirm New Password</label>
-                      <input type="password" className="input" placeholder="••••••••" value={pwForm.confirm} onChange={setPw('confirm')} required />
-                    </div>
-                  </div>
-
-                  {pwMsg   && <div className="success-msg">✓ {pwMsg}</div>}
-                  {pwError && <div className="error-msg">⚠ {pwError}</div>}
-
-                  <button type="submit" className="btn btn-primary settings-submit" disabled={pwSaving}>
-                    {pwSaving ? 'Updating...' : 'Update Password'}
-                  </button>
-                </form>
-              </div>
-            </>
-          )}
-
-          {/* ─────────────────────────────── Teams ──────────── */}
-          {section === 'teams' && <TeamSettings />}
-
-          {/* ────────────────────────── Subtask presets ────── */}
-          {section === 'presets' && <SubtaskPresetsCard />}
-
-          {/* ──────────────────────────── Appearance ────────── */}
-          {section === 'appearance' && (
-            <>
-              <div className="card">
-                <h2 className="settings-card-title">Design</h2>
-                <SettingRow
-                  label={<>New UI <span className="settings-new-chip">New</span></>}
-                  desc={modernUi
-                    ? 'A cleaner, calmer design with preset themes. Switch it off to go back to your own colors and background.'
-                    : 'Try a cleaner, calmer design with preset themes. Your current colors and background are kept for if you switch back.'}
-                >
-                  <Toggle on={modernUi} onClick={() => setModernUi(!modernUi)} label="New UI" />
-                </SettingRow>
-              </div>
-
-              {modernUi ? (
-                <div className="card">
-                  <h2 className="settings-card-title">Theme</h2>
-                  <p className="settings-card-sub">Each theme has a light and a dark version. Syncs across your devices.</p>
-                  <UiPresetPicker value={preset} mode={theme} onChange={setPreset} />
-                  <SettingRow label="Mode" desc="Also on the switch at the bottom of the sidebar.">
-                    <div className="theme-logo-seg" role="radiogroup" aria-label="Mode">
-                      {[{ v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }].map(o => (
-                        <button
-                          key={o.v}
-                          type="button"
-                          role="radio"
-                          aria-checked={theme === o.v}
-                          className={`theme-logo-btn ${theme === o.v ? 'theme-logo-btn-active' : ''}`}
-                          onClick={() => setTheme(o.v)}
-                        >
-                          {o.label}
-                        </button>
-                      ))}
-                    </div>
-                  </SettingRow>
-                </div>
-              ) : (
-                <>
-                <div className="card">
-                  <div className="settings-card-head">
-                    <h2 className="settings-card-title">Colors</h2>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={resetAll} disabled={!customCount}>
-                      {customCount ? `Reset all (${customCount})` : 'Reset all'}
-                    </button>
-                  </div>
-                  <p className="settings-card-sub">
-                    Changes apply instantly and sync across your devices. The secondary color also drives the activity chart.
-                  </p>
-                  {mobileOverrideCount > 0 && (
-                    <p className="settings-card-sub">
-                      Your phone has {mobileOverrideCount} setting{mobileOverrideCount === 1 ? '' : 's'} of its own, which stay
-                      as they are when you change them here. Reset them from Appearance on your phone.
-                    </p>
-                  )}
-
-                  <Group title="Interface" count={THEME_FIELDS.length}>
-                    <div className="theme-color-grid">
-                      {THEME_FIELDS.map(f => (
-                        <ColorRow key={f.key} field={f} value={getColor(f.key)} custom={isCustom(f.key)}
-                          onChange={(v) => setColor(f.key, v)} onReset={() => resetColor(f.key)} />
-                      ))}
-                    </div>
-                  </Group>
-
-                  <Group title="Status colors" count={STATUS_FIELDS.length} defaultOpen={false}>
-                    <div className="theme-color-grid">
-                      {STATUS_FIELDS.map(f => (
-                        <ColorRow key={f.key} field={f} value={getColor(f.key)} custom={isCustom(f.key)}
-                          onChange={(v) => setColor(f.key, v)} onReset={() => resetColor(f.key)} />
-                      ))}
-                    </div>
-                  </Group>
-
-                  <Group title="Logo" defaultOpen={false}>
-                    <SettingRow label="Logo tint" desc="Auto picks white or black to suit your theme.">
-                      <div className="theme-logo-seg">
-                        {[{ v: 'auto', label: 'Auto' }, { v: 'white', label: 'White' }, { v: 'black', label: 'Black' }].map(o => (
-                          <button
-                            key={o.v}
-                            type="button"
-                            className={`theme-logo-btn ${logoChoice === o.v ? 'theme-logo-btn-active' : ''}`}
-                            onClick={() => (o.v === 'auto' ? resetColor('logo') : setColor('logo', o.v))}
-                          >
-                            {o.label}
-                          </button>
-                        ))}
-                      </div>
-                    </SettingRow>
-                  </Group>
-                </div>
-
-                <div className="settings-two-col">
-                  {/* Background images */}
-                  <div className="card">
-                    <div className="settings-card-head">
-                      <h2 className="settings-card-title">Background</h2>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        disabled={bgBusy || backgrounds.length >= maxBackgrounds}
-                        onClick={() => bgInputRef.current?.click()}
-                      >
-                        {bgBusy ? 'Uploading…' : 'Upload image'}
-                      </button>
-                    </div>
-                    <p className="settings-card-sub">
-                      Use an image as the app background — synced to your account. {backgrounds.length}/{maxBackgrounds} saved.
-                    </p>
-                    <input ref={bgInputRef} type="file" accept="image/*" onChange={handleBgUpload} style={{ display: 'none' }} />
-                    {bgError && <div className="error-msg settings-inline-err">⚠ {bgError}</div>}
-                    <div className="bg-grid">
-                      <button
-                        type="button"
-                        className={`bg-tile bg-tile-none ${!colors.background ? 'bg-tile-active' : ''}`}
-                        onClick={() => setBackground(null)}
-                      >
-                        None
-                      </button>
-                      {backgrounds.map(bg => (
-                        <div
-                          key={bg.id}
-                          className={`bg-tile ${colors.background === bg.url ? 'bg-tile-active' : ''}`}
-                          style={{ backgroundImage: `url("${bg.url}")` }}
-                          onClick={() => setBackground(bg.url)}
-                          title="Use as background"
-                        >
-                          <button className="bg-tile-del" onClick={(e) => { e.stopPropagation(); requestDeleteBg(bg); }} title="Delete background">✕</button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {colors.background && (
-                      <div className="settings-sliders">
-                        <div className="settings-slider-head">
-                          <span>Glass opacity</span>
-                          <span className="settings-slider-value">{Math.round((colors.glassOpacity ?? 0.55) * 100)}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0.2" max="0.95" step="0.05"
-                          value={colors.glassOpacity ?? 0.55}
-                          onChange={(e) => setColor('glassOpacity', Number(e.target.value))}
-                          className="glass-opacity-range"
-                        />
-
-                        <div className="settings-slider-head">
-                          <span>Glass blur</span>
-                          <span className="settings-slider-value">{colors.glassBlur ?? 14}px</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0" max="30" step="1"
-                          value={colors.glassBlur ?? 14}
-                          onChange={(e) => setColor('glassBlur', Number(e.target.value))}
-                          className="glass-opacity-range"
-                        />
-                        <p className="settings-card-sub settings-card-sub-tight">
-                          Opacity &amp; blur of the frosted panels over your background.
-                        </p>
-
-                        <div className="settings-tint">
-                          <div className="settings-slider-head">
-                            <span>Tint</span>
-                            <span className="settings-slider-value">
-                              {tintOpacity > 0 ? `${tintColor.toUpperCase()} · ${Math.round(tintOpacity * 100)}%` : 'Off'}
-                            </span>
-                          </div>
-                          <div className="settings-tint-row">
-                            <input
-                              type="color"
-                              className="theme-color-input"
-                              value={tintColor}
-                              onChange={(e) => handleTintColor(e.target.value)}
-                              title="Tint color"
-                            />
-                            <input
-                              type="range"
-                              min="0" max={MAX_BG_TINT_OPACITY} step="0.05"
-                              value={tintOpacity}
-                              onChange={(e) => setColor('bgTintOpacity', Number(e.target.value))}
-                              className="glass-opacity-range"
-                              aria-label="Tint strength"
-                            />
-                          </div>
-                          <p className="settings-card-sub settings-card-sub-tight">
-                            Washes a color over the image — darken a busy photo so text stays readable. Drag to 0% to turn it off.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Saved themes */}
-                  <div className="card">
-                    <h2 className="settings-card-title">Saved Themes</h2>
-                    <p className="settings-card-sub">
-                      Save your current colors, background &amp; text settings as a named theme.
-                    </p>
-                    <div className="settings-inline-form">
-                      <input className="input" placeholder="Theme name…" value={themeName} onChange={e => setThemeName(e.target.value)} />
-                      <button type="button" className="btn btn-primary btn-sm" disabled={!themeName.trim()} onClick={handleSaveTheme}>Save</button>
-                    </div>
-                    {savedThemes.length === 0 ? (
-                      <p className="settings-empty">No saved themes yet.</p>
-                    ) : (
-                      <div className="saved-theme-list">
-                        {savedThemes.map(t => (
-                          <div key={t.id} className="saved-theme-row">
-                            <div className="saved-theme-swatches">
-                              {t.colors?.background
-                                ? <span className="saved-theme-img" style={{ backgroundImage: `url("${t.colors.background}")` }} />
-                                : null}
-                              {['bg', 'accent', 'text'].map(k => (
-                                <span key={k} style={{ background: t.colors?.[k] || 'var(--bg-4)' }} />
-                              ))}
-                            </div>
-                            <span className="saved-theme-name">{t.name}</span>
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => applyTheme(t)}>Apply</button>
-                            <button type="button" className="theme-color-reset" onClick={() => deleteTheme(t.id)}>Delete</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                </>
-              )}
-            </>
-          )}
-
-          {/* ─────────────────────────── Accessibility ──────── */}
-          {section === 'accessibility' && (
-            <div className="card">
-              <h2 className="settings-card-title">Text</h2>
-              <p className="settings-card-sub">Applies everywhere in the app and syncs across your devices.</p>
-
-              <SettingRow label="Text size" desc="Scales every label, heading, and body line.">
-                <div className="theme-logo-seg theme-logo-seg-wrap">
-                  {FONT_SCALES.map(o => (
-                    <button
-                      key={o.key}
-                      type="button"
-                      className={`theme-logo-btn ${(colors.fontScale || 1) === o.key ? 'theme-logo-btn-active' : ''}`}
-                      onClick={() => setColor('fontScale', o.key)}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-              </SettingRow>
-
-              <SettingRow label="Bold text" desc="Heavier body text for readability.">
-                <Toggle on={colors.bold} onClick={() => setColor('bold', !colors.bold)} label="Bold text" />
-              </SettingRow>
-            </div>
-          )}
-
-          {/* ──────────────────────────── Achievements ──────── */}
-          {section === 'achievements' && (
-            <>
-              <div className="card">
-                <h2 className="settings-card-title">Levels &amp; Badges</h2>
-                <p className="settings-card-sub">Earn XP, level up, and unlock rank badges by completing tasks.</p>
-                <SettingRow
-                  label="Enable XP & levels"
-                  desc={userGamificationEnabled
-                    ? 'Turning this off pauses your XP and hides levels & badges.'
-                    : "You'll pick up right where you left off."}
-                >
-                  <Toggle
-                    on={userGamificationEnabled}
-                    onClick={handleToggleGamification}
-                    disabled={savingGamification}
-                    label="Enable XP and levels"
-                  />
-                </SettingRow>
-              </div>
-
-              {userGamificationEnabled ? (
-                <div className="card">
-                  <h2 className="settings-card-title">Ranks &amp; Badges</h2>
-                  <p className="settings-card-sub">
-                    Unlocked by leveling up, by tasks you've completed, and by how long you've been a member.
-                    Click an unlocked badge to show or hide it in the top bar.
-                  </p>
-                  <RankBadges
-                    level={userLevel?.level}
-                    createdAt={effectiveStart}
-                    tasksDone={userLevel?.tasks_completed}
-                    specialFlags={specialFlags}
-                    selectable
-                    selected={effectiveShown}
-                    onToggle={toggleBadge}
-                  />
-                </div>
-              ) : (
-                <div className="card settings-empty-card">
-                  Turn on XP &amp; levels above to see your ranks and badges.
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {confirmDeleteBg && (() => {
-        const { bg, desktop, phone, themes } = confirmDeleteBg;
-        const inUse = desktop && phone ? 'your current background on desktop and your phone'
-          : desktop ? 'your current desktop background'
-          : phone ? 'your current phone background' : null;
-        return (
-        <ModalPortal>
-        <div className="modal-overlay" onClick={closeDeleteBg}>
-          <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><h2 className="settings-card-title">Delete this background?</h2></div>
-            <div className="modal-body">
-              <div className="bg-delete-preview" style={{ backgroundImage: `url("${bg.url}")` }} />
-              <p style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.6 }}>
-                The image will be deleted from your account for good. This can't be undone.
-              </p>
-              {(inUse || themes.length > 0) && (
-                <ul className="bg-delete-effects">
-                  {inUse && <li>It's {inUse} — that will switch to a plain background.</li>}
-                  {themes.length > 0 && (
-                    <li>
-                      {themes.length === 1 ? 'The saved theme' : `${themes.length} saved themes`}{' '}
-                      <strong>{themes.map(t => t.name).join(', ')}</strong>{' '}
-                      {themes.length === 1 ? 'uses' : 'use'} it — {themes.length === 1 ? 'it keeps' : 'they keep'} {themes.length === 1 ? 'its' : 'their'} colors, without the image.
-                    </li>
-                  )}
-                </ul>
-              )}
-              {deleteBgError && <div className="error-msg" style={{ marginTop: 12 }}>⚠ {deleteBgError}</div>}
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={closeDeleteBg} disabled={deletingBg}>Cancel</button>
-              <button className="btn btn-danger" onClick={confirmDeleteBackground} disabled={deletingBg}>
-                {deletingBg ? 'Deleting…' : 'Delete'}
+    <div className="st-page">
+      <nav className="st-nav" aria-label="Settings sections">
+        <div className="st-nav-inner">
+          <div className="eyebrow">Settings</div>
+          <div ref={listRef} className={`st-nav-list ${pill ? 'has-pill' : ''}`}>
+            {pill && (
+              <span
+                className={`st-nav-pill ${pill.anim ? 'is-anim' : ''}`}
+                style={{ width: pill.w, height: pill.h, transform: `translate(${pill.x}px, ${pill.y}px)` }}
+                aria-hidden="true"
+              />
+            )}
+            {SECTIONS.map((s, i) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`st-nav-item ${section === s.id ? 'is-on' : ''}`}
+                style={{ '--i': i }}
+                onClick={() => go(s.id)}
+                aria-current={section === s.id ? 'page' : undefined}
+              >
+                <Icon name={s.icon} size={16} />
+                {s.label}
               </button>
-            </div>
+            ))}
           </div>
         </div>
-        </ModalPortal>
-        );
-      })()}
+      </nav>
 
-      {/* Crop modal — shown after file is selected */}
-      {cropSrc && (
-        <AvatarCrop
-          src={cropSrc}
-          onConfirm={handleCropConfirm}
-          onCancel={handleCropCancel}
-        />
-      )}
+      <div className="st-main">
+        <div key={section} className="st-panel">
+          <header className="st-head">
+            <div className="eyebrow">Settings</div>
+            <h1 className="page-title">{current.label}</h1>
+            <p className="page-sub">{current.blurb}</p>
+          </header>
+
+          {section === 'profile' && <ProfileSection />}
+          {section === 'account' && <AccountSection />}
+          {section === 'teams' && <TeamSettings />}
+          {section === 'presets' && <SubtaskPresetsCard />}
+          {section === 'appearance' && <AppearanceSection />}
+          {section === 'accessibility' && <AccessibilitySection />}
+        </div>
+      </div>
     </div>
   );
 }

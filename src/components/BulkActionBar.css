@@ -1,163 +1,47 @@
-/* ── Floating bulk-action bar ──────────────────────────────── */
+/* Floating bulk-action bar (Tasks page select mode). */
 .bulk-bar {
   position: fixed;
+  z-index: 800;
   left: 50%;
   bottom: 24px;
   transform: translateX(-50%);
-  z-index: 1500;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px 10px 16px;
-  background: color-mix(in srgb, var(--bg-3) 78%, transparent);
-  -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  backdrop-filter: blur(16px) saturate(1.4);
-  border: 1px solid var(--border-light);
+  gap: 4px;
+  height: 48px;
+  padding: 0 6px 0 16px;
   border-radius: 14px;
+  background: var(--ink);
+  color: var(--ink-text);
   box-shadow: var(--shadow-lg);
-  max-width: calc(100vw - 32px);
-  animation: bulk-bar-in 0.18s ease;
+  animation: bulk-in 0.46s var(--ease-spring) both;
 }
-
-@keyframes bulk-bar-in {
-  from { opacity: 0; transform: translate(-50%, 12px); }
-  to   { opacity: 1; transform: translate(-50%, 0); }
-}
-
-.bulk-bar-count {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.bulk-bar-count-num {
-  background: var(--accent);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+@keyframes bulk-in { from { opacity: 0; transform: translate(-50%, 24px) scale(0.92); } to { opacity: 1; transform: translateX(-50%); } }
+.bulk-count { font-size: 13.5px; white-space: nowrap; margin-right: 6px; }
+.bulk-count b { display: inline-block; font-family: var(--mono); font-weight: 600; }
+.bulk-sep { width: 1px; height: 22px; background: color-mix(in srgb, var(--ink-text) 18%, transparent); margin: 0 4px; }
+.bulk-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 36px; padding: 0 12px;
   border-radius: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  font-size: 13.5px; font-weight: 500;
+  color: var(--ink-text);
+  transition: background-color var(--dur-1) ease, transform var(--dur-2) var(--ease-spring), opacity var(--dur-1) ease;
 }
-
-.bulk-bar-divider {
-  width: 1px;
-  align-self: stretch;
-  background: var(--border);
-  margin: 2px 0;
+.bulk-btn:hover { background: color-mix(in srgb, var(--ink-text) 12%, transparent); }
+.bulk-btn:active { transform: scale(0.94); }
+.bulk-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.bulk-danger:hover { background: color-mix(in srgb, #f87171 28%, transparent); }
+.bulk-people { display: flex; flex-direction: column; gap: 2px; margin: 16px -8px 0; max-height: 300px; overflow-y: auto; }
+.bulk-person {
+  display: flex; align-items: center; gap: 11px;
+  min-height: 44px; padding: 0 10px;
+  border-radius: var(--r);
+  font-size: 14px; text-align: left;
+  transition: background-color var(--dur-1) ease;
 }
-
-.bulk-bar-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.bulk-bar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 34px;
-  padding: 0 12px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--bg-2);
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 600;
-  font-family: var(--font);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-}
-
-.bulk-bar-btn:hover:not(:disabled) {
-  background: var(--bg-4);
-  border-color: var(--border-light);
-  color: var(--text);
-}
-
-.bulk-bar-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.bulk-bar-btn-active {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
-.bulk-bar-btn-danger:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.35);
-  color: #f87171;
-}
-
-.bulk-bar-confirm {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-muted);
-  padding-left: 4px;
-}
-
-.bulk-bar-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.15s ease;
-}
-
-.bulk-bar-close:hover {
-  background: var(--bg-4);
-  color: var(--text);
-}
-
-/* The completed-by picker floats above the Complete button instead of the
-   bar itself. Reuses .complete-popover visuals from TaskCard.css. */
-.bulk-complete-popover {
-  bottom: calc(100% + 10px);
-  right: auto;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 220px;
-}
-
-@media (max-width: 640px) {
-  .bulk-bar {
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
-    transform: none;
-    max-width: none;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  @keyframes bulk-bar-in {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .bulk-complete-popover {
-    left: auto;
-    right: 0;
-    transform: none;
-  }
+.bulk-person:hover { background: var(--hover); }
+.bulk-person.is-on { background: var(--surface-2); }
+@media (max-width: 768px) {
+  .bulk-bar { bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom)); padding-left: 14px; }
 }

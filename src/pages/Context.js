@@ -1,361 +1,407 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
-import { InlineClock } from '../components/dashboardWidgets';
-import ModalPortal from '../components/ModalPortal';
+import { TopBarPortal } from '../context/HeaderActionsContext';
 import useIsPhone from '../lib/useIsPhone';
 import { searchRank } from '../lib/fuzzySearch';
-import { CONTEXT_CHANGED } from '../components/QuickContext';
+import {
+  Icon, Sheet, ConfirmDialog, Empty, SearchInput, SkeletonRows, toast, shortDate,
+} from '../ui';
+import ContextSheet, { CONTEXT_CHANGED, Tag, tagsOf, tagKey, teamTagsFrom } from '../components/ContextSheet';
 import './Context.css';
 
 // Team knowledge that isn't a task, a file or a project — "the captcha form is
 // an Elementor plugin called X". A subject to find it by, a description
-// holding what you actually want back later.
-const EMPTY_FORM = { subject: '', description: '', fileIds: [] };
+// holding what you actually want back later, the source files it's about and
+// any number of team-wide tags.
+
+export { ContextSheet };
+
+const preview = (text = '') => text.split(/\n+/).map(s => s.trim()).filter(Boolean).join(' · ');
+
+function ContextRow({ entry, linkedCount, selected, onSelect }) {
+  const tags = tagsOf(entry);
+  return (
+    <button
+      type="button"
+      className={`ctx-row ${selected ? 'is-selected' : ''}`}
+      onClick={() => onSelect(entry.id)}
+      aria-current={selected ? 'true' : undefined}
+    >
+      <span className="ctx-row-top">
+        <span className="ctx-row-subject truncate">{entry.subject}</span>
+        {tags.length > 0 && (
+          <span className="ctx-row-tags">
+            {tags.slice(0, 3).map(t => <Tag key={tagKey(t)} tag={t} />)}
+            {tags.length > 3 && <span className="tag">+{tags.length - 3}</span>}
+          </span>
+        )}
+        {linkedCount > 0 && (
+          <span className="ctx-row-count mono">{linkedCount} file{linkedCount === 1 ? '' : 's'}</span>
+        )}
+      </span>
+      <span className="ctx-row-preview truncate">{preview(entry.description) || <span className="t-4">No description</span>}</span>
+    </button>
+  );
+}
+
+function ContextDetail({ entry, files, onOpenFile, actions }) {
+  const tags = tagsOf(entry);
+  const paragraphs = (entry.description || '').split(/\n+/).filter(s => s.trim());
+  return (
+    <article key={entry.id} className="ctx-detail-inner">
+      <div className="ctx-detail-head">
+        <div style={{ minWidth: 0 }}>
+          <div className="eyebrow ctx-detail-eyebrow">
+            Context<span className="ctx-dot-sep">·</span>{shortDate(entry.updated_at || entry.created_at)}
+          </div>
+          <h2 className="ctx-detail-title">{entry.subject}</h2>
+          {tags.length > 0 && (
+            <div className="ctx-detail-tags">
+              {tags.map(t => <Tag key={tagKey(t)} tag={t} />)}
+            </div>
+          )}
+        </div>
+        {actions && <div className="ctx-detail-actions">{actions}</div>}
+      </div>
+
+      <div className="ctx-detail-body">
+        {paragraphs.length
+          ? paragraphs.map((p, i) => <p key={i}>{p}</p>)
+          : <p className="t-3">No description.</p>}
+      </div>
+
+      <hr className="divider ctx-detail-divider" />
+
+      <span className="sheet-label">Linked files</span>
+      {files.length ? (
+        <div className="ctx-files stagger">
+          {files.map(f => (
+            <button key={f.id} type="button" className="ctx-file" onClick={() => onOpenFile(f)} title="Show in Files">
+              <Icon name="file" size={16} className="ctx-file-icon" />
+              <span className="ctx-file-name mono truncate">{f.name}</span>
+              <span className="ctx-file-path truncate">{[f.section, f.path].filter(Boolean).join(' · ')}</span>
+              <Icon name="arrowUpRight" size={14} className="ctx-file-go" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="ctx-files-none">No files linked yet.</p>
+      )}
+    </article>
+  );
+}
 
 export default function Context() {
-  const { user } = useAuth();
   const { activeTeamId } = useTeam();
   const isPhone = useIsPhone();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
 
   const [entries, setEntries] = useState([]);
   const [files, setFiles] = useState([]);
-  const [fileQuery, setFileQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [editEntry, setEditEntry] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState('');
+  const [activeTags, setActiveTags] = useState([]);
+  const [selectedId, setSelectedId] = useState(() => params.get('id'));
+  const [sheet, setSheet] = useState(null); // null | { entry }
+  const [phoneDetail, setPhoneDetail] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [settled, setSettled] = useState(false);
+  const searchRef = useRef(null);
 
   const load = useCallback(async () => {
     if (!activeTeamId) { setEntries([]); setLoading(false); return; }
-    const [{ data }, { data: fileRows }] = await Promise.all([
+    const [{ data, error }, { data: fileRows }] = await Promise.all([
       supabase.from('context_entries').select('*')
         .eq('team_id', activeTeamId).order('updated_at', { ascending: false }),
       supabase.from('file_entries').select('id, name, path, section')
         .eq('team_id', activeTeamId).order('name'),
     ]);
-    setEntries(data || []);
+    setLoadError(error ? error.message : '');
+    if (!error) setEntries(data || []);
     setFiles(fileRows || []);
     setLoading(false);
   }, [activeTeamId]);
 
-  // id → file, for rendering the chips on each card without a second lookup.
-  const fileById = useMemo(() => {
-    const m = new Map();
-    files.forEach(f => m.set(f.id, f));
-    return m;
-  }, [files]);
+  useEffect(() => { setLoading(true); load(); }, [load]);
 
-  const linkedFiles = (entry) =>
-    (Array.isArray(entry.file_ids) ? entry.file_ids : [])
-      .map(id => fileById.get(id))
-      .filter(Boolean);
-
-  useEffect(() => { load(); }, [load]);
-
-  // The top-bar quick-add writes straight to the table, so this page needs
-  // telling when it does.
+  // Saves from the sheet here or from the app-wide quick add.
   useEffect(() => {
-    const handler = () => load();
+    const handler = (e) => {
+      load();
+      if (e.detail?.id) setSelectedId(e.detail.id);
+    };
     window.addEventListener(CONTEXT_CHANGED, handler);
     return () => window.removeEventListener(CONTEXT_CHANGED, handler);
   }, [load]);
 
-  const filtered = useMemo(() => searchRank(entries, search, e => [
-    { text: e.subject, weight: 3 },
-    { text: e.description, weight: 1 },
-  ]), [entries, search]);
+  // A "View" from the quick-add toast lands here with ?id=.
+  const urlId = params.get('id');
+  useEffect(() => {
+    if (urlId) { setSelectedId(urlId); if (isPhone) setPhoneDetail(true); }
+  }, [urlId, isPhone]);
 
-  const openAdd = () => {
-    setEditEntry(null); setForm(EMPTY_FORM); setFormError(''); setFileQuery(''); setShowForm(true);
-  };
-  const openEdit = (entry) => {
-    setEditEntry(entry);
-    setForm({
-      subject: entry.subject || '',
-      description: entry.description || '',
-      fileIds: Array.isArray(entry.file_ids) ? entry.file_ids : [],
+  // After the first paint the list shouldn't replay its stagger on re-render.
+  useEffect(() => {
+    if (loading || settled) return undefined;
+    const t = setTimeout(() => setSettled(true), 700);
+    return () => clearTimeout(t);
+  }, [loading, settled]);
+
+  const fileById = useMemo(() => new Map(files.map(f => [f.id, f])), [files]);
+  const linkedFiles = useCallback((entry) => (Array.isArray(entry?.file_ids) ? entry.file_ids : [])
+    .map(id => fileById.get(id)).filter(Boolean), [fileById]);
+
+  const teamTags = useMemo(() => teamTagsFrom(entries), [entries]);
+  const tagCounts = useMemo(() => {
+    const m = new Map();
+    entries.forEach(e => tagsOf(e).forEach(t => m.set(tagKey(t), (m.get(tagKey(t)) || 0) + 1)));
+    return m;
+  }, [entries]);
+
+  // Drop filters for tags that no longer exist on any entry.
+  useEffect(() => {
+    setActiveTags(list => {
+      const next = list.filter(k => tagCounts.has(k));
+      return next.length === list.length ? list : next;
     });
-    setFormError('');
-    setFileQuery('');
-    setShowForm(true);
+  }, [tagCounts]);
+
+  const filtered = useMemo(() => {
+    const byTag = activeTags.length
+      ? entries.filter(e => tagsOf(e).some(t => activeTags.includes(tagKey(t))))
+      : entries;
+    return searchRank(byTag, search, e => [
+      { text: e.subject, weight: 3 },
+      { text: tagsOf(e).map(t => t.name).join(' '), weight: 2 },
+      { text: e.description, weight: 1 },
+      { text: linkedFiles(e).map(f => f.name).join(' '), weight: 1 },
+    ]);
+  }, [entries, activeTags, search, linkedFiles]);
+
+  const selected = entries.find(e => e.id === selectedId) || null;
+
+  // Desktop always shows something on the right when there's something to show.
+  useEffect(() => {
+    if (loading || isPhone) return;
+    if (!selected && filtered.length) setSelectedId(filtered[0].id);
+  }, [loading, isPhone, selected, filtered]);
+
+  const select = (id) => {
+    setSelectedId(id);
+    if (isPhone) setPhoneDetail(true);
+    if (params.get('id')) { const p = new URLSearchParams(params); p.delete('id'); setParams(p, { replace: true }); }
   };
 
-  const toggleFile = (id) => setForm(f => ({
-    ...f,
-    fileIds: f.fileIds.includes(id) ? f.fileIds.filter(x => x !== id) : [...f.fileIds, id],
-  }));
+  const toggleTagFilter = (k) => setActiveTags(list => (list.includes(k) ? list.filter(x => x !== k) : [...list, k]));
 
-  // Ranked by the same forgiving matcher the rest of the app uses, so the
-  // picker finds "mini inpo gal" when you type "mini gallery".
-  const fileOptions = useMemo(() => searchRank(files, fileQuery, f => [
-    { text: f.name, weight: 3 },
-    { text: f.path, weight: 2 },
-    { text: f.section, weight: 1.5 },
-  ]).slice(0, 40), [files, fileQuery]);
+  const openFile = (f) => navigate(`/files?id=${f.id}`);
 
-  const save = async () => {
-    if (!form.subject.trim()) { setFormError('Subject is required.'); return; }
-    setSaving(true);
-    setFormError('');
-    const payload = {
-      subject: form.subject.trim(),
-      description: form.description.trim(),
-      file_ids: form.fileIds,
-      updated_at: new Date().toISOString(),
-    };
-    const { error } = editEntry
-      ? await supabase.from('context_entries').update(payload).eq('id', editEntry.id)
-      : await supabase.from('context_entries').insert({ ...payload, team_id: activeTeamId, created_by: user?.id });
-    setSaving(false);
-    if (error) { setFormError(error.message); return; }
-    setShowForm(false);
-    load();
-  };
-
-  const remove = async (id) => {
-    await supabase.from('context_entries').delete().eq('id', id);
+  const remove = async () => {
+    const entry = confirmDelete;
+    if (!entry) return;
+    setDeleting(true);
+    const { error } = await supabase.from('context_entries').delete().eq('id', entry.id);
+    setDeleting(false);
     setConfirmDelete(null);
-    load();
+    if (error) { toast(error.message, { icon: 'alert' }); return; }
+    setPhoneDetail(false);
+    const idx = filtered.findIndex(e => e.id === entry.id);
+    const next = filtered[idx + 1] || filtered[idx - 1];
+    setSelectedId(next?.id || null);
+    setEntries(list => list.filter(e => e.id !== entry.id));
+    toast('Context deleted', {
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          const { error: err } = await supabase.from('context_entries').insert(entry);
+          if (err) { toast(err.message, { icon: 'alert' }); return; }
+          setSelectedId(entry.id);
+          load();
+        },
+      },
+    });
   };
+
+  const topBar = (
+    <TopBarPortal>
+      {!isPhone && (
+        <SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search context" className="ctx-topsearch" />
+      )}
+      <button type="button" className="btn btn-primary" onClick={() => setSheet({ entry: null })} disabled={!activeTeamId}>
+        <Icon name="plus" size={15} />{isPhone ? 'Add' : 'Add context'}
+      </button>
+    </TopBarPortal>
+  );
 
   if (!activeTeamId) {
-    return <div className="ctx-empty">Join or create a team to save context.</div>;
+    return (
+      <div className="ctx-noteam">
+        {topBar}
+        <Empty icon="users" title="No team yet">Join or create a team to save context.</Empty>
+      </div>
+    );
   }
 
+  const detailActions = selected && (
+    <>
+      <button type="button" className="btn" onClick={() => setSheet({ entry: selected })}>Edit</button>
+      <button type="button" className="btn btn-ghost" onClick={() => setConfirmDelete(selected)}>Delete</button>
+    </>
+  );
+
+  const listKey = activeTags.join('|') || 'all';
+
   return (
-    <div className="ctx-page fade-in">
+    <div className="ctx">
+      {topBar}
 
-      <header className="ctx-head">
-        <div className="ctx-head-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 19.5A2.5 2.5 0 016.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
-          </svg>
-        </div>
-        <div className="ctx-head-text">
-          <div className="ctx-head-title">Context</div>
-          <div className="ctx-head-sub">
-            {loading ? 'Loading…' : `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`}
+      <section className="ctx-list-col">
+        <header className="ctx-head anim-rise">
+          <div className="eyebrow">Knowledge</div>
+          <h1 className="page-title">Context</h1>
+          <p className="ctx-sub">
+            {loading ? 'Loading…' : (
+              <><span key={entries.length} className="bump ctx-sub-n">{entries.length}</span> entr{entries.length === 1 ? 'y' : 'ies'}. Notes on how things are built, for later.</>
+            )}
+          </p>
+          {isPhone && (
+            <SearchInput value={search} onChange={setSearch} placeholder="Search context" className="ctx-phone-search" />
+          )}
+        </header>
+
+        {teamTags.length > 0 && (
+          <div className="ctx-filters anim-rise" role="group" aria-label="Filter by tag">
+            {teamTags.map(t => {
+              const k = tagKey(t);
+              const on = activeTags.includes(k);
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  className={`chip-toggle ctx-filter ${on ? 'is-on' : ''}`}
+                  aria-pressed={on}
+                  onClick={() => toggleTagFilter(k)}
+                >
+                  <span className={`ctx-swatch tag-${t.color}`} aria-hidden="true" />
+                  {t.name}
+                  <span className="ctx-filter-n mono">{tagCounts.get(k) || 0}</span>
+                </button>
+              );
+            })}
+            {activeTags.length > 0 && (
+              <button type="button" className="btn btn-ghost btn-sm ctx-filter-clear" onClick={() => setActiveTags([])}>Clear</button>
+            )}
           </div>
-        </div>
+        )}
 
-        {!isPhone && <InlineClock />}
+        {loadError && <p className="notice notice-error ctx-error"><Icon name="alert" size={15} />{loadError}</p>}
 
-        <div className="ctx-search">
-          <svg className="ctx-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            className="ctx-search-input"
-            placeholder="Search context…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          {search && (
-            <button className="ctx-search-clear" onClick={() => setSearch('')} aria-label="Clear search">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          )}
-        </div>
+        {loading ? (
+          <div className="ctx-skel"><SkeletonRows rows={5} widths={['56%', '18%']} /></div>
+        ) : filtered.length === 0 ? (
+          <div key={`empty-${listKey}`} className="anim-fade">
+            {search || activeTags.length ? (
+              <Empty
+                icon="search"
+                title="Nothing matches"
+                action={<button type="button" className="btn btn-sm" onClick={() => { setSearch(''); setActiveTags([]); }}>Clear filters</button>}
+              >
+                {search ? <>No context matches “{search}”.</> : 'No entries have those tags.'}
+              </Empty>
+            ) : (
+              <Empty
+                icon="book"
+                title="No context saved yet"
+                action={<button type="button" className="btn btn-primary btn-sm" onClick={() => setSheet({ entry: null })}><Icon name="plus" size={13} />Add the first one</button>}
+              >
+                Where something lives, which plugin controls what, why a decision was made.
+              </Empty>
+            )}
+          </div>
+        ) : (
+          <div key={listKey} className={`ctx-rows stagger ${settled ? 'settled' : ''} ${listKey !== 'all' ? 'anim-fade' : ''}`}>
+            {filtered.map(e => (
+              <ContextRow
+                key={e.id}
+                entry={e}
+                linkedCount={linkedFiles(e).length}
+                selected={!isPhone && e.id === selectedId}
+                onSelect={select}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
-        <button className="btn btn-primary btn-sm ctx-add" onClick={openAdd}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Add Context
-        </button>
-      </header>
-
-      {loading ? (
-        <div className="ctx-list">
-          {[1, 2, 3].map(i => <div key={i} className="ctx-skeleton loading-pulse" />)}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="ctx-empty">
-          {search ? (
-            <>
-              <p>Nothing matches <strong>"{search}"</strong>.</p>
-              <button className="btn btn-ghost btn-sm" onClick={() => setSearch('')}>Clear search</button>
-            </>
+      {!isPhone && (
+        <section className="ctx-detail">
+          {loading ? (
+            <div className="ctx-detail-inner">
+              <span className="skel skel-line" style={{ width: 120, display: 'block' }} />
+              <span className="skel" style={{ width: '46%', height: 30, display: 'block', marginTop: 18 }} />
+              <span className="skel skel-line" style={{ width: '70%', display: 'block', marginTop: 34 }} />
+              <span className="skel skel-line" style={{ width: '54%', display: 'block', marginTop: 14 }} />
+            </div>
+          ) : selected ? (
+            <ContextDetail
+              entry={selected}
+              files={linkedFiles(selected)}
+              onOpenFile={openFile}
+              actions={detailActions}
+            />
           ) : (
-            <>
-              <p>No context saved yet.</p>
-              <p className="ctx-empty-sub">
-                Write down the things that take longest to rediscover — where something lives,
-                which plugin controls what, why a decision was made.
-              </p>
-              <button className="btn btn-primary btn-sm" onClick={openAdd}>Add the first one</button>
-            </>
+            <div className="ctx-detail-empty">
+              <Empty icon="book" title={entries.length ? 'Pick an entry' : 'Nothing here yet'}>
+                {entries.length ? 'Choose something on the left to read it.' : 'Saved context shows up here.'}
+              </Empty>
+            </div>
           )}
-        </div>
-      ) : (
-        <div className="ctx-list">
-          {filtered.map((entry, i) => (
-            <article key={entry.id} className="ctx-card" style={{ '--i': i }}>
-              <div className="ctx-card-head">
-                <h2 className="ctx-card-subject">{entry.subject}</h2>
-                <div className="ctx-card-actions">
-                  <button className="btn btn-ghost btn-sm" onClick={() => openEdit(entry)}>Edit</button>
-                  <button className="theme-color-reset" onClick={() => setConfirmDelete(entry)}>Delete</button>
-                </div>
-              </div>
-              {entry.description && <p className="ctx-card-desc">{entry.description}</p>}
-              {linkedFiles(entry).length > 0 && (
-                <div className="ctx-card-files">
-                  {linkedFiles(entry).map(f => (
-                    <span key={f.id} className="ctx-file-chip" title={f.path}>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
-                      </svg>
-                      {f.name}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </article>
-          ))}
-        </div>
+        </section>
       )}
 
-      {showForm && (
-        <ModalPortal>
-          <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setShowForm(false); }}>
-            <div className="modal" style={{ maxWidth: 560 }}>
-              <div className="modal-header">
-                <h2 style={{ fontSize: 17, fontWeight: 700 }}>{editEntry ? 'Edit context' : 'Add context'}</h2>
-                <button className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)} aria-label="Close">✕</button>
-              </div>
-              <div className="modal-body">
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label className="label">Subject</label>
-                    <input
-                      className="input"
-                      autoFocus
-                      placeholder="e.g. Captcha on contact forms"
-                      value={form.subject}
-                      onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); save(); } }}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="label">
-                      Description
-                      <span className="label-note"> — what you'd want to read back later</span>
-                    </label>
-                    <textarea
-                      className="input ctx-textarea"
-                      rows={7}
-                      placeholder="It's an Elementor add-on called X, configured under Settings → Forms. The site key lives in wp-config."
-                      value={form.description}
-                      onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="label">
-                      Files
-                      <span className="label-note"> — source files this is about</span>
-                    </label>
+      {isPhone && phoneDetail && selected && (
+        <Sheet
+          eyebrow={<>Context<span className="t-4">· {shortDate(selected.updated_at || selected.created_at)}</span></>}
+          onClose={() => setPhoneDetail(false)}
+          mainClassName="ctx-phone-main"
+          footer={(
+            <>
+              <button type="button" className="btn btn-danger" onClick={() => setConfirmDelete(selected)}>Delete</button>
+              <span className="spacer" />
+              <button type="button" className="btn btn-primary" onClick={() => setSheet({ entry: selected })}>Edit</button>
+            </>
+          )}
+        >
+          <ContextDetail entry={selected} files={linkedFiles(selected)} onOpenFile={openFile} />
+        </Sheet>
+      )}
 
-                    {form.fileIds.length > 0 && (
-                      <div className="ctx-picked">
-                        {form.fileIds.map(id => {
-                          const f = fileById.get(id);
-                          if (!f) return null;
-                          return (
-                            <button
-                              key={id}
-                              type="button"
-                              className="ctx-file-chip ctx-file-chip-on"
-                              onClick={() => toggleFile(id)}
-                              title={`Remove ${f.name}`}
-                            >
-                              {f.name}
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                              </svg>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    <input
-                      className="input"
-                      placeholder={files.length ? 'Search files to link…' : 'No files on this team yet'}
-                      value={fileQuery}
-                      disabled={!files.length}
-                      onChange={e => setFileQuery(e.target.value)}
-                    />
-
-                    {files.length > 0 && (
-                      <div className="ctx-file-list">
-                        {fileOptions.length === 0 ? (
-                          <p className="ctx-file-none">No files match "{fileQuery}".</p>
-                        ) : fileOptions.map(f => {
-                          const on = form.fileIds.includes(f.id);
-                          return (
-                            <button
-                              key={f.id}
-                              type="button"
-                              className={`ctx-file-row ${on ? 'ctx-file-row-on' : ''}`}
-                              onClick={() => toggleFile(f.id)}
-                              aria-pressed={on}
-                            >
-                              <span className="ctx-file-row-text">
-                                <span className="ctx-file-row-name">{f.name}</span>
-                                <span className="ctx-file-row-path">{[f.section, f.path].filter(Boolean).join(' · ')}</span>
-                              </span>
-                              {on && (
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {formError && <div className="error-msg">⚠ {formError}</div>}
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setShowForm(false)} disabled={saving}>Cancel</button>
-                <button className="btn btn-primary" onClick={save} disabled={saving || !form.subject.trim()}>
-                  {saving ? 'Saving…' : (editEntry ? 'Save changes' : 'Add context')}
-                </button>
-              </div>
-            </div>
-          </div>
-        </ModalPortal>
+      {sheet && (
+        <ContextSheet
+          key={sheet.entry?.id || 'new'}
+          entry={sheet.entry}
+          files={files}
+          teamTags={teamTags}
+          onClose={() => setSheet(null)}
+          onSaved={(row) => { if (row?.id) setSelectedId(row.id); }}
+        />
       )}
 
       {confirmDelete && (
-        <ModalPortal>
-          <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setConfirmDelete(null); }}>
-            <div className="modal" style={{ maxWidth: 420 }}>
-              <div className="modal-header"><h2 style={{ fontSize: 16, fontWeight: 700 }}>Delete this context?</h2></div>
-              <div className="modal-body">
-                <p style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.6 }}>
-                  <strong>{confirmDelete.subject}</strong> will be removed for the whole team.
-                </p>
-              </div>
-              <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setConfirmDelete(null)}>Cancel</button>
-                <button className="btn btn-danger" onClick={() => remove(confirmDelete.id)}>Delete</button>
-              </div>
-            </div>
-          </div>
-        </ModalPortal>
+        <ConfirmDialog
+          title="Delete this context?"
+          text={`“${confirmDelete.subject}” will be removed for the whole team.`}
+          confirmLabel="Delete"
+          danger
+          busy={deleting}
+          onConfirm={remove}
+          onClose={() => setConfirmDelete(null)}
+        />
       )}
     </div>
   );

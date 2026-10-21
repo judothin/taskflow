@@ -1,247 +1,156 @@
-.auth-page {
+/* ══════════════════════════════════════════════════════════════
+   Signed-out pages — Login, Register, Onboarding, Guest portal
+   A centred minimal card on the page background. Prefix: .au- / .gp-
+   ══════════════════════════════════════════════════════════════ */
+
+.au-page {
+  min-height: 100vh;
   min-height: 100dvh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  position: relative;
-  overflow: hidden;
+  gap: 22px;
+  padding: 40px 20px calc(40px + env(safe-area-inset-bottom));
+  background: var(--bg-app);
+}
+
+.au-card {
   width: 100%;
-}
-
-.auth-bg {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-}
-
-.auth-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.12;
-}
-
-.auth-orb-1 {
-  width: 600px;
-  height: 600px;
-  background: var(--accent);
-  top: -200px;
-  right: -200px;
-}
-
-.auth-orb-2 {
-  width: 400px;
-  height: 400px;
-  background: #ec4899;
-  bottom: -150px;
-  left: -100px;
-}
-
-.auth-card {
-  background: var(--bg-2);
+  max-width: 400px;
+  padding: 36px 34px 30px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 40px;
-  width: 100%;
-  max-width: 420px;
-  box-shadow: var(--shadow-lg);
-  position: relative;
-  z-index: 1;
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  animation: au-card-in 0.6s var(--ease-spring) both;
 }
-
-.auth-logo {
-  text-align: center;
-  margin-bottom: 32px;
+.au-card-wide { max-width: 480px; }
+@keyframes au-card-in {
+  0% { opacity: 0; transform: translateY(18px) scale(0.98); }
+  100% { opacity: 1; transform: none; }
 }
+.au-card.stagger > * { animation-duration: 0.46s; }
 
-.auth-logo h1 {
-  font-size: 24px;
+.au-logo {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 22px;
+  border-radius: 10px;
+  background: var(--logo-bg);
+  color: var(--logo-text);
+  font-size: 17px;
   font-weight: 700;
-  margin-bottom: 6px;
+  letter-spacing: -0.02em;
+  animation: tf-pop 0.55s var(--ease-spring) 0.08s both;
+  transition: transform 0.4s var(--ease-spring);
+}
+.au-logo:hover { transform: rotate(-8deg) scale(1.06); }
+
+.au-title { font-size: 24px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.2; color: var(--text); }
+.au-sub { margin-top: 6px; font-size: 14.5px; color: var(--text-2); line-height: 1.5; }
+
+.au-form { display: flex; flex-direction: column; gap: 16px; margin-top: 26px; }
+.au-form .input { height: 42px; }
+.au-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.au-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.au-submit { --btn-h: 44px; margin-top: 4px; font-size: 14.5px; }
+.au-submit svg { transition: transform var(--dur-3) var(--ease-spring); }
+.au-submit:hover:not(:disabled) svg { transform: translateX(3px); }
+
+.au-foot { margin-top: 22px; text-align: center; font-size: 13.5px; color: var(--text-3); }
+.au-foot a, .au-link {
   color: var(--text);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-1) ease;
 }
+.au-foot a:hover, .au-link:hover { text-decoration-color: currentColor; }
+.au-below { font-size: 12.5px; color: var(--text-3); text-align: center; animation: tf-fade-in 0.6s ease 0.3s both; }
+.au-below .mono { font-size: 12px; }
 
-.auth-logo p {
-  font-size: 14px;
-  color: var(--text-muted);
-}
-
-.auth-form {
+/* ── Guest portal ── */
+.gp-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--bg-app);
   display: flex;
   flex-direction: column;
-  gap: 16px;
 }
-
-.auth-footer {
-  text-align: center;
-  margin-top: 20px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.auth-divider {
+.gp-bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 16px 0;
-  color: var(--text-dim);
-  font-size: 12px;
+  height: var(--topbar-h);
+  padding: 0 28px;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+  animation: tf-fade-in 0.4s ease both;
 }
+.gp-bar .au-logo { width: 28px; height: 28px; margin: 0; font-size: 13px; border-radius: 7px; animation: none; }
+.gp-bar-name { font-weight: 600; }
+.gp-bar .crumb-sep { color: var(--text-4); font-weight: 300; }
+.gp-bar-right { margin-left: auto; font-size: 13px; color: var(--text-3); }
+.gp-bar-right a { color: var(--text-2); }
+.gp-bar-right a:hover { color: var(--text); }
 
-.auth-divider::before,
-.auth-divider::after {
-  content: '';
+.gp-main {
   flex: 1;
-  height: 1px;
-  background: var(--border);
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 54px 24px 70px;
 }
-
-.guest-portal-link {
+.gp-main .page-head { margin-bottom: 28px; }
+.gp-form { display: flex; flex-direction: column; gap: 22px; }
+.gp-form .input { height: 42px; }
+.gp-form .textarea { min-height: 140px; font-size: 14.5px; }
+.gp-title-input { font-size: 15px; font-weight: 500; }
+.gp-foot {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border-radius: var(--radius);
-  border: 1px dashed var(--border-light);
-  color: var(--text-muted);
-  font-size: 13px;
-  text-decoration: none;
-  transition: all 0.2s ease;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
 }
+.gp-foot .btn-primary { --btn-h: 42px; padding: 0 20px; margin-left: auto; }
+.gp-size { font-family: var(--mono); font-size: 12px; color: var(--text-3); }
 
-.guest-portal-link:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  text-decoration: none;
-  background: var(--accent-glow);
-}
-
-/* Color picker */
-.color-picker-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.color-swatch {
-  width: 28px;
-  height: 28px;
+.gp-done { text-align: center; padding-top: 40px; }
+.gp-done-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 22px;
   border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  background: var(--success-soft);
+  color: var(--success);
+  animation: tf-check 0.6s var(--ease-spring) both;
 }
+.gp-done-icon svg path { stroke-dasharray: 24; animation: tf-draw 0.5s var(--ease-out) 0.2s both; }
+.gp-done .au-title { font-size: 28px; }
+.gp-done .au-sub { max-width: 380px; margin: 8px auto 26px; }
+.gp-done-actions { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 
-.color-swatch:hover {
-  transform: scale(1.15);
-}
-
-.color-swatch-active {
-  border-color: white;
-  box-shadow: 0 0 0 2px var(--accent);
-  transform: scale(1.15);
-}
-
-.color-custom-input {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid var(--border-light);
-  padding: 0;
-  cursor: pointer;
-  background: var(--bg-3);
-  overflow: hidden;
-}
-
-.color-custom-input::-webkit-color-swatch-wrapper { padding: 0; }
-.color-custom-input::-webkit-color-swatch { border: none; border-radius: 50%; }
-
-/* Guest Portal — fixed viewport, no body scroll */
-.guest-portal-page {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px 24px;
-  overflow: hidden;
-}
-
-.guest-portal-card {
-  max-width: 520px;
-  padding: 28px;
-  overflow-y: auto;
-  max-height: calc(100dvh - 32px);
-}
-
-/* Avatar upload */
-.avatar-upload-zone {
-  position: relative;
-  cursor: pointer;
-  flex-shrink: 0;
-  border-radius: 50%;
-  display: inline-flex;
-}
-
-.avatar-upload-zone img,
-.avatar-upload-zone > div:first-child {
-  pointer-events: none;
-}
-
-.avatar-upload-overlay {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.avatar-upload-zone:hover .avatar-upload-overlay {
-  opacity: 1;
-}
-
-.avatar-remove-btn {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--danger);
-  color: white;
-  border: 2px solid var(--bg-2);
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  line-height: 1;
-  padding: 0;
-  transition: background 0.15s ease;
-  z-index: 1;
-}
-
-.avatar-remove-btn:hover {
-  background: #dc2626;
-}
-
-/* Prevent iOS input zoom (requires font-size >= 16px) */
 @media (max-width: 768px) {
-  .guest-input { font-size: 16px !important; }
-  /* All inputs on mobile need 16px to prevent iOS zoom */
-  .input { font-size: 16px; }
+  .au-page { justify-content: flex-start; padding: calc(28px + env(safe-area-inset-top)) 16px 32px; }
+  .au-card { padding: 28px 20px 24px; box-shadow: none; }
+  .au-pair { grid-template-columns: 1fr; }
+  .au-form .input, .gp-form .input { height: 46px; font-size: 16px; }
+  .au-submit { --btn-h: 48px; }
+  .gp-bar { padding: env(safe-area-inset-top) 16px 0; height: calc(var(--topbar-h) + env(safe-area-inset-top)); }
+  .gp-main { padding: 28px 16px 40px; }
+  .gp-form .textarea { font-size: 16px; }
+  .gp-foot { flex-direction: column-reverse; align-items: stretch; }
+  .gp-foot .btn-primary { margin-left: 0; --btn-h: 48px; }
+  .gp-size { text-align: center; }
 }
 
-@media (max-width: 480px) {
-  .auth-card { padding: 28px 20px; }
-  .auth-logo h1 { font-size: 20px; }
-  .guest-portal-card { padding: 20px 16px; }
-}
+/* .notice carries its own entrance (components.css loads after motion.css),
+   so give the error wiggle enough specificity to play. */
+.notice.wiggle, .field-error.wiggle { animation: tf-wiggle 0.42s var(--ease-out); }

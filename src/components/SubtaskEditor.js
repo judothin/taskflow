@@ -1,88 +1,106 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
+import { useTeam } from '../context/TeamContext';
 import { asSubtasks, makeSubtask, sortSubtasks, subtaskProgress } from '../lib/subtasks';
+import { fetchSubtaskPresets, presetToSubtasks } from '../lib/subtaskPresets';
 import useFlipRows from '../lib/useFlipRows';
-import SubtaskPresetPicker from './SubtaskPresetPicker';
+import { Icon, Menu, useMenu } from '../ui';
 import './Subtasks.css';
 
-// Controlled checklist editor used inside TaskForm / TaskDetail.
-//   value    – array of { id, text, done }
-//   onChange – (nextArray) => void
+// The task sheet's checklist. Done items sink to the bottom (and slide there).
+//   value    – [{ id, text, done }]
+//   onChange – (next) => void
 export default function SubtaskEditor({ value, onChange }) {
-  // Rendered (and saved) with the checked-off items sunk to the bottom, so a
-  // box ticked here behaves exactly like one ticked on the card.
+  const { activeTeamId } = useTeam();
   const list = sortSubtasks(asSubtasks(value));
-  const rowRefs = useRef({});
-  const { rowRef: flipRef, capture } = useFlipRows();
+  const inputs = useRef({});
+  const { rowRef, capture } = useFlipRows();
+  const presetMenu = useMenu();
+  const [presets, setPresets] = useState(null);
 
   const commit = (next) => onChange(sortSubtasks(next));
-
   const update = (id, patch) => commit(list.map(s => (s.id === id ? { ...s, ...patch } : s)));
   const remove = (id) => { capture(); commit(list.filter(s => s.id !== id)); };
-
-  const toggleDone = (s) => { capture(); update(s.id, { done: !s.done }); };
-
-  const add = (focus = true) => {
+  const toggle = (s) => { capture(); update(s.id, { done: !s.done }); };
+  const add = () => {
     const item = makeSubtask('');
-    capture(); // the empty row lands above the done ones, nudging them down
+    capture();
     commit([...list, item]);
-    if (focus) setTimeout(() => rowRefs.current[item.id]?.focus(), 0);
+    setTimeout(() => inputs.current[item.id]?.focus(), 0);
   };
-
-  const onKeyDown = (e, id, idx) => {
-    if (e.key === 'Enter') {
+  const onKeyDown = (e, s, i) => {
+    if (e.key === 'Enter') { e.preventDefault(); add(); }
+    else if (e.key === 'Backspace' && !s.text) {
       e.preventDefault();
-      add();
-    } else if (e.key === 'Backspace' && !list[idx].text) {
-      // Backspace on an empty row removes it and focuses the previous one.
-      e.preventDefault();
-      remove(id);
-      const prev = list[idx - 1];
-      if (prev) setTimeout(() => rowRefs.current[prev.id]?.focus(), 0);
+      remove(s.id);
+      const prev = list[i - 1];
+      if (prev) setTimeout(() => inputs.current[prev.id]?.focus(), 0);
     }
   };
 
-  const { done, total } = subtaskProgress(list);
+  const openPresets = async () => {
+    presetMenu.toggle();
+    if (presets === null && activeTeamId) setPresets(await fetchSubtaskPresets(activeTeamId));
+  };
+
+  const { done, total, pct } = subtaskProgress(list);
 
   return (
-    <div className="st-editor">
-      {list.map((s, idx) => (
-        <div key={s.id} ref={flipRef(s.id)} className={`st-editor-row ${s.done ? 'st-editor-row-done' : ''}`}>
-          <input
-            type="checkbox"
-            className="st-check"
-            checked={s.done}
-            onChange={() => toggleDone(s)}
-          />
-          <input
-            ref={el => { rowRefs.current[s.id] = el; }}
-            className="st-editor-input"
-            value={s.text}
-            placeholder="Subtask…"
-            onChange={e => update(s.id, { text: e.target.value })}
-            onKeyDown={e => onKeyDown(e, s.id, idx)}
-          />
-          <button type="button" className="st-editor-remove" onClick={() => remove(s.id)} title="Remove">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-      ))}
-
-      <div className="st-editor-actions">
-        <button type="button" className="st-editor-add" onClick={() => add()}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Add subtask
-        </button>
-
-        {/* Appending: a preset adds to whatever's already here rather than
-            replacing it, so two presets can be stacked on one task. */}
-        <SubtaskPresetPicker onApply={(items) => commit([...list, ...items])} />
+    <div className="stx">
+      <div className="stx-head">
+        <span className="eyebrow stx-label">Subtasks</span>
+        {total > 0 ? (
+          <>
+            <span className="stx-track"><span className="stx-fill" style={{ width: `${pct}%` }} /></span>
+            <span key={done} className="stx-count mono bump">{done}/{total}</span>
+          </>
+        ) : (
+          <span className="stx-note">Progress shows on the card</span>
+        )}
       </div>
 
-      {total > 0 && <span className="st-editor-progress">{done} / {total} done</span>}
+      {list.length > 0 && (
+        <div className="stx-list">
+          {list.map((s, i) => (
+            <div key={s.id} ref={rowRef(s.id)} className={`stx-row ${s.done ? 'is-done' : ''}`}>
+              <input type="checkbox" className="check" checked={s.done} onChange={() => toggle(s)} aria-label="Done" />
+              <input
+                ref={el => { inputs.current[s.id] = el; }}
+                className="stx-input"
+                value={s.text}
+                placeholder="Subtask…"
+                onChange={e => update(s.id, { text: e.target.value })}
+                onKeyDown={e => onKeyDown(e, s, i)}
+              />
+              <button type="button" className="stx-x" onClick={() => remove(s.id)} aria-label="Remove subtask">
+                <Icon name="x" size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="stx-actions">
+        <button type="button" className="btn btn-ghost btn-sm stx-add" onClick={add}>
+          <Icon name="plus" size={13} />Add subtask
+        </button>
+        <button ref={presetMenu.anchorRef} type="button" className="btn btn-ghost btn-sm" onClick={openPresets}>
+          Use a preset
+        </button>
+      </div>
+
+      <Menu {...presetMenu.props} width={260}>
+        {presets === null && <div className="menu-label">Loading…</div>}
+        {presets && presets.length === 0 && (
+          <div className="stx-menu-note">No presets yet. Owners and admins add them in Settings → Subtask presets.</div>
+        )}
+        {(presets || []).map(p => (
+          <button key={p.id} type="button" className="menu-item" data-menu-close onClick={() => commit([...list, ...presetToSubtasks(p)])}>
+            <Icon name="list" size={15} />
+            <span className="truncate" style={{ flex: 1 }}>{p.name}</span>
+            <span className="mono t-3" style={{ fontSize: 11.5 }}>{p.items.length}</span>
+          </button>
+        ))}
+      </Menu>
     </div>
   );
 }

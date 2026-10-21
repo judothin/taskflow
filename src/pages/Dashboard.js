@@ -1,673 +1,410 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { isToday } from 'date-fns';
+import { format, isToday, isSameMonth, eachDayOfInterval, startOfMonth, endOfMonth, isAfter, startOfDay } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { fetchTeamMembers } from '../lib/teams';
-import { useTopBar } from '../context/TopBarContext';
-import useAnimatedList from '../lib/useAnimatedList';
+import { completeTask } from '../lib/completeTask';
 import useRefresh from '../lib/useRefresh';
-import TaskCard from '../components/TaskCard';
-import TaskForm from '../components/TaskForm';
-import { consumeNewTaskDeepLink, clearDeepLinkFromUrl } from '../lib/deepLink';
-import ProjectsWidget from '../components/ProjectsWidget';
-import NotificationCenter from '../components/NotificationCenter';
-import QueueWidget from '../components/QueueWidget';
-import ReviewWidget from '../components/ReviewWidget';
-import PomodoroWidget from '../components/PomodoroWidget';
-import ActiveTasksList from '../components/ActiveTasksList';
-import BulkActionBar from '../components/BulkActionBar';
-import useBulkSelect from '../lib/useBulkSelect';
-import ModalPortal from '../components/ModalPortal';
-import { TopBarPortal, TopBarMenuItems } from '../context/HeaderActionsContext';
-import {
-  ActivityChartWidget, CompletedTodayWidget, RoiBreakdownWidget,
-  LeaderboardWidget, RecentActivityWidget, StreakWidget, StatsWidget, BadgesWidget,
-} from '../components/dashboardWidgets';
-import {
-  WIDGETS, SIZES, DEFAULT_LAYOUT, loadPrefsCache, savePrefsCache, normalizePrefs, sanitizeLayout, spanFor,
-  COLUMN_CHOICES, MAX_VISIBLE_CARDS, columnsFor, visibleCountFor,
-} from '../lib/dashboardLayout';
-import { fetchUserPrefs, saveUserPrefs, saveUserPrefsDebounced } from '../lib/userPrefs';
-import '../components/TaskCard.css';
-import '../components/ActivityChart.css';
+import { taskTitle, pageLabel } from '../lib/taskText';
+import { openTask, openNewTask, tasksChanged, queueChanged, TASKS_CHANGED, QUEUE_CHANGED } from '../lib/events';
+import { TopBarPortal } from '../context/HeaderActionsContext';
+import TaskTable, { GROUPS } from '../components/TaskTable';
+import { Icon, Menu, MenuItem, useMenu, SearchInput, shortDate, cap, toast, fullName } from '../ui';
 import './Dashboard.css';
 
-const STATUS_FILTERS = [
-  { key: 'critical',    label: 'Critical',    color: 'var(--st-critical)' },
-  { key: 'open',        label: 'Open',        color: 'var(--st-open)' },
-  { key: 'in_progress', label: 'In Progress', color: 'var(--st-inprogress)' },
-  { key: 'on_hold',     label: 'On Hold',     color: 'var(--st-onhold)' },
-  { key: 'completed',   label: 'Completed',   color: 'var(--st-completed)' },
-  // Not a status — a "how am I doing right now" number. Opens the Completed
-  // page, which already lands on today's completions.
-  { key: 'done_today',  label: 'Done Today',  color: 'var(--accent)', to: '/completed' },
-];
-
-const doneTodayCount = (completed) =>
-  (completed || []).filter(t => t.date_completed && isToday(new Date(t.date_completed))).length;
-
-// Widgets that render their own outer container (no shared card chrome).
-const SELF_CONTAINED = new Set(['focus', 'allTasks', 'projects']);
-
-// Cache the last-known status counts so the locked top bar shows real numbers
-// immediately on mount/refresh instead of flashing 0 while tasks load.
-const STAT_CACHE_KEY = 'tf-stat-counts';
-const todayKey = () => new Date().toDateString();
-const loadStatCache = () => {
-  try {
-    const c = JSON.parse(localStorage.getItem(STAT_CACHE_KEY)) || {};
-    // The status counts stay valid across days; "done today" does not, so it
-    // is dropped when the cache was written on an earlier day.
-    if (c.day !== todayKey()) delete c.done_today;
-    return c;
-  } catch { return {}; }
+const ROI_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
+const CACHE = 'tf-dash-cache-v2';
+const loadCache = (team) => {
+  try { const c = JSON.parse(localStorage.getItem(CACHE)); return c && c.team === team ? c : null; } catch { return null; }
 };
 
-// Cache the last-known Current Focus list (per team) so it renders with real
-// content the instant the dashboard mounts — no empty flash or skeleton on
-// reload. Reconciled by the live fetch immediately afterwards.
-const FOCUS_CACHE_KEY = 'tf-focus-cache';
-const loadFocusCache = (teamId) => {
-  try {
-    const c = JSON.parse(localStorage.getItem(FOCUS_CACHE_KEY));
-    if (c && c.teamId === teamId && Array.isArray(c.tasks)) return c.tasks;
-  } catch { /* ignore */ }
-  return [];
-};
-
-export default function Dashboard() {
-  const { profile, user } = useAuth();
-  const { activeTeamId } = useTeam();
-  const uid = user?.id;
-  const navigate = useNavigate();
-  const [tasks, setTasks] = useState([]);
-  const [completedTasks, setCompletedTasks] = useState([]);
-  const [queue, setQueue] = useState([]);
-  const [queueLoaded, setQueueLoaded] = useState(false);
-  const [focusCache, setFocusCache] = useState(() => loadFocusCache(activeTeamId));
-  const [users, setUsers] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [statCache, setStatCache] = useState(loadStatCache);
-  const [editTask, setEditTask] = useState(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [deepLinkPrefill, setDeepLinkPrefill] = useState(null);
-
-  // Deep link from an external tool (?new=1&page=&feedback=&noticed=). The
-  // params were captured + stripped at boot (see lib/deepLink); once the
-  // dashboard mounts (post-auth) we open Create Task pre-filled. Consuming
-  // clears the stash, so a refresh won't reopen it.
-  useEffect(() => {
-    let dl = null;
-    try { dl = consumeNewTaskDeepLink(); } catch { dl = null; }
-    if (!dl) return;
-    // Open with whatever parsed; a bad param never blocks the modal.
-    setDeepLinkPrefill(dl);
-    setShowCreate(true);
-    // Clean the URL only now that we've committed to opening.
-    clearDeepLinkFromUrl();
-  }, []);
-  const focusSelect = useBulkSelect();
-
-  // ── Dashboard layout / edit mode ──────────────────────────
-  const [layout, setLayout]   = useState(() => loadPrefsCache(uid).blocks);
-  const { display, setDisplayPref } = useTopBar(); // date/time shown app-wide via Layout
-  const [editing, setEditing] = useState(false);
-  const [showAddWidget, setShowAddWidget] = useState(false);
-  const [draggingType, setDraggingType] = useState(null);
-  const [resizingType, setResizingType] = useState(null);
-  const gridRef = useRef(null);
-
-  // Reconcile the layout with the server so it's identical across devices.
-  // The localStorage cache gives an instant first paint; the DB is the
-  // source of truth and is applied as soon as it loads. (The date/time
-  // display pref is reconciled separately by TopBarContext.)
-  useEffect(() => {
-    if (!uid) return;
-    let cancelled = false;
-    setLayout(loadPrefsCache(uid).blocks);
-    (async () => {
-      const prefs = await fetchUserPrefs(uid);
-      if (cancelled) return;
-      if (prefs && prefs.dashboard_layout) {
-        const remote = normalizePrefs(prefs.dashboard_layout);
-        setLayout(remote.blocks);
-        savePrefsCache(uid, remote);
-      } else {
-        // No server prefs yet — seed from this device (migrates a local layout up).
-        saveUserPrefs(uid, { dashboard_layout: loadPrefsCache(uid) });
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [uid]);
-
-  // Persist the full prefs payload (blocks + current display) to cache + server.
-  const savePrefs = (blocks) => {
-    const prefs = { blocks: sanitizeLayout(blocks), display };
-    savePrefsCache(uid, prefs);                                    // instant local cache
-    saveUserPrefsDebounced(uid, { dashboard_layout: prefs });      // sync to server
-  };
-
-  const persist = (updater) => {
-    setLayout(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      savePrefs(next);
-      return next;
-    });
-  };
-
-  const toggleDisplay = (key) => setDisplayPref(prev => ({ ...prev, [key]: !prev[key] }));
-
-  const changeSize = (type, size) => persist(prev => prev.map(b => b.type === type ? { ...b, size } : b));
-
-  // A null value clears the option back to "auto" rather than storing a
-  // number, so a widget the user hasn't pinned keeps tracking its own width.
-  const changeOpt = (type, key, value) => persist(prev => prev.map(b => {
-    if (b.type !== type) return b;
-    const opts = { ...(b.opts || {}) };
-    if (value == null) delete opts[key];
-    else opts[key] = value;
-    return { ...b, opts };
-  }));
-  const removeBlock = (type) => persist(prev => prev.filter(b => b.type !== type));
-  const addBlock = (type) => persist(prev =>
-    prev.some(b => b.type === type) ? prev : [...prev, { type, size: WIDGETS[type].defaultSize || 'full' }]);
-  const resetLayout = () => persist(DEFAULT_LAYOUT.map(b => ({ ...b })));
-
-  const reorder = (dragged, target) => persist(prev => {
-    const arr = [...prev];
-    const from = arr.findIndex(b => b.type === dragged);
-    const to   = arr.findIndex(b => b.type === target);
-    if (from < 0 || to < 0 || from === to) return prev;
-    const [item] = arr.splice(from, 1);
-    arr.splice(to, 0, item);
-    return arr;
-  });
-
-  const onDragOver = (targetType) => {
-    if (!draggingType || draggingType === targetType) return;
-    reorder(draggingType, targetType);
-  };
-
-  // ── Drag-to-resize width (edit mode) ──────────────────────
-  // The grid is `repeat(12, 1fr)`, so "freeform" width still snaps to whole
-  // columns — measure the grid's actual column+gap width in pixels so a
-  // drag of that many pixels moves the span by exactly 1.
-  const GRID_COLS = 12;
-  const startResize = (type, e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const gridEl = gridRef.current;
-    if (!gridEl) return;
-    const rect = gridEl.getBoundingClientRect();
-    // Read the live gap — it differs between the classic and new UI.
-    const gap = parseFloat(getComputedStyle(gridEl).columnGap) || 0;
-    const pxPerSpan = (rect.width - gap * (GRID_COLS - 1)) / GRID_COLS + gap;
-    const startX = e.clientX;
-    const startSpan = spanFor(layout.find(b => b.type === type)?.size);
-
-    setResizingType(type);
-
-    const onMove = (moveEvent) => {
-      const deltaSpans = Math.round((moveEvent.clientX - startX) / pxPerSpan);
-      const nextSpan = Math.max(1, Math.min(GRID_COLS, startSpan + deltaSpans));
-      setLayout(prev => prev.map(b => (
-        b.type === type && spanFor(b.size) !== nextSpan ? { ...b, size: nextSpan } : b
-      )));
-    };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      setResizingType(null);
-      // onMove only updated local state (to avoid saving on every pixel) —
-      // persist the final span now.
-      setLayout(prev => { savePrefs(prev); return prev; });
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
-
-  // ── Data ──────────────────────────────────────────────────
-  // `loading` is the FIRST load only. Flipping it back on for every refresh
-  // (each queue / task change) switched Current Focus to its cached list and
-  // back again a moment later — the flicker when a task was queued or
-  // started. Refreshes now swap the data in place.
-  const loadedOnce = useRef(false);
-  // Tasks and the queue load together and land in one render. Current Focus
-  // is built from both (in-progress tasks + queued ones), so fetched
-  // separately a task being queued or started could leave the list when one
-  // half arrived and come back with the other — an exit and re-entry on the
-  // animated row. useRefresh also folds each burst of change events into one
-  // fetch and drops out-of-order responses.
-  const { run: fetchData, refresh: refreshData } = useRefresh(async (isStale) => {
-    if (!activeTeamId) { setQueue([]); setQueueLoaded(true); setLoading(false); return; }
-    if (!loadedOnce.current) setLoading(true);
-    const [{ data: allTasks }, allUsers, { data: allProjects }, { data: queueRows }] = await Promise.all([
-      supabase.from('tasks').select('*').eq('team_id', activeTeamId).order('date_received', { ascending: false }),
-      fetchTeamMembers(activeTeamId),
-      supabase.from('projects').select('id, title').eq('team_id', activeTeamId).order('title'),
-      supabase.from('queue').select('id, task_id, position, tasks(*)').eq('team_id', activeTeamId).order('position'),
-    ]);
-    if (isStale()) return;
-    const active = (allTasks || []).filter(t => t.status !== 'completed');
-    const done = (allTasks || []).filter(t => t.status === 'completed');
-    setTasks(active);
-    setCompletedTasks(done);
-    setUsers(allUsers || []);
-    setProjects(allProjects || []);
-    setQueue((queueRows || []).filter(q => q.tasks));
-    setQueueLoaded(true);
-    loadedOnce.current = true;
-    setLoading(false);
-
-    // Persist counts so the next mount can render them without a 0-flash.
-    const counts = {
-      critical:    active.filter(t => t.status === 'critical' || t.roi === 'critical').length,
-      open:        active.filter(t => t.status === 'open').length,
-      in_progress: active.filter(t => t.status === 'in_progress').length,
-      on_hold:     active.filter(t => t.status === 'on_hold').length,
-      completed:   done.length,
-      done_today:  doneTodayCount(done),
-      day:         todayKey(),
-    };
-    setStatCache(counts);
-    try { localStorage.setItem(STAT_CACHE_KEY, JSON.stringify(counts)); } catch {}
-  });
-
-  useEffect(() => {
-    fetchData();
-    const channel = supabase
-      .channel('dashboard-queue')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue' }, refreshData)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, refreshData)
-      .subscribe();
-    window.addEventListener('queue-changed', refreshData);
-    window.addEventListener('tasks-changed', refreshData);
-    return () => {
-      supabase.removeChannel(channel);
-      window.removeEventListener('queue-changed', refreshData);
-      window.removeEventListener('tasks-changed', refreshData);
-    };
-  }, [activeTeamId, fetchData, refreshData]);
-
-  const inProgress = useMemo(() => tasks.filter(t => t.status === 'in_progress'), [tasks]);
-
-  // Columns and card count are separate settings: how many cards sit side by
-  // side vs. how many the widget shows at all. Left alone, both fall back to
-  // scaling with the widget's own width (a full-width widget gets 3), which
-  // is how this behaved before either became customizable.
-  const focusBlock = layout.find(b => b.type === 'focus');
-  const focusColumns = columnsFor(focusBlock);
-  const focusVisibleCount = visibleCountFor(focusBlock);
-
-  const focusTasks = useMemo(() => {
-    const seen = new Set();
-    const list = [];
-    inProgress.forEach(t => { if (!seen.has(t.id)) { seen.add(t.id); list.push(t); } });
-    queue.forEach(q => { if (q.tasks && !seen.has(q.tasks.id)) { seen.add(q.tasks.id); list.push(q.tasks); } });
-    return list.slice(0, focusVisibleCount);
-  }, [inProgress, queue, focusVisibleCount]);
-
-  // Reload the cached focus when the team changes.
-  useEffect(() => { setFocusCache(loadFocusCache(activeTeamId)); }, [activeTeamId]);
-
-  // Once the live data has actually loaded, it's authoritative — persist it so
-  // the next mount can paint it instantly.
-  const focusReady = !loading && queueLoaded;
-  useEffect(() => {
-    if (!focusReady || !activeTeamId) return;
-    setFocusCache(focusTasks);
-    try { localStorage.setItem(FOCUS_CACHE_KEY, JSON.stringify({ teamId: activeTeamId, tasks: focusTasks })); } catch { /* ignore */ }
-  }, [focusReady, focusTasks, activeTeamId]);
-
-  // What to render: live tasks once ready, otherwise the cached list so there's
-  // no empty flash while the first fetch is in flight.
-  const displayFocus = focusReady ? focusTasks : (focusCache.length ? focusCache : focusTasks);
-  // A task queued or started slides into the row; one finished or dequeued
-  // shrinks out while the others move over (lib/useAnimatedList).
-  const { list: focusList, rowRef: focusRowRef } = useAnimatedList(displayFocus, t => t.id);
-
-  const statCount = (key) => {
-    // While the first fetch is in flight, show cached counts (no 0-flash).
-    if (loading) return statCache[key] ?? 0;
-    if (key === 'done_today') return doneTodayCount(completedTasks);
-    if (key === 'completed') return completedTasks.length;
-    // Critical = critical status OR critical ROI (both are "urgent").
-    if (key === 'critical') return tasks.filter(t => t.status === 'critical' || t.roi === 'critical').length;
-    return tasks.filter(t => t.status === key).length;
-  };
-
-  const widgetCtx = { tasks, completedTasks, users, profile };
-
-  // ── Block content (normal mode) ───────────────────────────
-  const renderContent = (block) => {
-    switch (block.type) {
-      case 'focus':
-        return (
-          <section className="dashboard-section">
-            <h2 className="section-title">
-              <span className="status-dot status-dot-inprogress" />
-              Current Focus
-              <span className="focus-hint">in progress &amp; up next</span>
-              {displayFocus.length > 0 && (
-                <button
-                  className={`btn btn-sm ${focusSelect.selectMode ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ marginLeft: 'auto' }}
-                  onClick={focusSelect.toggleSelectMode}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
-                  </svg>
-                  {focusSelect.selectMode ? 'Done' : 'Select'}
-                </button>
-              )}
-            </h2>
-            {displayFocus.length > 0 ? (
-              <div className="tasks-featured-grid" style={{ gridTemplateColumns: `repeat(${focusColumns}, minmax(0, 1fr))` }}>
-                {focusList.map(({ item: task, phase }, i) => {
-                  const isCurrent = task.status === 'in_progress';
-                  const live = displayFocus.indexOf(task);
-                  const upNextNum = displayFocus.slice(0, live + 1).filter(t => t.status !== 'in_progress').length;
-                  return (
-                    <div
-                      key={task.id}
-                      ref={focusRowRef(task.id)}
-                      className={`focus-slot ${phase !== 'idle' ? `al-${phase}` : ''}`}
-                      style={phase === 'idle' ? { animationDelay: `${i * 60}ms` } : undefined}
-                    >
-                      <span className={`focus-order-tag ${isCurrent ? 'focus-order-tag-current' : ''}`}>
-                        {isCurrent ? (<><span className="focus-tag-dot" /> In Progress</>) : (`Up Next · ${upNextNum}`)}
-                      </span>
-                      <TaskCard task={task} onEdit={setEditTask} onDeleted={refreshData} featured users={users} projects={projects}
-                        selectMode={focusSelect.selectMode} selected={focusSelect.selectedIds.has(task.id)} onToggleSelect={focusSelect.toggle} />
-                    </div>
-                  );
-                })}
-              </div>
-            ) : focusReady ? (
-              <div className="card" style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: 13, padding: 28 }}>
-                Nothing in focus. Start a task or add one to your queue.
-              </div>
-            ) : (
-              // First-ever load with no cache yet — brief placeholder.
-              <div className="tasks-featured-grid" style={{ gridTemplateColumns: `repeat(${focusColumns}, minmax(0, 1fr))` }}>
-                {/* One tidy row of placeholders, however many cards are due. */}
-                {Array.from({ length: Math.min(focusVisibleCount, focusColumns) }).map((_, i) => (
-                  <div key={i} className="task-skeleton loading-pulse" />
-                ))}
-              </div>
-            )}
-          </section>
-        );
-
-      case 'allTasks':
-        return <ActiveTasksList columns={columnsFor(block)} />;
-
-      case 'activityChart':  return <ActivityChartWidget {...widgetCtx} />;
-      case 'completedToday': return <CompletedTodayWidget {...widgetCtx} />;
-      case 'stats':          return <StatsWidget />;
-      case 'badges':         return <BadgesWidget />;
-      case 'notifications':  return <NotificationCenter />;
-      case 'roiBreakdown':   return <RoiBreakdownWidget {...widgetCtx} />;
-      case 'leaderboard':    return <LeaderboardWidget {...widgetCtx} />;
-      case 'recentActivity': return <RecentActivityWidget {...widgetCtx} />;
-      case 'streak':         return <StreakWidget {...widgetCtx} />;
-      case 'queue':          return <QueueWidget />;
-      case 'pomodoro':       return <PomodoroWidget />;
-      case 'projects':       return <ProjectsWidget />;
-      case 'review':         return <ReviewWidget />;
-      default:               return null;
-    }
-  };
-
-  // ── Edit-mode placeholder ─────────────────────────────────
-  const renderPlaceholder = (block) => {
-    const meta = WIDGETS[block.type];
-    return (
-      <div className={`dash-ph ${draggingType === block.type ? 'dash-ph-dragging' : ''}`}>
-        <div className="dash-ph-center">
-          <svg className="dash-ph-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={meta.icon} /></svg>
-          <span className="dash-ph-name">{meta.name}</span>
-          {meta.locked && <span className="dash-ph-lock">Locked</span>}
-        </div>
-
-        <div className="dash-ph-controls" onMouseDown={e => e.stopPropagation()}>
-          <div className="dash-size-seg">
-            {SIZES.map(s => (
-              <button key={s.key}
-                className={`dash-size-btn ${spanFor(block.size) === s.span ? 'dash-size-active' : ''}`}
-                onClick={() => changeSize(block.type, s.key)}
-                title={`Width: ${s.label}`}>
-                {s.label}
-              </button>
-            ))}
-          </div>
-          {meta.cards && (
-            <div className="dash-opt">
-              <span className="dash-opt-label">Columns</span>
-              <div className="dash-size-seg">
-                {COLUMN_CHOICES.map(c => (
-                  <button key={c.label}
-                    className={`dash-size-btn ${(block.opts?.columns ?? null) === c.value ? 'dash-size-active' : ''}`}
-                    onClick={() => changeOpt(block.type, 'columns', c.value)}
-                    title={c.value ? `${c.value} card${c.value === 1 ? '' : 's'} per row` : 'Scale with the widget’s width'}>
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {meta.countable && (
-            <div className="dash-opt">
-              <span className="dash-opt-label">Cards shown</span>
-              <div className="dash-step">
-                <button
-                  className="dash-step-btn"
-                  onClick={() => changeOpt(block.type, 'visible', Math.max(1, visibleCountFor(block) - 1))}
-                  disabled={visibleCountFor(block) <= 1}
-                  title="Show one fewer" aria-label="Show one fewer card"
-                >&minus;</button>
-                <span className="dash-step-value">{visibleCountFor(block)}</span>
-                <button
-                  className="dash-step-btn"
-                  onClick={() => changeOpt(block.type, 'visible', Math.min(MAX_VISIBLE_CARDS, visibleCountFor(block) + 1))}
-                  disabled={visibleCountFor(block) >= MAX_VISIBLE_CARDS}
-                  title="Show one more" aria-label="Show one more card"
-                >+</button>
-              </div>
-              {block.opts?.visible != null && (
-                <button className="dash-opt-auto" onClick={() => changeOpt(block.type, 'visible', null)} title="Scale with the widget’s width">
-                  Auto
-                </button>
-              )}
-            </div>
-          )}
-
-          {!meta.locked && (
-            <button className="dash-remove" onClick={() => removeBlock(block.type)} title="Remove widget" aria-label="Remove widget">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          )}
-        </div>
-        <span className="dash-ph-grip" aria-hidden="true">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
-        </span>
-        <div
-          className={`dash-resize-handle ${resizingType === block.type ? 'dash-resize-active' : ''}`}
-          onMouseDown={e => startResize(block.type, e)}
-          draggable={false}
-          title="Drag to resize width"
-          aria-label="Drag to resize width"
-        >
-          <span className="dash-resize-grip" aria-hidden="true" />
-        </div>
-      </div>
-    );
-  };
-
-  // Wrapper that handles drag + card chrome for a block.
-  const renderCell = (block) => {
-    const dragProps = editing ? {
-      draggable: true,
-      onDragStart: () => setDraggingType(block.type),
-      onDragEnter: () => onDragOver(block.type),
-      onDragOver: (e) => { e.preventDefault(); },
-      onDragEnd: () => setDraggingType(null),
-      onDrop: (e) => { e.preventDefault(); setDraggingType(null); },
-    } : {};
-
-    const style = { gridColumn: `span ${spanFor(block.size)}` };
-
-    const inner = editing
-      ? renderPlaceholder(block)
-      : (SELF_CONTAINED.has(block.type)
-          ? renderContent(block)
-          : <div className="dash-card">{renderContent(block)}</div>);
-
-    return (
-      <div key={block.type} className={`dash-cell ${editing ? 'dash-cell-edit' : ''}`} style={style} {...dragProps}>
-        {inner}
-      </div>
-    );
-  };
-
-  const visibleLayout = layout;
-  const available = Object.keys(WIDGETS)
-    .filter(t => !WIDGETS[t].locked && !layout.some(b => b.type === t));
-
+// One line under a task title: page · priority · date
+function TaskMeta({ t }) {
+  const page = pageLabel(t.page);
   return (
-    <div className="dashboard fade-in">
-      {/* Header actions → global top bar */}
-      <TopBarPortal>
-          {editing ? (
-            <>
-              <div className="dash-dt-toggles">
-                <span className="dash-dt-toggles-label">Top bar:</span>
-                <button
-                  className={`dash-dt-toggle ${display.date ? 'dash-dt-toggle-on' : ''}`}
-                  onClick={() => toggleDisplay('date')}
-                  aria-pressed={display.date}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                  Date
-                </button>
-                <button
-                  className={`dash-dt-toggle ${display.time ? 'dash-dt-toggle-on' : ''}`}
-                  onClick={() => toggleDisplay('time')}
-                  aria-pressed={display.time}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-                  Time
-                </button>
-              </div>
-              <button className="btn btn-ghost" onClick={resetLayout}>Reset to default</button>
-              <button className="btn btn-secondary" onClick={() => setShowAddWidget(true)}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                Add Widget
-              </button>
-              <button className="btn btn-primary" onClick={() => { setEditing(false); setDraggingType(null); saveUserPrefs(uid, { dashboard_layout: { blocks: sanitizeLayout(layout), display } }); }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                Done
-              </button>
-            </>
-          ) : (
-            <button className="btn btn-primary btn-icon-only" onClick={() => setShowCreate(true)} title="New task (N)" aria-label="New task">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            </button>
-          )}
-      </TopBarPortal>
-      {/* Edit Dashboard lives in the top bar's ⋯ menu; while editing, the
-          editing controls above replace it. */}
-      <TopBarMenuItems items={editing ? null : [{
-        key: 'edit-dashboard',
-        label: 'Edit dashboard',
-        icon: 'M12 20h9 M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z',
-        onClick: () => setEditing(true),
-      }]} />
+    <span className="db-meta">
+      {page && <span className="truncate">{page}</span>}
+      {page && <span className="db-dot">·</span>}
+      <span className={`prio prio-${t.roi}`}>{cap(t.roi || 'medium')}</span>
+      <span className="db-dot">·</span>
+      <span>{shortDate(t.date_received || t.created_at)}</span>
+    </span>
+  );
+}
 
-      {/* Task counts — locked top bar (always present) */}
-      <div className={`stats-grid ${editing ? 'stats-grid-locked' : ''}`}>
-        {editing && <span className="dash-locked-tag">Task Counts · Locked</span>}
-        {STATUS_FILTERS.map(s => (
-          <button key={s.key}
-            className="stat-card stat-card-btn"
-            onClick={() => (s.to ? navigate(s.to) : navigate('/active', { state: { status: s.key } }))}
-            title={s.key === 'done_today' ? "View today's completed tasks" : `View ${s.label} tasks`}>
-            <div className="stat-value" style={{ color: s.color }}>{statCount(s.key)}</div>
-            <div className="stat-label">{s.label}</div>
-          </button>
-        ))}
-      </div>
-
-      {/* Widget grid */}
-      <div className="dash-grid" ref={gridRef}>
-        {visibleLayout.map(b => renderCell(b))}
-      </div>
-
-      {/* Add Widget modal */}
-      {showAddWidget && (
-        <ModalPortal>
-        <div className="modal-overlay" onClick={() => setShowAddWidget(false)}>
-          <div className="modal dash-add-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 style={{ fontSize: 16, fontWeight: 700 }}>Add a widget</h2>
-              <button className="nc-icon-btn" onClick={() => setShowAddWidget(false)} aria-label="Close">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-            <div className="modal-body">
-              {available.length === 0 ? (
-                <p style={{ color: 'var(--text-dim)', fontSize: 14, textAlign: 'center', padding: 20 }}>
-                  Every widget is already on your dashboard.
-                </p>
-              ) : (
-                <div className="dash-add-grid">
-                  {available.map(type => {
-                    const meta = WIDGETS[type];
-                    return (
-                      <button key={type} className="dash-add-card" onClick={() => { addBlock(type); setShowAddWidget(false); }}>
-                        <span className="dash-add-icon">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={meta.icon} /></svg>
-                        </span>
-                        <span className="dash-add-name">{meta.name}</span>
-                        <span className="dash-add-desc">{meta.desc}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        </ModalPortal>
-      )}
-
-      {showCreate && (
-        <TaskForm prefill={deepLinkPrefill} onClose={() => { setShowCreate(false); setDeepLinkPrefill(null); }} onSaved={refreshData} users={users} projects={projects} />
-      )}
-      {editTask && (
-        <TaskForm task={editTask} onClose={() => setEditTask(null)} onSaved={refreshData} users={users} projects={projects} />
-      )}
-
-      {focusSelect.selectMode && (
-        <BulkActionBar
-          selectedTasks={[...tasks, ...completedTasks].filter(t => focusSelect.selectedIds.has(t.id))}
-          users={users}
-          onChanged={refreshData}
-          onClear={focusSelect.clear}
-          onExit={focusSelect.exitSelectMode}
-        />
-      )}
+function FocusRow({ t, index, actions, drag }) {
+  return (
+    <div
+      className={`db-frow ${drag?.isDragging ? 'is-dragging' : ''} ${drag?.dropClass || ''}`}
+      draggable={!!drag}
+      onDragStart={drag?.onDragStart}
+      onDragOver={drag?.onDragOver}
+      onDrop={drag?.onDrop}
+      onDragEnd={drag?.onDragEnd}
+    >
+      {drag && <span className="grip db-grip" aria-hidden="true"><Icon name="grip" size={14} stroke={2.4} /></span>}
+      {index != null && <span className="db-fnum mono">{index}</span>}
+      <button type="button" className="db-fmain" onClick={() => openTask(t)}>
+        <span className="db-ftitle">{taskTitle(t)}</span>
+        <TaskMeta t={t} />
+      </button>
+      <div className="db-factions">{actions}</div>
     </div>
   );
 }
 
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return 'morning';
-  if (h < 18) return 'afternoon';
-  return 'evening';
+/** Daily completions for the month, as a bar per day. */
+function MonthChart({ completed, month }) {
+  const days = useMemo(() => eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) }), [month]);
+  const counts = useMemo(() => {
+    const m = new Map();
+    completed.forEach(t => {
+      if (!t.date_completed) return;
+      const k = format(new Date(t.date_completed), 'yyyy-MM-dd');
+      m.set(k, (m.get(k) || 0) + 1);
+    });
+    return m;
+  }, [completed]);
+  const max = Math.max(1, ...days.map(d => counts.get(format(d, 'yyyy-MM-dd')) || 0));
+  const todayIdx = days.findIndex(d => isToday(d));
+  const [hover, setHover] = useState(null);
+
+  return (
+    <div className="db-chart" onMouseLeave={() => setHover(null)}>
+      <div className="db-bars">
+        {days.map((d, i) => {
+          const n = counts.get(format(d, 'yyyy-MM-dd')) || 0;
+          const future = isAfter(startOfDay(d), startOfDay(new Date()));
+          return (
+            <div
+              key={i}
+              className={`db-bar-slot ${isToday(d) ? 'is-today' : ''} ${hover === i ? 'is-hover' : ''}`}
+              onMouseEnter={() => setHover(i)}
+            >
+              {n > 0 ? (
+                <span className="db-bar" style={{ height: `${Math.max(8, (n / max) * 100)}%`, animationDelay: `${i * 14}ms` }} />
+              ) : (
+                <span className={`db-bar-empty ${future ? 'is-future' : ''}`} />
+              )}
+              {hover === i && (
+                <span className="db-tip">{format(d, 'MMM d')} · {n} done</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="db-axis mono">
+        <span>{format(days[0], 'MMM d')}</span>
+        {todayIdx > 3 && todayIdx < days.length - 4 && (
+          <span className="db-axis-today" style={{ left: `${((todayIdx + 0.5) / days.length) * 100}%` }}>Today</span>
+        )}
+        <span>{format(days[days.length - 1], 'MMM d')}</span>
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  const { user, profile } = useAuth();
+  const { activeTeamId } = useTeam();
+  const cached = loadCache(activeTeamId);
+  const [tasks, setTasks] = useState(cached?.tasks || []);
+  const [queue, setQueue] = useState(cached?.queue || []);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(!cached);
+  const [search, setSearch] = useState('');
+  const [groupBy, setGroupBy] = useState(() => localStorage.getItem('tf-dash-group') || 'status');
+  const [statFilter, setStatFilter] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const groupMenu = useMenu();
+  const tableRef = useRef(null);
+  const myName = fullName(profile);
+  const navigate = useNavigate();
+
+  const { run: fetchData, refresh } = useRefresh(async (isStale) => {
+    if (!activeTeamId) { setTasks([]); setQueue([]); setLoading(false); return; }
+    const [{ data: all }, members, { data: q }] = await Promise.all([
+      supabase.from('tasks').select('*').eq('team_id', activeTeamId).order('date_received', { ascending: false }),
+      fetchTeamMembers(activeTeamId),
+      supabase.from('queue').select('id, task_id, position').eq('team_id', activeTeamId).order('position'),
+    ]);
+    if (isStale()) return;
+    setTasks(all || []);
+    setQueue(q || []);
+    setUsers(members || []);
+    setLoading(false);
+    try {
+      // Only the active tasks + this month's completions — enough to paint instantly next time.
+      const keep = (all || []).filter(t => t.status !== 'completed' || (t.date_completed && isSameMonth(new Date(t.date_completed), new Date())));
+      localStorage.setItem(CACHE, JSON.stringify({ team: activeTeamId, tasks: keep.slice(0, 400), queue: q || [] }));
+    } catch { /* quota */ }
+  });
+
+  useEffect(() => {
+    fetchData();
+    const channel = supabase.channel(`dashboard-${Math.random().toString(36).slice(2, 7)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, refresh)
+      .subscribe();
+    window.addEventListener(TASKS_CHANGED, refresh);
+    window.addEventListener(QUEUE_CHANGED, refresh);
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener(TASKS_CHANGED, refresh);
+      window.removeEventListener(QUEUE_CHANGED, refresh);
+    };
+  }, [activeTeamId, fetchData, refresh]);
+
+  const active = useMemo(() => tasks.filter(t => t.status !== 'completed'), [tasks]);
+  const completed = useMemo(() => tasks.filter(t => t.status === 'completed'), [tasks]);
+  const inProgress = useMemo(() => active.filter(t => t.status === 'in_progress'), [active]);
+  const byId = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks]);
+  const upNext = useMemo(() => queue
+    .map(q => ({ q, t: byId.get(q.task_id) }))
+    .filter(x => x.t && x.t.status !== 'completed' && x.t.status !== 'in_progress'), [queue, byId]);
+  const suggestions = useMemo(() => active
+    .filter(t => t.status !== 'in_progress' && t.status !== 'on_hold' && !queue.some(q => q.task_id === t.id))
+    .sort((a, b) => (ROI_RANK[a.roi] ?? 4) - (ROI_RANK[b.roi] ?? 4) || new Date(a.date_received) - new Date(b.date_received))
+    .slice(0, 3), [active, queue]);
+
+  const month = new Date();
+  const monthDone = completed.filter(t => t.date_completed && isSameMonth(new Date(t.date_completed), month));
+  const doneToday = completed.filter(t => t.date_completed && isToday(new Date(t.date_completed))).length;
+
+  const stats = [
+    { key: 'critical', label: 'Critical', n: active.filter(t => t.status === 'critical' || t.roi === 'critical').length },
+    { key: 'open', label: 'Open', n: active.filter(t => t.status === 'open').length },
+    { key: 'in_progress', label: 'In progress', n: inProgress.length },
+    { key: 'on_hold', label: 'On hold', n: active.filter(t => t.status === 'on_hold').length },
+    { key: 'completed', label: 'Completed', n: completed.length, ok: true, to: '/completed' },
+    { key: 'today', label: 'Done today', n: doneToday, to: '/completed' },
+  ];
+
+  // ── Focus actions ──
+  const start = async (t) => {
+    setBusy(t.id);
+    const now = new Date().toISOString();
+    setTasks(list => list.map(x => (x.id === t.id ? { ...x, status: 'in_progress' } : x)));
+    await Promise.all([
+      supabase.from('tasks').update({ status: 'in_progress', updated_at: now }).eq('id', t.id),
+      supabase.from('queue').delete().eq('task_id', t.id),
+    ]);
+    setBusy(null);
+    toast('Started — it’s in your focus');
+    tasksChanged(); queueChanged();
+  };
+  const finish = async (t) => {
+    setBusy(t.id);
+    setTasks(list => list.map(x => (x.id === t.id ? { ...x, status: 'completed', date_completed: new Date().toISOString() } : x)));
+    await completeTask({ task: t, completedBy: [myName || 'Someone'], userId: user?.id, teamId: activeTeamId, wasQueued: true });
+    setBusy(null);
+    toast('Nice — task completed');
+  };
+  const pause = async (t) => {
+    setTasks(list => list.map(x => (x.id === t.id ? { ...x, status: 'open' } : x)));
+    await supabase.from('tasks').update({ status: 'open', updated_at: new Date().toISOString() }).eq('id', t.id);
+    tasksChanged();
+  };
+  const dequeue = async (q) => {
+    setQueue(list => list.filter(x => x.id !== q.id));
+    await supabase.from('queue').delete().eq('id', q.id);
+    queueChanged();
+  };
+  const enqueue = async (t) => {
+    const pos = (queue[queue.length - 1]?.position || 0) + 1;
+    setQueue(list => [...list, { id: `tmp-${t.id}`, task_id: t.id, position: pos }]);
+    await supabase.from('queue').insert({ task_id: t.id, team_id: activeTeamId, position: pos });
+    toast('Added to up next');
+    queueChanged();
+  };
+
+  // Drag to reorder "Up next".
+  const [dragId, setDragId] = useState(null);
+  const [drop, setDrop] = useState(null);
+  const reorder = async (fromId, toId, after) => {
+    const ids = upNext.map(x => x.q.id);
+    const from = ids.indexOf(fromId);
+    if (from < 0) return;
+    ids.splice(from, 1);
+    let to = ids.indexOf(toId);
+    if (to < 0) return;
+    if (after) to += 1;
+    ids.splice(to, 0, fromId);
+    const pos = new Map(ids.map((id, i) => [id, i + 1]));
+    setQueue(list => [...list].map(q => (pos.has(q.id) ? { ...q, position: pos.get(q.id) } : q)).sort((a, b) => a.position - b.position));
+    await Promise.all(ids.filter(id => !String(id).startsWith('tmp-')).map((id, i) => supabase.from('queue').update({ position: i + 1 }).eq('id', id)));
+    queueChanged();
+  };
+  const dragProps = (q) => ({
+    isDragging: dragId === q.id,
+    dropClass: drop?.id === q.id ? (drop.after ? 'drop-after' : 'drop-before') : '',
+    onDragStart: (e) => { setDragId(q.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', q.id); },
+    onDragOver: (e) => {
+      if (!dragId || dragId === q.id) return;
+      e.preventDefault();
+      const r = e.currentTarget.getBoundingClientRect();
+      setDrop({ id: q.id, after: e.clientY > r.top + r.height / 2 });
+    },
+    onDrop: (e) => { e.preventDefault(); if (dragId && drop) reorder(dragId, drop.id, drop.after); setDragId(null); setDrop(null); },
+    onDragEnd: () => { setDragId(null); setDrop(null); },
+  });
+
+  // ── All active tasks ──
+  const shown = useMemo(() => {
+    let list = active;
+    if (statFilter === 'critical') list = list.filter(t => t.status === 'critical' || t.roi === 'critical');
+    else if (statFilter) list = list.filter(t => t.status === statFilter);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(t => [taskTitle(t), t.page, t.noticed_by, t.feedback].some(v => (v || '').toLowerCase().includes(q)));
+    }
+    return list;
+  }, [active, statFilter, search]);
+
+  const pickStat = (s) => {
+    if (s.to) { navigate(s.to); return; }
+    setStatFilter(f => (f === s.key ? null : s.key));
+    setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30);
+  };
+  const setGroup = (g) => { setGroupBy(g); try { localStorage.setItem('tf-dash-group', g); } catch { /* ignore */ } };
+
+  const hasFocus = inProgress.length > 0 || upNext.length > 0;
+
+  return (
+    <div className="db">
+      <TopBarPortal>
+        <button type="button" className="btn btn-primary" onClick={() => openNewTask()}>
+          <Icon name="plus" size={15} stroke={2.2} /><span className="hide-phone">New task</span><span className="show-phone">New</span>
+        </button>
+      </TopBarPortal>
+
+      <div className="db-top">
+        <section className="db-focus anim-rise">
+          <div className="eyebrow">Current focus</div>
+          {!hasFocus ? (
+            <>
+              <h1 className="db-headline">Nothing in focus yet.</h1>
+              <p className="db-lede">
+                {suggestions.length ? 'Pick one of these to start. High priority and oldest first.' : 'You’re all caught up. Add a task to get going.'}
+              </p>
+              {suggestions.length > 0 && (
+                <div className="db-flist stagger">
+                  {suggestions.map(t => (
+                    <FocusRow
+                      key={t.id} t={t}
+                      actions={<>
+                        <button type="button" className="btn btn-ghost btn-sm db-qbtn hide-phone" onClick={() => enqueue(t)} title="Add to up next">
+                          <Icon name="queue" size={14} />
+                        </button>
+                        <button type="button" className="btn" onClick={() => start(t)} disabled={busy === t.id}>Start</button>
+                      </>}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {inProgress.length > 0 ? (
+                <div className="db-now stagger">
+                  {inProgress.map(t => (
+                    <div key={t.id} className="db-now-item">
+                      <span className="db-now-label"><span className="dot dot-in_progress dot-pulse" style={{ color: 'var(--st-inprogress)' }} />In progress</span>
+                      <button type="button" className="db-headline db-headline-btn" onClick={() => openTask(t)}>{taskTitle(t)}</button>
+                      <div className="db-now-foot">
+                        <TaskMeta t={t} />
+                        <div className="db-now-actions">
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => pause(t)}>Pause</button>
+                          <button type="button" className="btn btn-primary btn-sm" onClick={() => finish(t)} disabled={busy === t.id}>
+                            <Icon name="check" size={13} stroke={2.4} />Done
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <h1 className="db-headline">Ready for the next one.</h1>
+                  <p className="db-lede">Start whatever’s at the top of your queue.</p>
+                </>
+              )}
+              {upNext.length > 0 && (
+                <>
+                  <div className="db-sub-head"><span className="eyebrow">Up next</span><span className="count">{upNext.length}</span></div>
+                  <div className="db-flist stagger">
+                    {upNext.map(({ q, t }, i) => (
+                      <FocusRow
+                        key={q.id} t={t} index={i + 1} drag={dragProps(q)}
+                        actions={<>
+                          <button type="button" className="btn btn-ghost btn-sm btn-icon db-x" onClick={() => dequeue(q)} title="Remove from queue" aria-label="Remove from queue">
+                            <Icon name="x" size={13} />
+                          </button>
+                          <button type="button" className="btn" onClick={() => start(t)} disabled={busy === t.id}>Start</button>
+                        </>}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </section>
+
+        <section className="db-month anim-rise" style={{ animationDelay: '60ms' }}>
+          <div className="eyebrow">Completed in {format(month, 'MMMM')}</div>
+          <div className="db-month-row">
+            <span key={monthDone.length} className="db-big num">{monthDone.length}</span>
+            <span className="db-alltime">{completed.length} all-time</span>
+          </div>
+          <MonthChart completed={monthDone} month={month} />
+          <div className="db-stats">
+            {stats.map((s, i) => (
+              <button
+                key={s.key} type="button"
+                className={`db-stat stat stat-btn ${statFilter === s.key ? 'is-on' : ''}`}
+                onClick={() => pickStat(s)}
+                style={{ animationDelay: `${120 + i * 30}ms` }}
+              >
+                <span key={s.n} className={`stat-num ${s.ok ? 't-ok' : ''}`}>{loading ? '–' : s.n}</span>
+                <span className="stat-label">{s.label}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <section className="db-all" ref={tableRef}>
+        <div className="db-all-head">
+          <h2 className="section-title">
+            {statFilter ? `${stats.find(s => s.key === statFilter)?.label} tasks` : 'All active tasks'}
+            {statFilter && (
+              <button type="button" className="db-clear" onClick={() => setStatFilter(null)}>
+                <Icon name="x" size={12} />Clear
+              </button>
+            )}
+          </h2>
+          <div className="toolbar">
+            <SearchInput value={search} onChange={setSearch} placeholder="Search tasks" />
+            <button ref={groupMenu.anchorRef} type="button" className="btn" onClick={groupMenu.toggle}>
+              Group: {GROUPS.find(g => g.value === groupBy)?.label}
+            </button>
+            <Menu {...groupMenu.props} align="end" width={180}>
+              {GROUPS.map(g => <MenuItem key={g.value} checked={groupBy === g.value} onClick={() => setGroup(g.value)}>{g.label}</MenuItem>)}
+            </Menu>
+          </div>
+        </div>
+        <TaskTable
+          tasks={shown}
+          users={users}
+          groupBy={groupBy}
+          loading={loading && !tasks.length}
+          columns={['task', 'page', 'priority', 'noticed', 'posted']}
+          empty={search ? 'No tasks match that search.' : 'No active tasks. Enjoy it.'}
+        />
+      </section>
+    </div>
+  );
 }

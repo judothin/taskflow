@@ -1,244 +1,290 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatDistanceToNow, format } from 'date-fns';
 import { useNotifications, NOTIF_TYPES } from '../context/NotificationContext';
-import { supabase } from '../lib/supabase';
-import Avatar from './Avatar';
-import ModalPortal from './ModalPortal';
+import { openTask } from '../lib/events';
+import { taskPreview, pageLabel, htmlToText } from '../lib/taskText';
+import {
+  Sheet, Icon, Avatar, Tabs, Segmented, Empty, SheetLabel, useEscapeStack,
+  shortDate, longDate, STATUS_LABEL, cap,
+} from '../ui';
 import './NotificationCenter.css';
 
-const BellIcon = (props) => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-    <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" />
-  </svg>
-);
+// ══════════════════════════════════════════════════════════════
+// Notifications — a right-hand panel opened from the top-bar bell (or the
+// phone "More" sheet). Layout mounts it only while open.
+//   list     → Unread / All, Mark all read
+//   detail   → one notification, with a jump to the thing it's about
+//   settings → which kinds, whose completions, which review posts
+// Esc steps back from a sub-view; ✕ closes the panel.
+// ══════════════════════════════════════════════════════════════
 
-const GearIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-  </svg>
-);
+const REVIEW_VERB = {
+  submitted: 'posted for review',
+  resubmitted: 'resubmitted',
+  approved: 'approved',
+  needs_work: 'asked for changes on',
+  went_live: 'marked live',
+};
 
-export default function NotificationCenter() {
-  const { notifications, unreadCount, markRead, markAllRead, senderMeta } = useNotifications();
-  const [detail, setDetail]     = useState(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [tab, setTab] = useState('unread'); // 'unread' (main) | 'all'
+// What the actor did, in a few words: "Morgan completed …".
+function verbFor(n) {
+  const d = n.data || {};
+  switch (n.type) {
+    case 'task_created': return 'added';
+    case 'task_completed': return 'completed';
+    case 'submission': return 'submitted';
+    case 'file_added': return 'New file';
+    case 'review_comment': return 'commented on';
+    case 'review_request':
+    case 'review_decision': return REVIEW_VERB[d.event?.kind] || 'updated';
+    default: return '';
+  }
+}
 
-  const open = (n) => { markRead(n.id); setDetail(n); };
+// "now", "4m", "3h", "2d", then a short date.
+function rel(iso) {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return 'now';
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  if (s < 7 * 86400) return `${Math.floor(s / 86400)}d`;
+  return shortDate(iso);
+}
 
+export default function NotificationCenter({ onClose }) {
+  const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
+  const [tab, setTab] = useState(unreadCount > 0 ? 'unread' : 'all');
+  const [view, setView] = useState({ name: 'list' }); // { name: 'list' | 'detail' | 'settings', notif? }
+  const back = () => setView({ name: 'list' });
+  // Esc in a sub-view goes back to the list rather than closing everything.
+  useEscapeStack(back, view.name !== 'list');
+
+  const open = (n) => { markRead(n.id); setView({ name: 'detail', notif: n }); };
   const shown = tab === 'unread' ? notifications.filter(n => !n.read) : notifications;
 
-  return (
-    <div className="widget nc">
-      <div className="widget-head">
-        <span className="widget-head-title">
-          <span className="nc-bell-wrap">
-            <BellIcon />
+  const eyebrow = (
+    <>
+      {view.name !== 'list' && (
+        <button type="button" className="nc-back" onClick={back} aria-label="Back to notifications">
+          <Icon name="chevronLeft" size={16} />
+        </button>
+      )}
+      Notifications
+      {view.name === 'settings' && <span className="t-4">· Settings</span>}
+      {view.name === 'detail' && <span className="t-4">· {NOTIF_TYPES[view.notif.type]?.label}</span>}
+      {view.name === 'list' && unreadCount > 0 && <span key={unreadCount} className="t-4 bump">· {unreadCount} unread</span>}
+    </>
+  );
+
+  let body;
+  let footer;
+  if (view.name === 'detail') {
+    const d = detailFor(view.notif);
+    body = <Detail notif={view.notif} rows={d.rows} />;
+    footer = (
+      <>
+        <span className="sheet-foot-note mono nc-foot-note">{longDate(view.notif.createdAt)}</span>
+        <span className="spacer" />
+        <button type="button" className="btn btn-ghost" onClick={back}>Back</button>
+        {d.action && <DetailAction action={d.action} onClose={onClose} />}
+      </>
+    );
+  } else if (view.name === 'settings') {
+    body = <Settings />;
+    footer = (
+      <>
+        <span className="sheet-foot-note">Saved as you go, on every device.</span>
+        <span className="spacer" />
+        <button type="button" className="btn btn-primary" onClick={back}>Done</button>
+      </>
+    );
+  } else {
+    body = (
+      <>
+        <div className="nc-bar">
+          <Tabs
+            value={tab}
+            onChange={setTab}
+            className="nc-tabs"
+            items={[
+              { value: 'unread', label: 'Unread', count: unreadCount },
+              { value: 'all', label: 'All', count: notifications.length },
+            ]}
+          />
+          <div className="nc-bar-actions">
             {unreadCount > 0 && (
-              <span className="nc-badge" aria-label={`${unreadCount} unread`}>
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </span>
-          Notifications
-        </span>
-        <div className="widget-head-actions">
-          {unreadCount > 0 && (
-            <button className="nc-action" onClick={markAllRead} title="Mark all as read">
-              Mark all read
-            </button>
-          )}
-          <button className="nc-icon-btn" onClick={() => setShowSettings(true)} title="Notification settings" aria-label="Notification settings">
-            <GearIcon />
-          </button>
-        </div>
-      </div>
-
-      <div className="nc-tabs">
-        <button
-          className={`nc-tab ${tab === 'unread' ? 'nc-tab-active' : ''}`}
-          onClick={() => setTab('unread')}
-        >
-          Unread
-          {unreadCount > 0 && <span className="nc-tab-count">{unreadCount}</span>}
-        </button>
-        <button
-          className={`nc-tab ${tab === 'all' ? 'nc-tab-active' : ''}`}
-          onClick={() => setTab('all')}
-        >
-          All
-          {notifications.length > 0 && <span className="nc-tab-count nc-tab-count-muted">{notifications.length}</span>}
-        </button>
-      </div>
-
-      <div className="nc-list">
-        {shown.length === 0 ? (
-          <div className="nc-empty">
-            <BellIcon width="22" height="22" />
-            <span>{tab === 'unread' ? "You're all caught up." : 'No notifications yet.'}</span>
-          </div>
-        ) : (
-          shown.map(n => {
-            const meta = NOTIF_TYPES[n.type] || {};
-            const sender = n.from ? senderMeta(n.from) : null;
-            return (
-              <button
-                key={n.id}
-                className={`nc-item ${n.read ? 'nc-item-read' : ''}`}
-                style={{ '--nc-color': meta.color }}
-                onClick={() => open(n)}
-              >
-                <span className="nc-dot" />
-                <span className="nc-item-body">
-                  <span className="nc-item-top">
-                    <span className="nc-item-title">{n.title}</span>
-                    <span className="nc-item-time">{timeAgo(n.createdAt)}</span>
-                  </span>
-                  <span className="nc-item-sub">
-                    <span className="nc-tag" style={{ color: meta.color, borderColor: meta.color }}>{meta.label}</span>
-                    {n.subtitle}
-                  </span>
-                  {n.from && (
-                    <span className="nc-item-from" title={n.from}>
-                      <Avatar
-                        src={sender?.avatar_url}
-                        color={sender?.color || meta.color || '#6366f1'}
-                        initials={initialOf(n.from)}
-                        size={18}
-                      />
-                      <span className="nc-item-from-name">{n.from}</span>
-                    </span>
-                  )}
-                </span>
-                {!n.read && <span className="nc-unread-pip" />}
+              <button type="button" className="btn btn-ghost btn-sm nc-markall" onClick={markAllRead}>
+                <Icon name="check" size={13} />Mark all read
               </button>
-            );
-          })
+            )}
+            <button type="button" className="btn btn-ghost btn-sm btn-icon nc-gear" onClick={() => setView({ name: 'settings' })}
+              aria-label="Notification settings" title="Notification settings">
+              <Icon name="settings" size={15} />
+            </button>
+          </div>
+        </div>
+        {shown.length === 0 ? (
+          <Empty icon="bell" title={tab === 'unread' ? "You're all caught up" : 'No notifications yet'}>
+            {tab === 'unread' ? 'New activity on your team shows up here.' : 'Activity from the last 30 days shows up here.'}
+          </Empty>
+        ) : (
+          <ul key={tab} className="nc-list stagger">
+            {shown.map(n => <Row key={n.id} n={n} onOpen={open} />)}
+          </ul>
         )}
-      </div>
+      </>
+    );
+    footer = (
+      <>
+        <span className="sheet-foot-note">Last 30 days</span>
+        <span className="spacer" />
+        <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
+      </>
+    );
+  }
 
-      {detail && <NotificationDetail notif={detail} onClose={() => setDetail(null)} />}
-      {showSettings && <NotificationSettings onClose={() => setShowSettings(false)} />}
-    </div>
+  return (
+    <Sheet
+      eyebrow={eyebrow}
+      onClose={onClose}
+      footer={footer}
+      className="nc-sheet"
+      mainClassName="nc-main"
+    >
+      <div key={view.name} className={`nc-view nc-view-${view.name}`}>{body}</div>
+    </Sheet>
   );
 }
 
-function timeAgo(iso) {
-  try { return formatDistanceToNow(new Date(iso), { addSuffix: true }).replace('about ', ''); }
-  catch { return ''; }
+function Row({ n, onOpen }) {
+  const { senderMeta } = useNotifications();
+  const meta = NOTIF_TYPES[n.type] || {};
+  const sender = n.from ? senderMeta(n.from) : null;
+  const verb = verbFor(n);
+  return (
+    <li>
+      <button type="button" className={`nc-row ${n.read ? '' : 'is-unread'}`} onClick={() => onOpen(n)}>
+        <span className="nc-avatar">
+          {n.from
+            ? <Avatar src={sender?.avatar_url} name={n.from} size={32} />
+            : <span className="nc-type-icon"><Icon name={meta.icon || 'bell'} size={15} /></span>}
+          {n.from && (
+            <span className={`nc-badge nc-badge-${meta.tone || 'open'}`} aria-hidden="true">
+              <Icon name={meta.icon || 'bell'} size={9} stroke={2.6} />
+            </span>
+          )}
+        </span>
+        <span className="nc-row-body">
+          <span className="nc-row-text">
+            {n.from && <b>{n.from}</b>} {verb} <span className="nc-obj">{n.title}</span>
+          </span>
+          <span className="nc-row-meta">
+            <span className="mono">{rel(n.createdAt)}</span>
+            <span className="nc-sep">·</span>
+            {meta.label}
+          </span>
+        </span>
+        {!n.read && <span className="nc-unread" aria-label="Unread" />}
+      </button>
+    </li>
+  );
 }
 
-// ── Detail popup ────────────────────────────────────────────
-function NotificationDetail({ notif, onClose }) {
-  const navigate = useNavigate();
-  const meta = NOTIF_TYPES[notif.type] || {};
+// ── Detail ──────────────────────────────────────────────────
+function detailFor(notif) {
   const d = notif.data || {};
-
-  // Resolve the task's project name (stored as an id on the task row). 'N/A'
-  // when the task isn't in a project.
-  const taskProjectId = d.kind === 'task' ? d.task?.project_id : null;
-  const [projectName, setProjectName] = useState(null);
-  useEffect(() => {
-    if (!taskProjectId) { setProjectName('N/A'); return; }
-    let live = true;
-    supabase.from('projects').select('title').eq('id', taskProjectId).maybeSingle()
-      .then(({ data }) => { if (live) setProjectName(data?.title || 'N/A'); });
-    return () => { live = false; };
-  }, [taskProjectId]);
-
   let rows = [];
   let action = null;
   if (d.kind === 'task') {
-    const t = d.task;
+    const t = d.task || {};
     rows = [
-      ['Page', t.page || '—'],
-      ['Project', projectName ?? '…'],
-      ['Status', (t.status || '').replace('_', ' ')],
-      ['ROI', t.roi || '—'],
+      ['Page', pageLabel(t.page) || '—', 'mono'],
+      ['Status', t.status ? <><span className={`dot dot-${t.status}`} />{STATUS_LABEL[t.status] || cap(t.status)}</> : '—'],
+      ['ROI', cap(t.roi) || '—', ['high', 'critical'].includes(t.roi) ? 'prio-high' : ''],
       ['Noticed by', t.noticed_by || '—'],
       notif.type === 'task_completed' && ['Completed by', t.completed_by || '—'],
-      notif.type === 'task_completed' && t.date_completed && ['Completed', fmt(t.date_completed)],
-      ['Feedback', stripHtml(t.feedback) || '—'],
+      notif.type === 'task_completed' && t.date_completed && ['Completed', longDate(t.date_completed), 'mono'],
+      ['Description', taskPreview(t, 600) || '—', 'nc-prose'],
     ].filter(Boolean);
-    action = { label: 'Open task', go: () => navigate(`/tasks/${t.id}`) };
-  } else if (d.kind === 'comment') {
-    rows = [
-      ['Project', d.projectTitle || '—'],
-      ['From', notif.from || '—'],
-      ['Comment', stripHtml(d.comment?.content) || '(image / attachment)'],
-      ['Posted', fmt(notif.createdAt)],
-    ];
-    if (d.projectId) action = { label: 'Open project', go: () => navigate(`/projects/${d.projectId}`) };
+    if (t.id) action = { label: 'Open task', task: t.id };
   } else if (d.kind === 'submission') {
-    const s = d.submission;
+    const s = d.submission || {};
     rows = [
-      ['Page', s.page || '—'],
+      ['Page', pageLabel(s.page) || '—', 'mono'],
       ['Noticed by', s.noticed_by || '—'],
-      ['Details', stripHtml(s.feedback) || '—'],
-      ['Submitted', fmt(notif.createdAt)],
+      ['Details', htmlToText(s.feedback) || '—', 'nc-prose'],
     ];
-    action = { label: 'Review submissions', go: () => navigate('/submissions') };
+    action = { label: 'Review submissions', to: '/submissions' };
   } else if (d.kind === 'review') {
     rows = [
       ['Post', d.postTitle || notif.title],
       ['What', notif.subtitle],
-      d.event?.note && ['Note', d.event.note],
-      d.comment && ['Comment', d.comment.content],
+      d.event?.note && ['Note', d.event.note, 'nc-prose'],
+      d.comment && ['Comment', htmlToText(d.comment.content) || '(attachment)', 'nc-prose'],
       ['From', notif.from || '—'],
-      ['When', fmt(notif.createdAt)],
     ].filter(Boolean);
-    action = { label: 'Open review', go: () => navigate(`/review?post=${d.postId}`) };
+    action = { label: 'Open review', to: `/review?post=${d.postId}` };
   } else if (d.kind === 'file') {
     rows = [
-      ['File', d.file?.name || d.file?.title || '—'],
-      ['Added', fmt(notif.createdAt)],
-    ];
-    action = { label: 'Open Files', go: () => navigate('/files') };
+      ['File', d.file?.name || d.file?.title || '—', 'mono'],
+      d.file?.path && ['Path', d.file.path, 'mono'],
+      d.file?.section && ['Section', d.file.section],
+    ].filter(Boolean);
+    action = { label: 'Open Files', to: d.file?.id ? `/files?id=${d.file.id}` : '/files' };
   }
+  return { rows, action };
+}
 
+function Detail({ notif, rows }) {
+  const { senderMeta } = useNotifications();
+  const meta = NOTIF_TYPES[notif.type] || {};
+  const sender = notif.from ? senderMeta(notif.from) : null;
   return (
-    <ModalPortal>
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal nc-detail-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-            <span className="nc-detail-dot" style={{ background: meta.color }} />
-            <div style={{ minWidth: 0 }}>
-              <div className="nc-detail-type" style={{ color: meta.color }}>{meta.label}</div>
-              <div className="nc-detail-title">{notif.title}</div>
-            </div>
-          </div>
-          <button className="nc-icon-btn" onClick={onClose} aria-label="Close">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        <div className="modal-body">
-          <div className="nc-detail-rows">
-            {rows.map(([k, v]) => (
-              <div key={k} className="nc-detail-row">
-                <span className="nc-detail-key">{k}</span>
-                <span className="nc-detail-val">{v}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        {action && (
-          <div className="modal-footer">
-            <button className="btn btn-secondary" onClick={onClose}>Close</button>
-            <button className="btn btn-primary" onClick={() => { onClose(); action.go(); }}>{action.label}</button>
+    <div className="nc-detail">
+      <div className="nc-detail-head">
+        <span className="nc-detail-kind"><span className={`dot dot-${meta.tone || 'open'}`} />{meta.label}</span>
+        <h2 className="nc-detail-title">{notif.title}</h2>
+        {notif.from && (
+          <div className="nc-detail-from">
+            <Avatar src={sender?.avatar_url} name={notif.from} size={22} />
+            <span><b>{notif.from}</b> {verbFor(notif)}</span>
+            <span className="mono t-3">· {rel(notif.createdAt)}</span>
           </div>
         )}
       </div>
+      <div className="meta nc-meta stagger">
+        {rows.map(([k, v, cls]) => (
+          <React.Fragment key={k}>
+            <span className="meta-k">{k}</span>
+            <span className={`meta-v ${cls || ''} ${v === '—' ? 'is-empty' : ''}`}>{v}</span>
+          </React.Fragment>
+        ))}
+      </div>
     </div>
-    </ModalPortal>
   );
 }
 
-// ── Settings modal ──────────────────────────────────────────
-function NotificationSettings({ onClose }) {
+function DetailAction({ action, onClose }) {
+  const navigate = useNavigate();
+  const go = () => {
+    onClose();
+    if (action.task) openTask(action.task);
+    else navigate(action.to);
+  };
+  return (
+    <button type="button" className="btn btn-primary" onClick={go} autoFocus>
+      {action.label}<Icon name="arrowRight" size={14} />
+    </button>
+  );
+}
+
+// ── Settings ────────────────────────────────────────────────
+function Settings() {
   const { settings, updateSettings, people } = useNotifications();
+  const [peopleOpen, setPeopleOpen] = useState(settings.completedScope === 'selected');
+  useEffect(() => { setPeopleOpen(settings.completedScope === 'selected'); }, [settings.completedScope]);
 
   const toggleType = (key) =>
     updateSettings(prev => ({ ...prev, types: { ...prev.types, [key]: !prev.types[key] } }));
@@ -246,130 +292,80 @@ function NotificationSettings({ onClose }) {
   const togglePerson = (name) =>
     updateSettings(prev => {
       const has = prev.completedPeople.includes(name);
-      return {
-        ...prev,
-        completedPeople: has ? prev.completedPeople.filter(n => n !== name) : [...prev.completedPeople, name],
-      };
+      return { ...prev, completedPeople: has ? prev.completedPeople.filter(x => x !== name) : [...prev.completedPeople, name] };
     });
 
-  return (
-    <ModalPortal>
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal nc-settings-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Notification settings</h2>
-          <button className="nc-icon-btn" onClick={onClose} aria-label="Close">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        <div className="modal-body">
-          <p className="label" style={{ marginBottom: 10 }}>Notify me about</p>
-          <div className="nc-set-list">
-            {Object.entries(NOTIF_TYPES).map(([key, meta]) => (
-              <label key={key} className="nc-set-row">
-                <span className="nc-set-label">
-                  <span className="nc-dot" style={{ '--nc-color': meta.color }} />
-                  {meta.label}
-                </span>
-                <Toggle on={!!settings.types[key]} onClick={() => toggleType(key)} />
-              </label>
-            ))}
-          </div>
+  const reviewOn = settings.types.review_request || settings.types.review_decision || settings.types.review_comment;
 
-          <p className="label" style={{ margin: '20px 0 10px' }}>Your own activity</p>
-          <div className="nc-set-list">
-            <label className="nc-set-row">
-              <span className="nc-set-label nc-set-label-stack">
-                <span>Things I do</span>
-                <span className="nc-set-hint">Tasks you create or complete, comments you post</span>
-              </span>
-              <Toggle
-                on={!!settings.includeSelf}
-                onClick={() => updateSettings(prev => ({ ...prev, includeSelf: !prev.includeSelf }))}
-              />
+  return (
+    <div className="nc-settings">
+      <section className="nc-set-section">
+        <SheetLabel>Notify me about</SheetLabel>
+        <div className="nc-set-list">
+          {Object.entries(NOTIF_TYPES).map(([key, meta]) => (
+            <label key={key} className="nc-set-row">
+              <span className="nc-set-icon"><Icon name={meta.icon} size={14} /></span>
+              <span className="nc-set-label">{meta.label}</span>
+              <input type="checkbox" className="switch" checked={!!settings.types[key]} onChange={() => toggleType(key)} />
             </label>
-          </div>
-
-          {(settings.types.review_request || settings.types.review_decision || settings.types.review_comment) && (
-            <>
-              <p className="label" style={{ margin: '20px 0 10px' }}>Ready for Review — which posts?</p>
-              <div className="nc-scope-row">
-                <button
-                  className={`nc-scope-btn ${settings.reviewScope !== 'all' ? 'nc-scope-active' : ''}`}
-                  onClick={() => updateSettings({ reviewScope: 'involved' })}
-                >Ones I'm on</button>
-                <button
-                  className={`nc-scope-btn ${settings.reviewScope === 'all' ? 'nc-scope-active' : ''}`}
-                  onClick={() => updateSettings({ reviewScope: 'all' })}
-                >Every post</button>
-              </div>
-              <p className="nc-set-hint" style={{ marginTop: 8 }}>
-                "Ones I'm on" means posts you wrote or were picked to review.
-              </p>
-            </>
-          )}
-
-          {settings.types.task_completed && (
-            <>
-              <p className="label" style={{ margin: '20px 0 10px' }}>Completed tasks — whose?</p>
-              <div className="nc-scope-row">
-                <button
-                  className={`nc-scope-btn ${settings.completedScope === 'all' ? 'nc-scope-active' : ''}`}
-                  onClick={() => updateSettings({ completedScope: 'all' })}
-                >Everyone</button>
-                <button
-                  className={`nc-scope-btn ${settings.completedScope === 'selected' ? 'nc-scope-active' : ''}`}
-                  onClick={() => updateSettings({ completedScope: 'selected' })}
-                >Specific people</button>
-              </div>
-              {settings.completedScope === 'selected' && (
-                <div className="nc-people">
-                  {people.length === 0 && <p className="nc-people-empty">No teammates found.</p>}
-                  {people.map(name => {
-                    const on = settings.completedPeople.includes(name);
-                    return (
-                      <button key={name} className={`nc-person ${on ? 'nc-person-on' : ''}`} onClick={() => togglePerson(name)}>
-                        {on && (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        )}
-                        {name}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
+          ))}
         </div>
-        <div className="modal-footer">
-          <button className="btn btn-primary" onClick={onClose}>Done</button>
+      </section>
+
+      <section className="nc-set-section">
+        <SheetLabel>Your own activity</SheetLabel>
+        <div className="nc-set-list">
+          <label className="nc-set-row">
+            <span className="nc-set-icon"><Icon name="user" size={14} /></span>
+            <span className="nc-set-label">
+              Things I do
+              <span className="nc-set-hint">Tasks you add or complete, review posts and comments</span>
+            </span>
+            <input
+              type="checkbox" className="switch" checked={!!settings.includeSelf}
+              onChange={() => updateSettings(prev => ({ ...prev, includeSelf: !prev.includeSelf }))}
+            />
+          </label>
         </div>
-      </div>
+      </section>
+
+      {reviewOn && (
+        <section className="nc-set-section anim-rise">
+          <SheetLabel sub="“Ones I'm on” means posts you wrote or were picked to review.">Ready for review — which posts?</SheetLabel>
+          <Segmented
+            value={settings.reviewScope === 'all' ? 'all' : 'involved'}
+            onChange={(v) => updateSettings({ reviewScope: v })}
+            options={[{ value: 'involved', label: "Ones I'm on" }, { value: 'all', label: 'Every post' }]}
+          />
+        </section>
+      )}
+
+      {settings.types.task_completed && (
+        <section className="nc-set-section anim-rise">
+          <SheetLabel>Completed tasks — whose?</SheetLabel>
+          <Segmented
+            value={settings.completedScope === 'selected' ? 'selected' : 'all'}
+            onChange={(v) => updateSettings({ completedScope: v })}
+            options={[{ value: 'all', label: 'Everyone' }, { value: 'selected', label: 'Specific people' }]}
+          />
+          {peopleOpen && (
+            <div className="chip-row nc-people stagger">
+              {people.length === 0 && <span className="t-3 nc-set-hint">No teammates found.</span>}
+              {people.map(name => {
+                const on = settings.completedPeople.includes(name);
+                return (
+                  <button key={name} type="button" className={`chip-toggle ${on ? 'is-on' : ''}`} onClick={() => togglePerson(name)} aria-pressed={on}>
+                    {on && <Icon name="check" size={13} stroke={2.6} />}{name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {peopleOpen && settings.completedPeople.length === 0 && people.length > 0 && (
+            <p className="nc-set-hint nc-warn">Pick at least one person, or you won't hear about any completions.</p>
+          )}
+        </section>
+      )}
     </div>
-    </ModalPortal>
   );
-}
-
-function Toggle({ on, onClick }) {
-  return (
-    <button className={`nc-toggle ${on ? 'nc-toggle-on' : ''}`} onClick={onClick} role="switch" aria-checked={on}>
-      <span className="nc-toggle-thumb" />
-    </button>
-  );
-}
-
-function initialOf(name) {
-  const s = (name || '').trim();
-  return s ? s[0].toUpperCase() : '?';
-}
-
-function stripHtml(s) {
-  if (!s) return '';
-  const tmp = document.createElement('div');
-  tmp.innerHTML = s;
-  return (tmp.textContent || tmp.innerText || '').trim();
-}
-
-function fmt(iso) {
-  try { return format(new Date(iso), 'MMM d, yyyy · h:mm a'); } catch { return ''; }
 }

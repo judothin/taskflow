@@ -1,0 +1,63 @@
+/* ── Colour swatches (Settings › Profile / Appearance, Register) ── */
+
+.sw-row { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+
+.sw {
+  --sw: var(--text-4);
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--sw);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 8%, transparent);
+  animation: tf-pop 0.42s var(--ease-spring) both;
+  animation-delay: calc(var(--i, 0) * 22ms);
+  transition: transform 0.3s var(--ease-spring), box-shadow 0.3s var(--ease-spring);
+}
+.sw:hover { transform: scale(1.1); }
+.sw:active { transform: scale(0.9); transition-duration: 0.08s; }
+
+/* The ring: a gap in the page colour, then the swatch colour. */
+.sw.is-on {
+  box-shadow: 0 0 0 2.5px var(--bg), 0 0 0 4.5px var(--sw);
+  animation: sw-ring 0.46s var(--ease-spring);
+}
+@keyframes sw-ring {
+  0% { transform: scale(0.82); box-shadow: 0 0 0 0 var(--bg), 0 0 0 0 var(--sw); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); box-shadow: 0 0 0 2.5px var(--bg), 0 0 0 4.5px var(--sw); }
+}
+.sw-check { animation: tf-check 0.34s var(--ease-spring) both; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25)); }
+
+/* Default ("Ink") swatch — the theme's own primary colour. */
+.sw-ink { --sw: var(--ink); color: var(--ink-text); }
+
+/* Custom picker: dashed until it holds a colour. */
+.sw-custom {
+  background: var(--surface-solid);
+  color: var(--text-3);
+  box-shadow: inset 0 0 0 1.5px var(--border-strong);
+  border: 0;
+}
+.sw-custom:hover { color: var(--text); box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.sw-custom.is-on { background: var(--sw); color: #fff; box-shadow: 0 0 0 2.5px var(--bg), 0 0 0 4.5px var(--sw); }
+.sw-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+}
+
+@media (max-width: 768px) {
+  .sw-row { gap: 11px; }
+  .sw { width: 34px; height: 34px; }
+}
