@@ -46,7 +46,8 @@ function TypeBadge({ type }) {
 
 // ── Add / edit sheet ─────────────────────────────────────────────
 // pending images: [{ preview, file: File|null, url: string|null }]
-function FileSheet({ entry, sections, teamId, onClose, onSaved, onDelete }) {
+// Also used from Context, to add a file and link it in one go.
+export function FileSheet({ entry, sections, teamId, onClose, onSaved, onDelete }) {
   const editing = !!entry?.id;
   const [form, setForm] = useState(() => (entry ? {
     name: entry.name || '',

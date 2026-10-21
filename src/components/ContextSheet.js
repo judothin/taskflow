@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { searchRank } from '../lib/fuzzySearch';
 import { Sheet, SheetLabel, SearchInput, Icon, toast } from '../ui';
+import { FileSheet } from '../pages/Files';
 import './ContextSheet.css';
 
 // Fired after any context save/delete so an open Context page refreshes
@@ -60,6 +61,9 @@ function isMissingTagsColumn(err) {
  * `files` / `teamTags` are loaded here when the caller doesn't pass them.
  * `onView`, when given, adds a "View" action to the saved toast.
  */
+// Sections already in use, for the add-file sheet's chips.
+const sectionsOf = (files) => [...new Set(files.map(f => (f.section || '').trim()).filter(Boolean))].sort();
+
 export default function ContextSheet({ entry = null, files: filesProp, teamTags: tagsProp, onClose, onSaved, onView }) {
   const { user } = useAuth();
   const { activeTeamId } = useTeam();
@@ -75,6 +79,8 @@ export default function ContextSheet({ entry = null, files: filesProp, teamTags:
   const [shake, setShake] = useState(0);
 
   const [loadedFiles, setLoadedFiles] = useState(null);
+  const [addedFiles, setAddedFiles] = useState([]); // made with "New file" in this sheet
+  const [addingFile, setAddingFile] = useState(false);
   const [loadedTags, setLoadedTags] = useState(null);
   const [tagsSupported, setTagsSupported] = useState(true);
   const [created, setCreated] = useState([]); // tags made in this sheet
@@ -104,7 +110,11 @@ export default function ContextSheet({ entry = null, files: filesProp, teamTags:
     return () => { alive = false; };
   }, [activeTeamId, filesProp, tagsProp]);
 
-  const files = useMemo(() => filesProp || loadedFiles || [], [filesProp, loadedFiles]);
+  const files = useMemo(() => {
+    const base = filesProp || loadedFiles || [];
+    const have = new Set(base.map(f => f.id));
+    return [...base, ...addedFiles.filter(f => !have.has(f.id))];
+  }, [filesProp, loadedFiles, addedFiles]);
   const teamTags = useMemo(() => tagsProp || loadedTags || [], [tagsProp, loadedTags]);
   const filesLoading = !filesProp && loadedFiles === null;
 
@@ -134,6 +144,14 @@ export default function ContextSheet({ entry = null, files: filesProp, teamTags:
   }, [files, fileQuery]);
 
   const toggleFile = (id) => setFileIds(ids => (ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]));
+
+  // A file made from here is added to the team's Files and linked straight away.
+  const onFileAdded = (f) => {
+    if (!f?.id) return;
+    setAddedFiles(list => [...list.filter(x => x.id !== f.id), f]);
+    setFileIds(ids => (ids.includes(f.id) ? ids : [...ids, f.id]));
+    setFileQuery('');
+  };
 
   const hasTag = (t) => tags.some(x => tagKey(x) === tagKey(t));
   const toggleTag = (t) => setTags(list => (hasTag(t) ? list.filter(x => tagKey(x) !== tagKey(t)) : [...list, t]));
@@ -193,7 +211,12 @@ export default function ContextSheet({ entry = null, files: filesProp, teamTags:
   const aside = (
     <>
       <section className="cs-section">
-        <SheetLabel sub="Source files this is about">Files</SheetLabel>
+        <div className="cs-files-head">
+          <SheetLabel sub="Source files this is about">Files</SheetLabel>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAddingFile(true)} disabled={!activeTeamId}>
+            <Icon name="plus" size={13} />New file
+          </button>
+        </div>
         <SearchInput
           value={fileQuery}
           onChange={setFileQuery}
@@ -209,7 +232,7 @@ export default function ContextSheet({ entry = null, files: filesProp, teamTags:
               </div>
             ))
           ) : !files.length ? (
-            <p className="cs-none">Add files on the Files page to link them here.</p>
+            <p className="cs-none">No files on this team yet. <button type="button" className="btn-link" onClick={() => setAddingFile(true)}>Add one</button> and it’s linked here.</p>
           ) : !fileOptions.length ? (
             <p className="cs-none">No files match “{fileQuery}”.</p>
           ) : (
@@ -346,6 +369,15 @@ export default function ContextSheet({ entry = null, files: filesProp, teamTags:
         onChange={(e) => setDescription(e.target.value)}
       />
       {error && <p key={shake} className="notice notice-error wiggle cs-error"><Icon name="alert" size={15} />{error}</p>}
+      {addingFile && (
+        <FileSheet
+          entry={null}
+          sections={sectionsOf(files)}
+          teamId={activeTeamId}
+          onClose={() => setAddingFile(false)}
+          onSaved={onFileAdded}
+        />
+      )}
     </Sheet>
   );
 }

@@ -9,6 +9,7 @@ import {
   Icon, Sheet, ConfirmDialog, Empty, SearchInput, SkeletonRows, toast, shortDate,
 } from '../ui';
 import ContextSheet, { CONTEXT_CHANGED, Tag, tagsOf, tagKey, teamTagsFrom } from '../components/ContextSheet';
+import { FileSheet } from './Files';
 import './Context.css';
 
 // Team knowledge that isn't a task, a file or a project — "the captcha form is
@@ -46,7 +47,7 @@ function ContextRow({ entry, linkedCount, selected, onSelect }) {
   );
 }
 
-function ContextDetail({ entry, files, onOpenFile, actions }) {
+function ContextDetail({ entry, files, onOpenFile, onAddFile, actions }) {
   const tags = tagsOf(entry);
   const paragraphs = (entry.description || '').split(/\n+/).filter(s => s.trim());
   return (
@@ -74,7 +75,14 @@ function ContextDetail({ entry, files, onOpenFile, actions }) {
 
       <hr className="divider ctx-detail-divider" />
 
-      <span className="sheet-label">Linked files</span>
+      <div className="ctx-files-head">
+        <span className="sheet-label">Linked files</span>
+        {onAddFile && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onAddFile}>
+            <Icon name="plus" size={13} />Add file
+          </button>
+        )}
+      </div>
       {files.length ? (
         <div className="ctx-files stagger">
           {files.map(f => (
@@ -110,6 +118,7 @@ export default function Context() {
   const [phoneDetail, setPhoneDetail] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [addFileTo, setAddFileTo] = useState(null); // entry id the new file gets linked to
   const [settled, setSettled] = useState(false);
   const searchRef = useRef(null);
 
@@ -200,6 +209,25 @@ export default function Context() {
   const toggleTagFilter = (k) => setActiveTags(list => (list.includes(k) ? list.filter(x => x !== k) : [...list, k]));
 
   const openFile = (f) => navigate(`/files?id=${f.id}`);
+
+  // "Add file" on an entry: the file goes into Files and is linked to the
+  // entry. Read from a ref so "Save & add another" keeps adding to the
+  // latest list rather than one captured when the sheet opened.
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const linkNewFile = async (entryId, f) => {
+    if (!f?.id) return;
+    setFiles(list => (list.some(x => x.id === f.id) ? list : [...list, f].sort((a, b) => a.name.localeCompare(b.name))));
+    const entry = entriesRef.current.find(e => e.id === entryId);
+    if (!entry) return;
+    const ids = [...new Set([...(Array.isArray(entry.file_ids) ? entry.file_ids : []), f.id])];
+    const next = entriesRef.current.map(e => (e.id === entryId ? { ...e, file_ids: ids } : e));
+    entriesRef.current = next;
+    setEntries(next);
+    const { error } = await supabase.from('context_entries').update({ file_ids: ids }).eq('id', entryId);
+    if (error) { toast(`Added the file, but couldn’t link it: ${error.message}`, { icon: 'alert' }); load(); }
+  };
+  const fileSections = useMemo(() => [...new Set(files.map(f => (f.section || '').trim()).filter(Boolean))].sort(), [files]);
 
   const remove = async () => {
     const entry = confirmDelete;
@@ -352,6 +380,7 @@ export default function Context() {
               entry={selected}
               files={linkedFiles(selected)}
               onOpenFile={openFile}
+              onAddFile={() => setAddFileTo(selected.id)}
               actions={detailActions}
             />
           ) : (
@@ -377,7 +406,7 @@ export default function Context() {
             </>
           )}
         >
-          <ContextDetail entry={selected} files={linkedFiles(selected)} onOpenFile={openFile} />
+          <ContextDetail entry={selected} files={linkedFiles(selected)} onOpenFile={openFile} onAddFile={() => setAddFileTo(selected.id)} />
         </Sheet>
       )}
 
@@ -389,6 +418,16 @@ export default function Context() {
           teamTags={teamTags}
           onClose={() => setSheet(null)}
           onSaved={(row) => { if (row?.id) setSelectedId(row.id); }}
+        />
+      )}
+
+      {addFileTo && (
+        <FileSheet
+          entry={null}
+          sections={fileSections}
+          teamId={activeTeamId}
+          onClose={() => setAddFileTo(null)}
+          onSaved={(f) => linkNewFile(addFileTo, f)}
         />
       )}
 

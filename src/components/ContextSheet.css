@@ -105,3 +105,8 @@
   .cs-newtag-row { flex-wrap: wrap; }
   .cs-newtag-preview { max-width: 100%; }
 }
+
+/* Files label with the "New file" button beside it */
+.cs-files-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.cs-files-head .btn { margin-top: -4px; flex-shrink: 0; }
+.cs-none .btn-link { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }

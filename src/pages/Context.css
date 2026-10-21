@@ -199,3 +199,8 @@
   .ctx-file-go { display: none; }
   .ctx-noteam { padding: 40px var(--page-pad); }
 }
+
+/* "Linked files" label with the "Add file" button beside it */
+.ctx-files-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ctx-files-head .sheet-label { margin-bottom: 0; }
+.ctx-files-head + .ctx-files, .ctx-files-head + .ctx-files-none { margin-top: 10px; }
