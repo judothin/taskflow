@@ -285,8 +285,18 @@
   border-top: 1px solid var(--border);
   animation: tf-rise 0.42s var(--ease-out) 0.12s both;
 }
-.ns-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.ns-area-all { display: flex; gap: 8px; }
+.ns-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.ns-detail-grid > section { min-width: 0; }
+.ns-detail-grid input[type="date"] { width: 100%; min-width: 0; }
+.ns-area-all { display: flex; gap: 8px; min-width: 0; }
+.ns-area-all .input { flex: 1; min-width: 0; }
+
+/* Nothing in the review may be wider than the sheet. Date/time inputs and
+   flex children otherwise keep their intrinsic width and push the page
+   sideways on a phone. */
+.ns-review, .ns-lines, .ns-line, .ns-details, .ns-details > section { min-width: 0; max-width: 100%; }
+.ns-field { min-width: 0; max-width: 100%; }
+.ns-field input[type="time"] { min-width: 0; max-width: 100%; }
 .ns-person { padding-left: 4px; }
 .ns-person .avatar { box-shadow: 0 0 0 1.5px var(--surface-solid); }
 .ns-chip-skel { height: 32px; border-radius: var(--r-pill); }
@@ -303,7 +313,12 @@
   .ns-finder { aspect-ratio: 3 / 4; max-height: 46vh; cursor: default; }
   .ns-actions { gap: 18px; }
   .ns-actions .btn { --btn-h: 44px; }
-  .ns-detail-grid { grid-template-columns: 1fr; }
+  .ns-detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .ns-sheet .sheet-body { overflow-x: hidden; }
+  .ns-field-area { flex: 1 1 100%; min-width: 0; }
+  .ns-field-time { flex: 1 1 auto; }
+  .ns-field-time input { width: 100%; }
+  .ns-summary-text { flex-basis: calc(100% - 80px); }
   .ns-field { height: 36px; }
   .ns-field input { font-size: 16px; }
   .ns-field-time input { width: 96px; }

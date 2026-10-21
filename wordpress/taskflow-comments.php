@@ -1244,7 +1244,9 @@ class DevComments {
   transition:transform var(--dur-3) var(--ease-out),opacity var(--dur-2) ease;
   animation:dcEdgeInR .56s var(--ease-spring) .04s backwards}
 .presence.left{animation-name:dcEdgeInL;border-right:1px solid var(--border-strong);border-left:0;border-radius:0 var(--r-lg) var(--r-lg) 0}
-.presence.empty{opacity:0;pointer-events:none}
+/* empty (and before the first placement, so it never flashes in the corner at 0,0) */
+.presence.empty{opacity:0;visibility:hidden;pointer-events:none;
+  transition:transform var(--dur-3) var(--ease-out),opacity var(--dur-2) ease,visibility 0s var(--dur-2)}
 .presence .pav{position:relative;flex:none;width:var(--pa);height:var(--pa);border-radius:50%;
   display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:calc(var(--pa) * .36);font-weight:600;
   background:var(--avatar-bg);color:var(--avatar-text);background-size:cover;background-position:center;cursor:default;
@@ -2845,7 +2847,7 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-5.1-7-11a7 7 0 0 1 14 0c0 5.9-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
   <span class="pecount">0</span>
 </button>
-<div class="presence" aria-label="People on this page"></div>
+<div class="presence empty" aria-label="People on this page"></div>
 </div>
 <div class="panel" role="complementary" aria-label="TaskFlow">
   <i class="pshadow" aria-hidden="true"></i>
