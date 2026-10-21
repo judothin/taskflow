@@ -31,6 +31,8 @@ const NAV = [
   { to: '/tasks', label: 'Tasks', icon: 'tasks' },
   { to: '/completed', label: 'Completed', icon: 'done' },
   { to: '/review', label: 'Ready for review', icon: 'eye', badge: 'review' },
+  // Temporary: leftover Go Live items, until they've been cleared.
+  { to: '/go-live', label: 'Ready for live', icon: 'rocket' },
   { to: '/context', label: 'Context', icon: 'book' },
   { to: '/files', label: 'Files', icon: 'fileCode' },
   { to: '/submissions', label: 'Submissions', icon: 'inbox' },

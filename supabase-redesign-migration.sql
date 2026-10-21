@@ -9,12 +9,12 @@
 --   2. drops Projects                  (projects, project_* tables, tasks.project_id)
 --   3. drops streaks                   (team_streaks, streak RPCs, teams.weekend_streaks)
 --   4. clears saved dashboard / nav layouts
---   5. merges Go Live into Review      (review_posts.files, data copied over,
---                                       then golive_items / golive_hidden dropped)
+--   5. review_posts.files + review_create(p_files)  (Go Live's data is
+--                                       left alone — see section 5)
 --   6. context_entries.tags            (custom tags like "Dev only")
 --   7. submissions.title
 --
--- Sections 2, 3 and the end of 5 DELETE data for removed features. Take a
+-- Sections 2 and 3 DELETE data for removed features. Take a
 -- backup first if you might want it back.
 -- ============================================================
 
@@ -65,9 +65,8 @@ end $$;
 -- Go Live is folded into Ready for review:
 --   * review posts get a free-text `files` deploy note ("Files to push"),
 --   * review_create() takes an optional p_files,
---   * every golive_items row becomes a review post — pending → 'approved'
---     (it sits in "Ready for live"), live → 'live' (the "Live" tab),
---   * then golive_hidden and golive_items are dropped.
+--   * golive_items / golive_hidden are left untouched for now (their own
+--     page lists them until they've been cleared).
 -- ============================================================
 
 
@@ -189,113 +188,12 @@ end;
 $$;
 
 
--- ── 4. Move Go Live items into review posts ─────────────────
--- Runs only while golive_items still exists (dynamic SQL, so a re-run after
--- the drop below is a no-op). For each item not yet moved:
---   title       first non-empty line of the description (≤160 chars), else the page
---   url         the page when it looks like a link, else ''
---   description the full description, with the page kept on top when the
---               page wasn't a link (so nothing typed there is lost)
---   files       as-is
---   status      pending → 'approved' (Ready for live), live → 'live'
--- Positions continue after the team's existing posts, in Go Live order.
--- History gets a 'submitted' event (and 'went_live' for live ones) so the
--- activity timeline isn't empty.
-do $$
-declare
-  v_order text := 'g.created_at desc';
-begin
-  if to_regclass('public.golive_items') is null then
-    raise notice 'golive_items not found — nothing to migrate';
-    return;
-  end if;
-
-  -- Go Live's shared order, when that column was ever added.
-  if exists (select 1 from information_schema.columns
-             where table_schema = 'public' and table_name = 'golive_items' and column_name = 'position') then
-    v_order := 'g.position nulls last, g.created_at desc';
-  end if;
-
-  perform set_config('taskflow.review_rpc', 'on', true);
-
-  execute format($sql$
-    with src as (
-      select g.*,
-             nullif(trim(split_part(regexp_replace(coalesce(g.description, ''), '^\s+', ''), E'\n', 1)), '') as first_line,
-             (trim(g.page) ~* '^(https?://)?[\w-]+(\.[\w-]+)+(/\S*)?$') as page_is_link,
-             row_number() over (partition by g.team_id order by %s) as rn
-      from public.golive_items g
-      where not exists (select 1 from public.review_posts r where r.golive_id = g.id)
-    ),
-    base as (
-      select team_id, coalesce(max(position), 0) as maxpos
-      from public.review_posts group by team_id
-    ),
-    ins as (
-      insert into public.review_posts
-        (team_id, title, url, description, screenshots, files, status, round,
-         decided_at, went_live_at, created_by, created_at, updated_at, position, golive_id)
-      select s.team_id,
-             left(coalesce(s.first_line, nullif(trim(s.page), ''), 'Untitled'), 160),
-             case when s.page_is_link
-                  then case when trim(s.page) ~* '^https?://' then trim(s.page) else 'https://' || trim(s.page) end
-                  else '' end,
-             case when s.page_is_link or coalesce(trim(s.page), '') = '' then coalesce(s.description, '')
-                  else trim(s.page) || case when coalesce(trim(s.description), '') <> '' then E'\n\n' || s.description else '' end
-             end,
-             '{}',
-             coalesce(s.files, ''),
-             case when s.status = 'live' then 'live' else 'approved' end,
-             1,
-             s.created_at,
-             case when s.status = 'live' then coalesce(s.went_live_at, s.updated_at, now()) end,
-             s.created_by,
-             coalesce(s.created_at, now()),
-             coalesce(s.updated_at, s.created_at, now()),
-             coalesce(b.maxpos, 0) + s.rn,
-             s.id
-      from src s
-      left join base b on b.team_id = s.team_id
-      returning id, team_id, created_by, created_at, status, went_live_at
-    ),
-    ev_submit as (
-      insert into public.review_events (post_id, team_id, round, kind, actor, created_at)
-      select id, team_id, 1, 'submitted', created_by, created_at from ins
-      returning 1
-    )
-    insert into public.review_events (post_id, team_id, round, kind, actor, created_at)
-    select id, team_id, 1, 'went_live', created_by, went_live_at from ins where status = 'live'
-  $sql$, v_order);
-
-  perform set_config('taskflow.review_rpc', '', true);
-end $$;
-
--- Who marked a migrated item live wasn't recorded by Go Live; credit the
--- creator so the detail sheet has a name. Only touches migrated rows.
-select set_config('taskflow.review_rpc', 'on', false);
-update public.review_posts
-set went_live_by = created_by
-where golive_id is not null and status = 'live' and went_live_by is null and created_by is not null;
-select set_config('taskflow.review_rpc', '', false);
-
-
--- ── 5. Drop the Go Live tables ──────────────────────────────
--- Only once every item has a review post (the check makes a half-finished
--- run refuse to drop anything).
-do $$
-begin
-  if to_regclass('public.golive_items') is not null then
-    if exists (
-      select 1 from public.golive_items g
-      where not exists (select 1 from public.review_posts r where r.golive_id = g.id)
-    ) then
-      raise exception 'Some golive_items were not migrated — not dropping the Go Live tables';
-    end if;
-  end if;
-end $$;
-
-drop table if exists public.golive_hidden;
-drop table if exists public.golive_items;
+-- ── 4./5. Go Live data stays where it is ─────────────────────
+-- Go Live items are NOT copied into Review and the golive tables are NOT
+-- dropped: they're still shown on their own "Ready for live" page while the
+-- last of them get cleared out by hand. Once that list is empty, drop them:
+--   drop table if exists public.golive_hidden;
+--   drop table if exists public.golive_items;
 
 notify pgrst, 'reload schema';
 

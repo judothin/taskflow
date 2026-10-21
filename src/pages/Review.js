@@ -28,19 +28,20 @@ import './Review.css';
 // files that will have to be pushed with it, and picks who may sign it off.
 // Any one of those reviewers marks it "Reviewed — ready for live" or "Needs
 // work" (which has to say what). The author fixes it and resubmits, starting
-// the next round. Once it's reviewed, anyone involved marks it live and it
-// moves to the Live tab — what the separate Go Live page used to be.
+// the next round. Once it's reviewed it sits in the Ready for live tab.
+// (The Go Live list is its own page again, at /go-live.)
 //
 // The rules live in the database (supabase-review-migration.sql) — the
 // buttons here only mirror them.
 // ══════════════════════════════════════════════════════════════
 
+// "Ready for live" is review posts that were reviewed and approved. Posts
+// marked live drop out of the page.
 const TABS = [
   { id: 'mine',       label: 'Waiting on me' },
   { id: 'open',       label: 'Open' },
   { id: 'needs_work', label: 'Needs work' },
   { id: 'approved',   label: 'Ready for live' },
-  { id: 'live',       label: 'Live' },
   { id: 'all',        label: 'All' },
 ];
 

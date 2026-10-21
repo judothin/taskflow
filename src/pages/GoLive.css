@@ -1,0 +1,50 @@
+/* ── Ready for live (the Go Live list, being cleared out) ── Prefix: .gl- */
+
+.gl-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+  border-bottom: 1px solid var(--border);
+}
+.gl-bar .tabs { flex: 1; min-width: 0; border-bottom: 0; }
+.gl-bar .tabs-ink { bottom: 0; }
+.gl-search { width: 270px; flex-shrink: 0; margin-bottom: 8px; }
+
+.gl-table { margin-top: 14px; }
+.gl-chev { flex-shrink: 0; color: var(--text-3); transition: transform var(--dur-2) var(--ease-spring); }
+.gl-item.is-open .gl-chev { transform: rotate(90deg); }
+.gl-page { font-weight: 500; color: var(--text); }
+a.gl-page:hover { text-decoration: underline; text-underline-offset: 3px; }
+.gl-actions { gap: 4px; }
+.gl-del:hover { color: var(--danger); background: var(--danger-soft); }
+
+.gl-detail {
+  padding: 4px 0 18px 22px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: tf-rise-sm 0.28s var(--ease-out) both;
+}
+.gl-desc { margin: 0; font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; max-width: 760px; }
+.gl-files pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--r);
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.gl-meta { font-size: 12.5px; }
+
+@media (max-width: 768px) {
+  .gl-bar { flex-direction: column; align-items: stretch; gap: 12px; border-bottom: 0; }
+  .gl-bar .tabs { border-bottom: 1px solid var(--border); }
+  .gl-search { width: 100%; margin-bottom: 0; }
+  .gl-actions { margin-left: auto; }
+  .gl-detail { padding-left: 0; }
+}
