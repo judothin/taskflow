@@ -75,9 +75,19 @@ async function copyText(text) {
 function useAutoGrow(ref, value) {
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    if (!el) return undefined;
+    // Measured before the sheet has laid out, scrollHeight is 0 — pinning
+    // that would collapse the field to nothing. Leave it natural and measure
+    // again once it has a real size.
+    const fit = () => {
+      el.style.height = 'auto';
+      const h = el.scrollHeight;
+      el.style.height = h ? `${h}px` : '';
+    };
+    fit();
+    const ro = new ResizeObserver(() => { if (!el.style.height) fit(); });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [ref, value]);
 }
 
