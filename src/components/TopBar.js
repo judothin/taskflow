@@ -15,7 +15,7 @@ import { Icon, Avatar, Menu, MenuItem, MenuSep, MenuLabel, useMenu, fullName } f
 // First path segment → the page name in the breadcrumb.
 const TITLES = {
   dashboard: 'Dashboard', tasks: 'Tasks', completed: 'Completed', review: 'Ready for review',
-  context: 'Context', files: 'Files', 'team-activity': 'Team activity', submissions: 'Submissions', 'go-live': 'Ready for live',
+  context: 'Context', files: 'Files', 'team-activity': 'Team activity', submissions: 'Submissions',
   settings: 'Settings',
 };
 export const routeTitle = (pathname) => {

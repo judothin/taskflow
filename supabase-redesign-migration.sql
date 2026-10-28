@@ -9,8 +9,8 @@
 --   2. drops Projects                  (projects, project_* tables, tasks.project_id)
 --   3. drops streaks                   (team_streaks, streak RPCs, teams.weekend_streaks)
 --   4. clears saved dashboard / nav layouts
---   5. review_posts.files + review_create(p_files)  (Go Live's data is
---                                       left alone — see section 5)
+--   5. review_posts.files + review_create(p_files), and drops the old
+--                                       Go Live tables once they are empty
 --   6. context_entries.tags            (custom tags like "Dev only")
 --   7. submissions.title
 --
@@ -188,12 +188,22 @@ end;
 $$;
 
 
--- ── 4./5. Go Live data stays where it is ─────────────────────
--- Go Live items are NOT copied into Review and the golive tables are NOT
--- dropped: they're still shown on their own "Ready for live" page while the
--- last of them get cleared out by hand. Once that list is empty, drop them:
---   drop table if exists public.golive_hidden;
---   drop table if exists public.golive_items;
+-- ── 4./5. Drop the old Go Live tables ───────────────────────
+-- Go Live items are NOT copied into Review. The Go Live page is gone, so its
+-- tables are dropped — but only once they're empty, so nothing still in
+-- there is lost. If rows remain, this leaves the tables alone and says so.
+do $$
+begin
+  if to_regclass('public.golive_items') is null then
+    return;
+  end if;
+  if exists (select 1 from public.golive_items) then
+    raise notice 'golive_items still has rows — leaving the Go Live tables in place';
+    return;
+  end if;
+  drop table if exists public.golive_hidden;
+  drop table if exists public.golive_items;
+end $$;
 
 notify pgrst, 'reload schema';
 

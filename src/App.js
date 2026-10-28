@@ -20,7 +20,6 @@ import Context from './pages/Context';
 import Files from './pages/Files';
 import GuestPortal from './pages/GuestPortal';
 import Submissions from './pages/Submissions';
-import GoLive from './pages/GoLive';
 import Review from './pages/Review';
 import TeamActivity from './pages/TeamActivity';
 import Layout from './components/Layout';
@@ -104,7 +103,7 @@ function AppRoutes() {
         <Route path="focus" element={<Navigate to={HOME} replace />} />
         <Route path="stats" element={<Navigate to={HOME} replace />} />
         <Route path="quicklog" element={<Navigate to={HOME} replace />} />
-        <Route path="go-live" element={<GoLive />} />
+        <Route path="go-live" element={<Navigate to="/review?tab=approved" replace />} />
         <Route path="teams" element={<Navigate to="/settings?section=teams" replace />} />
         <Route path="appearance" element={<Navigate to="/settings?section=appearance" replace />} />
         <Route path="*" element={<Navigate to={HOME} replace />} />

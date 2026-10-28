@@ -11,15 +11,19 @@ class DevComments {
 
     private static $table;
     private static $users;
+    private static $live_files;
+    private static $live_pages;
 
 
     public static function init() {
         global $wpdb;
         self::$table = $wpdb->prefix . 'dev_comments';
         self::$users = $wpdb->prefix . 'dev_comment_users';
+        self::$live_files = $wpdb->prefix . 'dev_live_files';
+        self::$live_pages = $wpdb->prefix . 'dev_live_pages';
         self::maybe_create_tables();
 
-        foreach (['all','post','like','check','down','done','tasked','tasklink','pin','edit','delete','upload','poll','typing','presence','session','me','settings','gif'] as $a) {
+        foreach (['all','post','like','check','down','done','tasked','tasklink','pin','edit','delete','upload','poll','typing','presence','session','me','settings','gif','live_save','live_file_add','live_file_del'] as $a) {
             add_action("wp_ajax_dc_$a", [__CLASS__, "ajax_$a"]);
             add_action("wp_ajax_nopriv_dc_$a", [__CLASS__, "ajax_$a"]);
         }
@@ -33,6 +37,31 @@ class DevComments {
 
     private static function maybe_create_tables() {
         global $wpdb;
+        /* v10: go-live notes. A shared library of files (repo paths, links,
+           uploads) and, per page, the files to push plus the directions for
+           putting it live. */
+        if (!get_option('dc_table_v10')) {
+            require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+            $cs = $wpdb->get_charset_collate();
+            dbDelta("CREATE TABLE " . self::$live_files . " (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                path VARCHAR(500) NOT NULL,
+                note VARCHAR(300) NOT NULL DEFAULT '',
+                url VARCHAR(500) NOT NULL DEFAULT '',
+                user_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL,
+                PRIMARY KEY  (id)
+            ) $cs;");
+            dbDelta("CREATE TABLE " . self::$live_pages . " (
+                context VARCHAR(191) NOT NULL,
+                files TEXT,
+                steps LONGTEXT,
+                user_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+                updated_at DATETIME NOT NULL,
+                PRIMARY KEY  (context)
+            ) $cs;");
+            update_option('dc_table_v10', 1);
+        }
         /* v9: accounts come from TaskFlow (Supabase). sb_uid links a local row
            to its TaskFlow user; tf_role is that user's role in the site's team;
            tf_profile caches name colour / avatar. Comments can point at the
@@ -304,6 +333,11 @@ class DevComments {
     /* every notifiable event; each one is opt-in per user for browser and phone */
     const NOTIF_EVENTS = ['comment', 'reply', 'mention', 'like', 'check', 'down', 'done', 'task'];
 
+    /* keyboard shortcuts: modifiers in a fixed order, then the physical key
+       (KeyboardEvent.code), e.g. "Alt+Shift+KeyT"; '' turns one off */
+    const HOTKEY_ACTIONS = ['toggle', 'chat', 'newtask', 'tasks', 'quicklog', 'focus'];
+    const HOTKEY_RE = '/^(Ctrl\+)?(Alt\+)?(Shift\+)?(Meta\+)?(Key[A-Z]|Digit[0-9]|F[1-9]|F1[0-2]|Slash|Period|Comma|Semicolon|Quote|BracketLeft|BracketRight|Backslash|Backquote|Minus|Equal|Space|Enter)$/';
+
     private static function user_payload($u) {
         $tf = json_decode($u['tf_profile'] ?? '', true) ?: [];
         return [
@@ -462,6 +496,16 @@ class DevComments {
             $cur['mode'] = $md;
         }
         unset($cur['tflook']);   /* retired in 4.0 */
+        if (isset($in['hotkeys']) && is_array($in['hotkeys'])) {
+            $hk = [];
+            foreach (self::HOTKEY_ACTIONS as $k) {
+                if (!array_key_exists($k, $in['hotkeys'])) continue;
+                $v = (string) $in['hotkeys'][$k];
+                if ($v !== '' && !preg_match(self::HOTKEY_RE, $v)) wp_send_json_error(['msg' => 'Bad shortcut.']);
+                $hk[$k] = $v;
+            }
+            $cur['hotkeys'] = $hk;
+        }
         if (isset($in['tfview'])) {
             $tv = sanitize_key($in['tfview']);
             if (in_array($tv, ['comments', 'tasks', 'review'], true)) $cur['tfview'] = $tv;
@@ -609,7 +653,29 @@ class DevComments {
             ];
             $names[(int) $u['id']] = $u['name'];
         }
-        return ['comments' => $rows, 'users' => $users, 'typing' => self::typing_state($names), 'presence' => self::presence_state()];
+        return ['comments' => $rows, 'users' => $users, 'typing' => self::typing_state($names), 'presence' => self::presence_state(),
+                'live' => self::live_payload()];
+    }
+
+    /* go-live notes for every page, as raw text: the browser escapes it */
+    private static function live_payload() {
+        global $wpdb;
+        $files = [];
+        foreach ($wpdb->get_results("SELECT id, path, note, url FROM " . self::$live_files . " ORDER BY path ASC", ARRAY_A) ?: [] as $f)
+            $files[] = ['id' => (int) $f['id'], 'path' => $f['path'], 'note' => $f['note'], 'url' => $f['url']];
+        $pages = [];
+        foreach ($wpdb->get_results("SELECT context, files, steps FROM " . self::$live_pages, ARRAY_A) ?: [] as $p)
+            $pages[$p['context']] = [
+                'files' => self::live_ids($p['files']),
+                'steps' => json_decode($p['steps'] ?: '[]', true) ?: [],
+            ];
+        return ['files' => $files, 'pages' => $pages ?: new stdClass()];
+    }
+    /* a page's file ids: ints for this site's entries, uuid strings for TaskFlow's */
+    private static function live_ids($json) {
+        $out = [];
+        foreach (json_decode($json ?: '[]', true) ?: [] as $x) $out[] = is_string($x) && !ctype_digit($x) ? $x : (int) $x;
+        return $out;
     }
 
     public static function ajax_all() {
@@ -862,6 +928,87 @@ class DevComments {
         self::bump_version();
         wp_send_json_success();
     }
+    /* ---- go live: one page's files and directions, saved whole ---- */
+    public static function ajax_live_save() {
+        check_ajax_referer('dc_nonce', 'nonce');
+        global $wpdb;
+        $u     = self::require_user();
+        $ctx   = self::context_from_request();
+        $files = json_decode(wp_unslash($_POST['files'] ?? '[]'), true);
+        $steps = json_decode(wp_unslash($_POST['steps'] ?? '[]'), true);
+        /* ints are this site's own entries (links, uploads); uuids are
+           TaskFlow's Files page (file_entries) */
+        $keep = [];
+        foreach (is_array($files) ? $files : [] as $f) {
+            if (is_string($f) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $f)) $keep[] = strtolower($f);
+            elseif (absint($f)) $keep[] = absint($f);
+        }
+        $files = array_slice(array_values(array_unique($keep, SORT_REGULAR)), 0, 200);
+        $out = [];
+        foreach (is_array($steps) ? $steps : [] as $s) {
+            if (!is_array($s)) continue;
+            $t = trim(sanitize_textarea_field((string) ($s['t'] ?? '')));
+            if ($t === '') continue;
+            $id = substr(preg_replace('/[^A-Za-z0-9_\-]/', '', (string) ($s['id'] ?? '')), 0, 40);
+            $out[] = ['id' => $id !== '' ? $id : wp_generate_password(8, false), 't' => mb_substr($t, 0, 2000), 'd' => !empty($s['d']) ? 1 : 0];
+            if (count($out) >= 100) break;
+        }
+        if (!$files && !$out) {
+            $wpdb->delete(self::$live_pages, ['context' => $ctx]);
+        } else {
+            $ok = $wpdb->replace(self::$live_pages, [
+                'context' => $ctx, 'files' => wp_json_encode($files), 'steps' => wp_json_encode($out),
+                'user_id' => (int) $u['id'], 'updated_at' => current_time('mysql'),
+            ]);
+            if ($ok === false) wp_send_json_error(['msg' => 'Couldn\'t save the go-live notes.']);
+        }
+        self::bump_version();
+        wp_send_json_success();
+    }
+
+    /* add a file to the shared library; the same path is reused, not duplicated */
+    public static function ajax_live_file_add() {
+        check_ajax_referer('dc_nonce', 'nonce');
+        global $wpdb;
+        $u    = self::require_user();
+        $path = mb_substr(trim(sanitize_text_field(wp_unslash($_POST['path'] ?? ''))), 0, 500);
+        $note = mb_substr(trim(sanitize_text_field(wp_unslash($_POST['note'] ?? ''))), 0, 300);
+        $url  = trim((string) wp_unslash($_POST['url'] ?? ''));
+        $url  = preg_match('#^https?://#i', $url) ? mb_substr(esc_url_raw($url), 0, 500) : '';
+        if ($path === '' && $url === '') wp_send_json_error(['msg' => 'Give the file a path or a link.']);
+        if ($path === '') $path = mb_substr($url, 0, 500);
+        $id = $url === '' ? (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM " . self::$live_files . " WHERE path = %s AND url = '' LIMIT 1", $path)) : 0;
+        if (!$id) {
+            $ok = $wpdb->insert(self::$live_files, [
+                'path' => $path, 'note' => $note, 'url' => $url,
+                'user_id' => (int) $u['id'], 'created_at' => current_time('mysql'),
+            ]);
+            if (!$ok) wp_send_json_error(['msg' => 'Couldn\'t save the file to the library.']);
+            $id = (int) $wpdb->insert_id;
+            self::bump_version();
+        }
+        $f = $wpdb->get_row($wpdb->prepare("SELECT id, path, note, url FROM " . self::$live_files . " WHERE id = %d", $id), ARRAY_A);
+        wp_send_json_success(['file' => ['id' => (int) $f['id'], 'path' => $f['path'], 'note' => $f['note'], 'url' => $f['url']]]);
+    }
+
+    /* delete a library file; it comes off every page that linked it */
+    public static function ajax_live_file_del() {
+        check_ajax_referer('dc_nonce', 'nonce');
+        global $wpdb;
+        self::require_user();
+        $id = absint($_POST['id'] ?? 0);
+        if (!$id) wp_send_json_error(['msg' => 'Missing id.']);
+        $wpdb->delete(self::$live_files, ['id' => $id]);
+        foreach ($wpdb->get_results("SELECT context, files FROM " . self::$live_pages, ARRAY_A) ?: [] as $p) {
+            $f = self::live_ids($p['files']);
+            if (in_array($id, $f, true))
+                $wpdb->update(self::$live_pages, ['files' => wp_json_encode(array_values(array_filter($f, function ($x) use ($id) { return $x !== $id; })))], ['context' => $p['context']]);
+        }
+        self::bump_version();
+        wp_send_json_success();
+    }
+
     public static function ajax_down()  { self::toggle_col('downs',  ['down', 'disagreed with your %s']); }
     /* done is shared state, not a reaction: anyone can set or clear it and the
        thread collapses for everyone */
@@ -1064,6 +1211,15 @@ class DevComments {
   const TF_READY=!!(SB_URL&&SB_ANON);
   const ORIGIN=location.origin;
 
+  /* Phones get nothing: no tab, no pins, no presence, no polling. Judged by
+     the device rather than the window (touch screen whose short side is
+     phone-sized), so rotating a phone doesn't bring it back and a narrow
+     desktop window keeps it. */
+  if(matchMedia('(pointer:coarse)').matches&&Math.min(screen.width,screen.height)<700){
+    const r=document.getElementById('dc-root');if(r)r.remove();
+    return;
+  }
+
   /* Inter + JetBrains Mono for the panel; fonts registered on the document reach shadow DOM */
   if(!document.getElementById('dc-font')){
     ['https://fonts.googleapis.com','https://fonts.gstatic.com'].forEach(h=>{
@@ -1193,6 +1349,28 @@ class DevComments {
 @keyframes tf-xp{0%{opacity:0;transform:translate(-50%,4px) scale(.8)}20%{opacity:1;transform:translate(-50%,-6px) scale(1.05)}80%{opacity:1;transform:translate(-50%,-14px) scale(1)}100%{opacity:0;transform:translate(-50%,-22px) scale(.95)}}
 @keyframes dcEdgeInR{from{translate:calc(100% + 18px) 0;opacity:0}}
 @keyframes dcEdgeInL{from{translate:calc(-100% - 18px) 0;opacity:0}}
+/* the edge strip: who's here, the panel toggle, pins and go live as ONE tab,
+   flush with its edge. It slides in on a curve that never overshoots, and a
+   press squishes the whole strip toward the edge, so no gap ever opens */
+.edge{pointer-events:auto;position:absolute;top:50%;right:0;transform:translateY(-50%);z-index:1;width:44px;
+  display:flex;flex-direction:column;align-items:stretch;
+  background:var(--surface-solid);border:1px solid var(--border-strong);border-right:0;border-radius:var(--r-lg) 0 0 var(--r-lg);box-shadow:var(--shadow);
+  transform-origin:right center;transition:scale var(--dur-2) var(--ease-out);
+  animation:dcEdgeInR .56s var(--ease-drawer) .12s backwards}
+/* held back until sign-in and the first data are in, so it arrives whole */
+.edge.wait{display:none}
+.edge.left{animation-name:dcEdgeInL;right:auto;left:0;border-right:1px solid var(--border-strong);border-left:0;
+  border-radius:0 var(--r-lg) var(--r-lg) 0;transform-origin:left center}
+.edge.pos-top{top:96px;transform:none}
+.edge.pos-bottom{top:auto;bottom:24px;transform:none}
+.edge.sz-s{width:34px}
+.edge.sz-l{width:56px}
+.edge:has(button:active){scale:.96 .99}
+.edge button:not(:disabled):active{scale:none}
+.edge>*{border-radius:calc(var(--r-lg) - 1px) 0 0 calc(var(--r-lg) - 1px)}
+.edge.left>*{border-radius:0 calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0}
+.edge>*+*{border-top:1px solid var(--border)}
+.edge>.presence.empty+*{border-top:0}
 @keyframes dcIconIn{from{opacity:0;scale:.6}}
 .bump{animation:tf-bump .42s var(--ease-spring)}
 .wiggle{animation:tf-wiggle .42s var(--ease-out)}
@@ -1201,15 +1379,9 @@ class DevComments {
 @media (hover:none){.presence .pav:hover,.tabpin:hover,.mebtn:hover,.pinlayer .pdot:hover{transform:none}.pgrow:hover .pg-go{transform:none}}
 
 /* ---------- the closed tab ---------- */
-.toggle{pointer-events:auto;position:absolute;top:50%;right:0;transform:translateY(-50%);z-index:1;
-  width:44px;height:44px;padding:0;line-height:0;display:grid;place-items:center;place-content:center;
-  background:var(--surface-solid);color:var(--text);border:1px solid var(--border-strong);border-right:0;
-  border-radius:var(--r-lg) 0 0 var(--r-lg);box-shadow:var(--shadow);
-  transition:background-color var(--dur-1) ease,scale var(--dur-2) var(--ease-spring);
-  animation:dcEdgeInR .56s var(--ease-spring) .12s backwards}
+.toggle{position:relative;width:100%;height:44px;padding:0;line-height:0;display:grid;place-items:center;place-content:center;
+  color:var(--text);transition:background-color var(--dur-1) ease}
 .toggle:hover{background:var(--hover)}
-.toggle:active{scale:.94}
-.toggle.left{animation-name:dcEdgeInL;right:auto;left:0;border-radius:0 var(--r-lg) var(--r-lg) 0;border-right:1px solid var(--border-strong);border-left:0}
 .toggle>svg{animation:dcIconIn .4s var(--ease-spring) .38s backwards}
 .toggle svg{display:block;width:17px;height:17px;stroke:var(--text-2);stroke-width:2;grid-area:1/1;margin:0;transition:stroke var(--dur-1) ease}
 .toggle:hover svg{stroke:var(--text)}
@@ -1220,11 +1392,9 @@ class DevComments {
 .toggle.left .tg-shut{rotate:180deg}
 .toggle .badge{display:none!important}
 .toggle .badge.zero{transform:scale(0);opacity:0}
-.toggle.pos-top{top:96px;transform:none}
-.toggle.pos-bottom{top:auto;bottom:24px;transform:none}
-.toggle.sz-s{width:34px;height:34px}
+.toggle.sz-s{height:34px}
 .toggle.sz-s svg{width:14px;height:14px}
-.toggle.sz-l{width:56px;height:56px}
+.toggle.sz-l{height:56px}
 .toggle.sz-l svg{width:22px;height:22px}
 .toggle .tglpin{top:-7px;left:-7px;right:auto}
 .toggle.left .tglpin{left:auto;right:-7px}
@@ -1237,16 +1407,8 @@ class DevComments {
 .pinpop.pinfloat.show{transform:none}
 
 /* presence: a column of who's here, docked to the same edge as the tab */
-.presence{position:absolute;left:0;top:0;z-index:4;--pa:28px;
-  display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0;
-  background:var(--surface-solid);border:1px solid var(--border-strong);border-right:0;
-  border-radius:var(--r-lg) 0 0 var(--r-lg);box-shadow:var(--shadow);
-  transition:transform var(--dur-3) var(--ease-out),opacity var(--dur-2) ease;
-  animation:dcEdgeInR .56s var(--ease-spring) .04s backwards}
-.presence.left{animation-name:dcEdgeInL;border-right:1px solid var(--border-strong);border-left:0;border-radius:0 var(--r-lg) var(--r-lg) 0}
-/* empty (and before the first placement, so it never flashes in the corner at 0,0) */
-.presence.empty{opacity:0;visibility:hidden;pointer-events:none;
-  transition:transform var(--dur-3) var(--ease-out),opacity var(--dur-2) ease,visibility 0s var(--dur-2)}
+.presence{position:relative;--pa:28px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0}
+.presence.empty{display:none}
 .presence .pav{position:relative;flex:none;width:var(--pa);height:var(--pa);border-radius:50%;
   display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:calc(var(--pa) * .36);font-weight:600;
   background:var(--avatar-bg);color:var(--avatar-text);background-size:cover;background-position:center;cursor:default;
@@ -1374,12 +1536,15 @@ button.pill:active{transform:scale(.95)}
 .memenu .mm-sep{height:1px;background:var(--border);margin:5px 4px}
 
 /* ---------- context tabs (underline) ---------- */
-.tabs{position:relative;z-index:6;display:flex;align-items:stretch;gap:22px;margin:0 22px;border-bottom:1px solid var(--border);
+.tabs{position:relative;z-index:6;display:flex;align-items:stretch;gap:0;margin:0 22px;border-bottom:1px solid var(--border);container-type:inline-size;
   animation:tf-rise-sm .4s var(--ease-out) both}
 .tab{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:42px;padding:0;
   font-size:13.5px;font-weight:450;color:var(--text-3);white-space:nowrap;transition:color var(--dur-2) ease}
 .tab:hover{color:var(--text)}
 .tab.active{color:var(--text);font-weight:600}
+.tabs>.tab+.tab{margin-left:22px}
+/* five tabs on a narrow panel: tighten up rather than spill */
+@container (max-width:360px){.tabs>.tab+.tab{margin-left:12px}.tabs>.tab{font-size:12.5px}}
 .tabs .tab:active{scale:none;opacity:.7}
 .tabs .glide{position:absolute;left:0;bottom:-1px;height:2px;width:0;z-index:2;pointer-events:none;border-radius:2px;background:var(--accent);
   opacity:0;transition:transform .36s var(--ease-spring),width .36s var(--ease-spring),opacity var(--dur-2) ease}
@@ -1491,6 +1656,68 @@ button.pill:active{transform:scale(.95)}
 .pg-go{width:14px;height:14px;flex:none;stroke:var(--text-4);fill:none;stroke-width:2;transition:transform var(--dur-2) var(--ease-spring),stroke var(--dur-1) ease}
 .pgrow:hover .pg-go{transform:translateX(2px);stroke:var(--text-2)}
 .pgrow:hover .pg-go.ext{transform:translate(1.5px,-1.5px)}
+
+/* ---------- go live: files and directions for this page ---------- */
+.panel.live-open .compose,.panel.live-open .typing{display:none}
+.lvwrap{padding:16px 0 8px}
+.lv-head h3{margin-top:6px;font-size:22px;font-weight:600;letter-spacing:-.025em;line-height:1.25;color:var(--text);word-break:break-word}
+.lv-head p{margin-top:6px;font-size:13.5px;line-height:1.5;color:var(--text-2)}
+.lv-sec{margin-top:22px;padding-top:18px;border-top:1px solid var(--border);animation:tf-rise-sm .34s var(--ease-out) backwards}
+.lv-sec>h5{display:flex;align-items:center;gap:8px;min-height:24px;margin:0 0 8px;font-family:var(--mono);font-size:11px;font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:var(--text-2)}
+.lv-sec>h5>span{flex:1}
+.lv-sec>h5 b{margin-left:6px;font-weight:400;color:var(--text-3)}
+.lv-reset{height:24px;padding:0 8px;border-radius:var(--r-sm);font-family:var(--font);font-size:12px;letter-spacing:0;text-transform:none;color:var(--text-3);
+  transition:background-color var(--dur-1) ease,color var(--dur-1) ease}
+.lv-reset:hover{color:var(--text);background:var(--hover)}
+.lv-reset[hidden]{display:none}
+.lv-file,.lv-step,.lv-lrow{display:flex;align-items:center;gap:10px;min-height:40px;padding:6px 0;border-bottom:1px solid var(--border);animation:tf-rise-sm .3s var(--ease-out) backwards}
+.lv-step{align-items:flex-start;padding:8px 0}
+.lv-file>svg,.lv-lrow>svg{flex:none;width:15px;height:15px;stroke:var(--text-3);fill:none;stroke-width:1.9}
+.lv-fmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.lv-fp{font-family:var(--mono);font-size:12.5px;color:var(--text);word-break:break-all}
+.lv-fp a{color:var(--text);text-decoration:underline;text-decoration-color:var(--border-strong);text-underline-offset:3px}
+.lv-fp a:hover{text-decoration-color:currentColor}
+.lv-fn{font-size:12.5px;line-height:1.4;color:var(--text-3)}
+.lv-ib{flex:none;height:26px;min-width:26px;padding:0 8px;border-radius:var(--r-sm);font-size:12px;color:var(--text-3);opacity:.6;
+  transition:opacity var(--dur-1) ease,background-color var(--dur-1) ease,color var(--dur-1) ease}
+.lv-file:hover .lv-ib,.lv-step:hover .lv-ib,.lv-lrow:hover .lv-ib,.lv-ib:focus-visible{opacity:1}
+.lv-ib:hover{color:var(--text);background:var(--hover)}
+.lv-ib.x:hover{color:var(--danger);background:var(--danger-soft)}
+@media (hover:none){.lv-ib{opacity:1}}
+.lv-chk{flex:none;width:18px;height:18px;margin-top:2px;border-radius:4px;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--border-strong);
+  background:var(--surface-solid);color:transparent;transition:background-color var(--dur-1) ease,border-color var(--dur-1) ease}
+.lv-chk:hover{border-color:var(--text-3)}
+.lv-chk svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:3}
+.lv-step.on .lv-chk{background:var(--st-completed);border-color:var(--st-completed);color:#fff;animation:tf-check .34s var(--ease-spring)}
+.lv-n{flex:none;min-width:18px;margin-top:2px;font-family:var(--mono);font-size:11.5px;color:var(--text-3)}
+.lv-st{flex:1;min-width:0;font-size:14px;line-height:1.5;color:var(--text);white-space:pre-wrap;word-break:break-word}
+.lv-st a.lnk{color:var(--text);text-decoration:underline;text-decoration-color:var(--border-strong);text-underline-offset:3px;word-break:break-all}
+.lv-st code{font-family:var(--mono);font-size:.88em;padding:1px 5px;border-radius:var(--r-xs);background:var(--surface-3)}
+.lv-step.on .lv-st{color:var(--text-3);text-decoration:line-through;text-decoration-color:var(--text-4)}
+.lv-add{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;margin-top:10px}
+.lv-add .tfin{flex:1;min-width:150px;height:34px;font-size:13px}
+.lv-add .lv-fin{width:100%;font-family:var(--mono);font-size:12.5px}
+/* library matches under the path field, as you type */
+.lv-fwrap{position:relative;flex:1 1 100%;min-width:0}
+.lv-sug{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:5;display:none;max-height:260px;overflow-y:auto;padding:5px;
+  background:var(--surface-solid);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow)}
+.lv-sug.show{display:block;animation:tf-pop .22s var(--ease-spring)}
+.lv-sh{padding:6px 8px 3px;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
+.lv-sopt{display:flex;align-items:center;gap:9px;width:100%;min-height:36px;padding:5px 8px;border-radius:var(--r-sm);text-align:left;transition:background-color .08s ease}
+.lv-sopt.sel,.lv-sopt:hover{background:var(--hover)}
+.lv-sopt>svg{flex:none;width:14px;height:14px;stroke:var(--text-3);fill:none;stroke-width:1.9}
+.lv-sopt em{flex:none;font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--text-3)}
+.lv-sopt.here{opacity:.55}
+.lv-sopt mark{background:none;color:inherit;font-weight:700}
+.lv-snew{border-top:1px solid var(--border);border-radius:0 0 var(--r-sm) var(--r-sm);margin-top:4px;font-size:13px;color:var(--text-2)}
+.lv-snew b{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--text);word-break:break-all}
+.lv-add textarea.tfin{min-height:34px;padding:7px 12px;line-height:1.45;resize:none;overflow:hidden}
+.lv-none{padding:10px 0;font-size:13px;line-height:1.5;color:var(--text-3)}
+.lv-lhint{margin:0 0 6px;font-size:12px;line-height:1.5;color:var(--text-3)}
+.lv-lhint:empty{display:none}
+.lv-uses{flex:none;font-family:var(--mono);font-size:11px;color:var(--text-3)}
+.lv-here{flex:none;height:20px;display:inline-flex;align-items:center;padding:0 6px;border-radius:var(--r-xs);font-family:var(--mono);font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--text-2);background:var(--surface-3)}
 
 /* ---------- list ---------- */
 .list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 22px 30px;scrollbar-width:thin;scrollbar-color:var(--scrollbar) transparent}
@@ -1655,7 +1882,17 @@ button.pill:active{transform:scale(.95)}
 .filechip span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .filechip em{flex:none;font-style:normal;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--text-3)}
 .taskchip i{width:7px;height:7px;border-radius:50%;background:var(--c,var(--text-4))}
-.pinchip+.taskchip{margin-left:6px}
+.taskrow{display:flex;align-items:center;gap:6px;margin-top:8px}
+.taskrow .taskchip{margin-top:0}
+.taskq{flex:none;display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 7px;border-radius:var(--r-pill);font-family:var(--mono);font-size:10.5px;
+  color:var(--text-2);background:var(--surface-3);cursor:default;animation:tf-pop .34s var(--ease-spring) backwards}
+.taskq svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.taskdone{flex:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--border-strong);
+  color:transparent;background:var(--surface-solid);transition:background-color var(--dur-1) ease,color var(--dur-1) ease,border-color var(--dur-1) ease,transform var(--dur-2) var(--ease-spring)}
+.taskdone svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:3}
+.taskdone:hover{color:var(--st-completed);border-color:var(--st-completed);transform:scale(1.1)}
+.taskdone.on{background:var(--st-completed);border-color:var(--st-completed);color:#fff;animation:tf-check .34s var(--ease-spring)}
+.taskdone.on:hover{background:var(--surface-solid);color:var(--text-3);border-color:var(--border-strong)}
 
 /* ---------- lightbox ---------- */
 .lightbox{position:absolute;inset:0;z-index:40;display:none;align-items:center;justify-content:center;padding:26px;background:rgba(12,12,14,.82);cursor:zoom-out;overflow:hidden}
@@ -1711,16 +1948,19 @@ button.pill:active{transform:scale(.95)}
   box-shadow:0 0 0 3px var(--accent-ring);opacity:0;transform:scale(.6);visibility:hidden;
   transition:opacity var(--dur-3) ease,transform var(--dur-3) var(--ease-spring),visibility 0s .3s}
 .pindot.show{opacity:1;transform:scale(1);visibility:visible;transition-delay:0s;animation:tf-pulse-dot 1.4s ease-in-out infinite}
-.pineye{pointer-events:auto;position:absolute;z-index:1;display:none;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:var(--r-lg) 0 0 var(--r-lg);
-  background:var(--surface-solid);color:var(--text-2);border:1px solid var(--border-strong);border-right:0;font-family:var(--mono);font-size:11.5px;box-shadow:var(--shadow);
-  transition:color var(--dur-1) ease,background-color var(--dur-1) ease}
-.pineye.show{display:flex;animation:dcEdgeInR .56s var(--ease-spring) .2s backwards}
-.pineye.left.show{animation-name:dcEdgeInL}
-.pineye.show svg,.pineye.show .pecount{animation:dcIconIn .4s var(--ease-spring) .44s backwards}
-.pineye:hover,.pineye.on{color:var(--text);background:var(--hover)}
-.pineye.on{box-shadow:var(--shadow),inset 2px 0 0 var(--accent)}
-.pineye svg{stroke:currentColor;fill:none}
-.pineye.left{border-radius:0 var(--r-lg) var(--r-lg) 0;border-right:1px solid var(--border-strong);border-left:0}
+/* pins and go live: sections of the edge strip, under the toggle */
+.pineye,.livetab{position:relative;display:none;align-items:center;justify-content:center;gap:4px;height:36px;padding:0 4px;
+  color:var(--text-2);font-family:var(--mono);font-size:11.5px;transition:color var(--dur-1) ease,background-color var(--dur-1) ease}
+.pineye.show,.livetab.show{display:flex;animation:tf-fade-in .3s ease}
+.edge.sz-s .pineye,.edge.sz-s .livetab{gap:2px;padding:0 2px;font-size:10.5px}
+.pineye.show svg,.pineye.show .pecount{animation:dcIconIn .4s var(--ease-spring) .2s backwards}
+.livetab.show svg,.livetab.show .ltcount{animation:dcIconIn .4s var(--ease-spring) .26s backwards}
+.pineye:hover,.pineye.on,.livetab:hover,.livetab.on{color:var(--text);background:var(--hover)}
+.pineye.on,.livetab.on{box-shadow:inset 2px 0 0 var(--accent)}
+.edge.left .pineye.on,.edge.left .livetab.on{box-shadow:inset -2px 0 0 var(--accent)}
+.pineye svg{flex:none;stroke:currentColor;fill:none}
+.livetab svg{flex:none;width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.livetab .ltcount:empty{display:none}
 .pinlayer{position:fixed;inset:0;pointer-events:none;z-index:1}
 .pinlayer .pdot{position:fixed;pointer-events:auto;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;
   background:var(--accent);color:var(--accent-text);font-family:var(--mono);font-size:10.5px;font-weight:600;
@@ -1896,10 +2136,16 @@ button.pill:active{transform:scale(.95)}
 .nfctx{margin-top:4px;max-width:100%}
 
 /* ---------- overlays inside the panel: dialogs and sheets ---------- */
-.notifask,.modconfirm,.onboard,.ctxsheet{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:20px;background:var(--overlay);
+.notifask,.modconfirm,.onboard,.ctxsheet,.qtask{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:20px;background:var(--overlay);
   -webkit-backdrop-filter:blur(1.5px);backdrop-filter:blur(1.5px)}
-.notifask{z-index:49}.modconfirm{z-index:48}.onboard{z-index:47}.ctxsheet{z-index:48}
-.notifask.show,.modconfirm.show,.onboard.show,.ctxsheet.show{display:flex;animation:tf-fade-in .22s ease}
+.notifask{z-index:49}.modconfirm{z-index:48}.onboard{z-index:47}.ctxsheet{z-index:48}.qtask{z-index:47}
+.notifask.show,.modconfirm.show,.onboard.show,.ctxsheet.show,.qtask.show{display:flex;animation:tf-fade-in .22s ease}
+/* quick task from a comment */
+.qtcard .qt-title{margin-top:10px;font-weight:500}
+.qtcard .mcquote{max-height:92px}
+.qtcard .qt-qrow{margin-top:14px}
+.qtcard .tferr{margin:12px 0 0}
+.qtcard .qt-sp{flex:1}
 .nacard,.mccard,.obcard{width:100%;max-height:100%;overflow-y:auto;background:var(--surface-solid);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--shadow-lg);
   animation:tf-dialog-in .42s var(--ease-spring) both}
 /* notification wizard */
@@ -2118,6 +2364,152 @@ button.pill:active{transform:scale(.95)}
 .hint{font-family:var(--mono);font-size:10.5px;color:var(--text-4);margin-top:9px;text-align:center}
 .hint kbd{font-family:var(--mono);font-size:10px;color:var(--text-3);padding:1px 5px;border-radius:var(--r-xs);background:var(--surface-2);border:1px solid var(--border-strong)}
 .hint span{margin:0 3px}
+.hint em{font-style:normal}
+.hint em[hidden]{display:none}
+
+/* ---------- keyboard shortcuts (settings) ---------- */
+.hkrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.hkrow:last-child{border-bottom:0}
+.hk-l{flex:1;min-width:0;display:flex;flex-direction:column}
+.hk-l b{font-size:14px;font-weight:500;color:var(--text)}
+.hk-l span{font-size:12.5px;line-height:1.4;color:var(--text-3)}
+.hkkey{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:104px;height:34px;padding:0 10px;
+  border:1px solid var(--border-input);border-radius:var(--r);background:var(--surface-solid);box-shadow:var(--shadow-xs);
+  transition:border-color var(--dur-1) ease,box-shadow var(--dur-2) ease,scale var(--dur-2) var(--ease-spring)}
+.hkkey:hover{border-color:var(--border-strong)}
+.hkkey.rec{border-color:color-mix(in srgb,var(--accent) 55%,var(--border-strong));box-shadow:0 0 0 3px var(--accent-ring)}
+.hkkey kbd,.ql-foot kbd{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:var(--r-xs);
+  font-family:var(--mono);font-size:11px;color:var(--text);background:var(--surface-2);border:1px solid var(--border-strong);animation:tf-pop .26s var(--ease-spring) backwards}
+.hk-off{font-size:12.5px;color:var(--text-4)}
+.hk-rec{font-size:12.5px;color:var(--text-2);animation:dcHkBlink 1.2s ease-in-out infinite}
+@keyframes dcHkBlink{50%{opacity:.45}}
+.hkx{flex:none;width:30px;height:30px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-3);
+  transition:background-color var(--dur-1) ease,color var(--dur-1) ease}
+.hkx:hover{background:var(--hover);color:var(--text)}
+.hkmsg{margin-top:10px;font-size:12.5px;color:var(--text-3);animation:tf-rise-sm .3s var(--ease-out)}
+.hkmsg.warn{color:var(--warning)}
+.hkmsg:empty{display:none}
+
+/* ---------- quick log: one line to a task, panel open or shut ---------- */
+.qlog{position:fixed;top:72px;left:50%;z-index:72;width:min(600px,calc(100vw - 24px));opacity:0;visibility:hidden;pointer-events:none;
+  transform:translate(-50%,-12px) scale(.96);transition:opacity var(--dur-2) ease,transform .42s var(--ease-spring),visibility 0s var(--dur-2)}
+.qlog.show{opacity:1;visibility:visible;pointer-events:auto;transform:translate(-50%,0);
+  transition:opacity var(--dur-2) ease,transform .42s var(--ease-spring),visibility 0s}
+.ql-card{container-type:inline-size;overflow:hidden;background:var(--surface-solid);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--shadow-lg)}
+.ql-row{display:flex;align-items:center;gap:12px;min-height:58px;padding:0 10px 0 16px}
+.ql-ico{flex:none;width:28px;height:28px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;background:var(--accent);color:var(--accent-text)}
+.ql-ico svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.6}
+.qlog.show .ql-ico{animation:tf-bump .5s var(--ease-spring) .1s}
+.ql-in{flex:1;min-width:0;height:56px;max-height:180px;padding:17px 0;font-size:16px;line-height:22px;color:var(--text);resize:none;overflow-y:auto}
+.ql-in::placeholder{color:var(--text-4)}
+.ql-in:disabled{opacity:.55}
+.ql-more{flex:none;height:28px;padding:0 10px;border-radius:var(--r-sm);font-size:12.5px;font-weight:500;color:var(--text-2);
+  transition:background-color var(--dur-1) ease,color var(--dur-1) ease}
+.ql-more:hover{background:var(--hover);color:var(--text)}
+.ql-err{padding:9px 16px;font-size:13px;line-height:1.45;color:var(--danger);background:var(--danger-soft);animation:tf-wiggle .42s var(--ease-out)}
+.ql-err[hidden]{display:none}
+.ql-foot{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 14px 0 16px;border-top:1px solid var(--border);background:var(--surface-2);
+  font-size:12px;color:var(--text-3);white-space:nowrap;overflow:hidden}
+.ql-foot kbd{height:18px;min-width:18px;font-size:10.5px}
+.ql-keys{flex:none;display:inline-flex;align-items:center;gap:4px}
+.ql-keys .ql-dot{margin:0 2px;color:var(--text-4)}
+@container (max-width:560px){.ql-keys{display:none}}
+/* the page field, as on TaskFlow's quick log: a page name or a URL, typed in */
+.ql-pgrow{display:flex;align-items:center;gap:10px;min-height:42px;padding:0 10px 0 22px;border-top:1px solid var(--border);cursor:text}
+.ql-pgrow>svg{flex:none;width:15px;height:15px;stroke:var(--text-3);fill:none;stroke-width:2;transition:stroke var(--dur-1) ease}
+.ql-pgrow:focus-within>svg{stroke:var(--text)}
+.ql-pgin{flex:1;min-width:0;height:40px;font-size:13.5px;color:var(--text)}
+.ql-pgin::placeholder{color:var(--text-4)}
+.ql-here{flex:none;height:26px;padding:0 9px;border-radius:var(--r-sm);font-size:12px;font-weight:500;color:var(--text-3);white-space:nowrap;
+  transition:background-color var(--dur-1) ease,color var(--dur-1) ease}
+.ql-here:hover{background:var(--hover);color:var(--text)}
+.ql-when{flex:none;height:24px;padding:0 6px;color-scheme:inherit;border-radius:var(--r-sm);font-family:var(--mono);font-size:11.5px;color:var(--text-2);cursor:pointer;
+  transition:background-color var(--dur-1) ease,color var(--dur-1) ease}
+.ql-when:hover,.ql-when:focus{background:var(--hover);color:var(--text)}
+.ql-when::-webkit-calendar-picker-indicator{opacity:.5;cursor:pointer}
+.ql-sp{flex:1}
+.ql-batch{flex:none;display:inline-flex;align-items:center;gap:7px;cursor:pointer;color:var(--text-3);transition:color var(--dur-1) ease}
+.ql-batch:hover,.ql-batch.on{color:var(--text-2)}
+.ql-batch .tfswitch span{width:28px;height:16px}
+.ql-batch .tfswitch span::after{width:12px;height:12px}
+.ql-batch .tfswitch input:checked+span::after{transform:translateX(12px)}
+.ql-bylbl{flex:none;display:inline-flex;align-items:center;gap:4px;color:var(--text-3)}
+.ql-by{max-width:150px;height:24px;padding:0 20px 0 6px;border-radius:var(--r-sm);font-size:12px;font-weight:500;color:var(--text-2);cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2385858c' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 6px center;
+  transition:background-color var(--dur-1) ease,color var(--dur-1) ease}
+.ql-by:hover,.ql-by:focus{background-color:var(--hover);color:var(--text)}
+.ql-by option{color:var(--text);background:var(--surface-solid)}
+/* ---------- focus picker: tick off focus tasks from the keyboard ---------- */
+.fpick{position:fixed;top:72px;left:50%;z-index:72;width:min(540px,calc(100vw - 24px));opacity:0;visibility:hidden;pointer-events:none;outline:none;
+  transform:translate(-50%,-12px) scale(.96);transition:opacity var(--dur-2) ease,transform .42s var(--ease-spring),visibility 0s var(--dur-2)}
+.fpick.show{opacity:1;visibility:visible;pointer-events:auto;transform:translate(-50%,0);
+  transition:opacity var(--dur-2) ease,transform .42s var(--ease-spring),visibility 0s}
+.fp-card{container-type:inline-size;overflow:hidden;background:var(--surface-solid);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--shadow-lg)}
+.fp-head{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.fp-sp{flex:1}
+.fp-keys{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--text-3);white-space:nowrap}
+.fp-keys kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-xs);
+  font-family:var(--mono);font-size:10.5px;color:var(--text);background:var(--surface-solid);border:1px solid var(--border-strong)}
+@container (max-width:420px){.fp-keys{display:none}}
+.fp-list{max-height:min(60vh,420px);overflow-y:auto;overscroll-behavior:contain;padding:6px}
+.fp-row{display:flex;align-items:center;gap:10px;width:100%;min-height:50px;padding:8px 10px;border-radius:var(--r);text-align:left;
+  animation:tf-rise-sm .3s var(--ease-out) backwards;transition:background-color .08s ease,opacity .2s ease}
+.fp-row.sel,.fp-row:hover{background:var(--hover)}
+.fp-row .tfchk{margin-top:0}
+.fp-row.sel .tfchk{color:var(--c);border-color:var(--c)}
+.fp-row.done{opacity:.55}
+.fp-row.done .tfchk{background:var(--st-completed);border-color:var(--st-completed);color:#fff;animation:tf-check .34s var(--ease-spring)}
+.fp-n{flex:none;width:12px;font-family:var(--mono);font-size:11px;color:var(--text-4);text-align:center}
+.fp-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.fp-txt{font-size:14px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fp-meta{font-size:12px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fp-empty{padding:18px 12px;font-size:13.5px;line-height:1.5;color:var(--text-3)}
+/* the tasks popup: a search field heads the list */
+.tkpop .fp-head{gap:10px}
+.tk-ico{flex:none;width:15px;height:15px;stroke:var(--text-3);fill:none;stroke-width:2}
+.tk-q{flex:1;min-width:0;height:46px;font-size:14.5px;color:var(--text)}
+.tk-q::placeholder{color:var(--text-4)}
+.tk-list .fp-row{cursor:pointer}
+.ch-where{min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:11.5px;color:var(--text-3)}
+/* the new-task popup: TaskFlow's full task sheet, over the page */
+.ntpop{top:48px;width:min(840px,calc(100vw - 24px))}
+.ntpop [hidden]{display:none!important}
+.nt-card{display:flex;flex-direction:column;max-height:calc(100vh - 72px);transition:box-shadow var(--dur-2) ease}
+.ntpop.dragging .nt-card{box-shadow:var(--shadow-lg),0 0 0 2px var(--accent)}
+.nt-head{flex:none;display:flex;align-items:center;gap:8px;min-height:44px;padding:0 8px 0 18px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.nt-cnt{color:var(--text-4)}
+.nt-x{width:30px;height:30px;border-radius:var(--r-sm);color:var(--text-3);display:flex;align-items:center;justify-content:center;
+  transition:background-color var(--dur-1) ease,color var(--dur-1) ease,transform var(--dur-3) var(--ease-spring)}
+.nt-x:hover{background:var(--hover);color:var(--text);transform:rotate(90deg)}
+.nt-x svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.2}
+.nt-grid{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 272px}
+.nt-main{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:20px 20px 22px}
+.nt-aside{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:16px 18px 20px;border-left:1px solid var(--border);background:var(--surface-2)}
+.nt-main .title-in{display:block;width:100%}
+.ntpop .tflabel{margin:16px 0 8px}
+.nt-aside>.tflabel:first-child{margin-top:0}
+.nt-pgrow{margin-top:12px;min-height:38px;padding:0 4px 0 12px;border:1px solid var(--border-input);border-radius:var(--r);background:var(--surface-solid)}
+.nt-pgrow:focus-within{border-color:color-mix(in srgb,var(--accent) 55%,var(--border-strong));box-shadow:0 0 0 3px var(--accent-ring)}
+.nt-pgrow .ql-pgin{height:36px}
+textarea.tfin.nt-desc{display:block;margin-top:12px;min-height:140px}
+.nt-subs .tfsub{min-height:34px}
+.nt-subs .tfsub span:not(.nt-bul){font-size:13.5px}
+.nt-bul{flex:none!important;width:6px;height:6px;margin:0 5px;border-radius:50%;background:var(--text-4)}
+.nt-subin,.nt-aside .tfin{height:34px;font-size:13.5px}
+.nt-subin{margin-top:8px}
+.nt-aside .opt-grid{gap:6px}
+.nt-aside .opt{height:32px;padding:0 9px;font-size:12.5px}
+.nt-aside .tfseg button{padding:0 6px;font-size:12.5px}
+.nt-atts img{width:72px;height:54px}
+.nt-atts a.tffile{padding-right:30px}
+.nt-aside .tflookrow{margin-top:14px}
+.nt-aside .tflookrow .tfgrow{display:flex;flex-direction:column;font-size:13.5px;font-weight:500}
+.nt-aside .tflookrow .tfnote{font-size:12px;font-weight:400}
+.nt-foot{flex:none;display:flex;align-items:center;gap:8px;min-height:58px;padding:0 14px 0 18px;border-top:1px solid var(--border)}
+.nt-note{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:700px){.nt-grid{grid-template-columns:1fr;overflow-y:auto}.nt-main,.nt-aside{overflow:visible}
+  .nt-aside{border-left:0;border-top:1px solid var(--border)}}
 .chips{display:none;gap:8px;margin-bottom:10px;flex-wrap:wrap}
 .chips.show{display:flex}
 .chip{position:relative;width:56px;height:56px;border-radius:var(--r);overflow:hidden;border:1px solid var(--border);background:var(--surface-2);animation:tf-pop .34s var(--ease-spring) backwards}
@@ -2732,7 +3124,7 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
   .panel>.pshadow{display:none}
   .resizer{display:none}
   .head{padding:env(safe-area-inset-top,0px) calc(8px + env(safe-area-inset-right,0px)) 0 16px;min-height:calc(54px + env(safe-area-inset-top,0px))}
-  .tabs{margin-left:14px;margin-right:calc(14px + env(safe-area-inset-right,0px));gap:18px;overflow-x:auto;scrollbar-width:none}
+  .tabs{margin-left:14px;margin-right:calc(14px + env(safe-area-inset-right,0px));overflow-x:auto;scrollbar-width:none}
   .tabs::-webkit-scrollbar{display:none}
   .tabpin{right:-10px}
   .list{padding-left:14px;padding-right:calc(14px + env(safe-area-inset-right,0px))}
@@ -2757,7 +3149,7 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
   .dgrp .collapsed{width:100%;margin:0;padding-left:26px}
   .thread{margin-left:20px;padding-left:10px}
   /* sheets inside the panel go full screen and slide up */
-  .notifask,.modconfirm,.onboard{align-items:flex-end;padding:0}
+  .notifask,.modconfirm,.onboard,.qtask{align-items:flex-end;padding:0}
   .nacard,.mccard,.obcard{max-width:none;border-radius:var(--r-xl) var(--r-xl) 0 0;border-width:1px 0 0;animation:tf-sheet-up .46s var(--ease-spring) both;
     padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}
   .ctxcard{width:100%;border-width:0;animation:tf-sheet-up .46s var(--ease-spring) both}
@@ -2816,6 +3208,98 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
 <div class="pintip"></div>
 <div class="dctoast"></div>
 <div class="scannote" role="status" aria-live="polite"></div>
+<div class="qlog" role="dialog" aria-label="Quick log a task">
+  <div class="ql-card">
+    <div class="ql-row">
+      <span class="ql-ico"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></svg></span>
+      <textarea class="ql-in" rows="1" maxlength="2000" placeholder="What did you finish?" autocomplete="off" spellcheck="true"></textarea>
+      <button class="ql-more" type="button" title="Open the full task form">More details</button>
+    </div>
+    <label class="ql-pgrow">
+      <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+      <input class="ql-pgin" type="text" list="ql-pages" maxlength="500" spellcheck="false" autocomplete="off"
+        placeholder="Page name or URL, e.g. Checkout or /contact (optional)" aria-label="Page or area">
+      <button class="ql-here" type="button" title="Fill in the page you’re on">This page</button>
+    </label>
+    <datalist id="ql-pages"></datalist>
+    <div class="ql-err" hidden></div>
+    <div class="ql-foot">
+      <input class="ql-when" type="datetime-local" step="60" aria-label="When it was done" title="When it was done — change it if it happened earlier">
+      <label class="ql-bylbl">by <select class="ql-by" aria-label="Completed by" title="Who did it"></select></label><span class="ql-sp"></span>
+      <label class="ql-batch" title="Keep the box open after logging, with the same page, to log several in a row">
+        <span class="tfswitch"><input type="checkbox" class="ql-keep"><span></span></span>Log another</label>
+      <span class="ql-keys"><kbd>↵</kbd> log <span class="ql-dot">·</span> <kbd>⇧↵</kbd> new line</span></div>
+  </div>
+</div>
+<div class="fpick" role="dialog" aria-label="Focus: mark tasks complete" tabindex="-1">
+  <div class="fp-card">
+    <div class="fp-head"><span class="eyebrow">Focus</span><span class="fp-sp"></span>
+      <span class="fp-keys"><kbd>1–9</kbd> or <kbd>↵</kbd> complete <span class="ql-dot">·</span> <kbd>⇧↵</kbd> open <span class="ql-dot">·</span> <kbd>Esc</kbd></span></div>
+    <div class="fp-list" role="listbox" aria-label="Tasks in focus"></div>
+  </div>
+</div>
+<div class="qlog ntpop" role="dialog" aria-label="New task">
+  <div class="ql-card nt-card">
+    <div class="nt-head"><span class="eyebrow">New task</span><span class="eyebrow nt-cnt"></span><span class="ql-sp"></span>
+      <button class="nt-x" type="button" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="nt-grid">
+      <div class="nt-main">
+        <textarea class="tfin title-in nt-title" rows="1" maxlength="200" placeholder="What needs to be fixed?" autocomplete="off" aria-label="Task title"></textarea>
+        <label class="ql-pgrow nt-pgrow">
+          <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+          <input class="ql-pgin nt-pg" type="text" list="ql-pages" maxlength="500" spellcheck="false" autocomplete="off"
+            placeholder="Page name or URL, e.g. Checkout or /contact" aria-label="Page or area">
+          <button class="ql-here nt-here" type="button" title="Fill in the page you’re on">This page</button>
+        </label>
+        <textarea class="tfin nt-desc" rows="5" placeholder="Describe the change or the problem… (paste or drop screenshots anywhere here)" aria-label="Description"></textarea>
+        <span class="tflabel">Checklist</span>
+        <div class="nt-subs"></div>
+        <input class="tfin nt-subin" type="text" maxlength="300" placeholder="Add an item, then Enter" autocomplete="off" aria-label="New checklist item">
+      </div>
+      <div class="nt-aside">
+        <span class="tflabel">Status</span><div class="opt-grid nt-status"></div>
+        <span class="tflabel">ROI</span><div class="tfseg full nt-roi"></div>
+        <span class="tflabel">Complexity</span><div class="tfseg full nt-cx"></div>
+        <span class="tflabel">Noticed by</span><input class="tfin nt-noticed" type="text" list="nt-people" autocomplete="off" placeholder="Who noticed it?">
+        <div class="nt-donerow" hidden><span class="tflabel">Completed by</span><input class="tfin nt-doneby" type="text" list="nt-people" autocomplete="off"></div>
+        <datalist id="nt-people"></datalist>
+        <span class="tflabel">Assignee</span><select class="tfin nt-as" aria-label="Assignee"></select>
+        <span class="tflabel">Due date</span><input class="tfin nt-due" type="date" aria-label="Due date">
+        <span class="tflabel">Attachments</span><div class="tfatt nt-atts"></div>
+        <input class="nt-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple hidden>
+        <label class="tflookrow nt-qrow"><span class="tfgrow">Add to queue<span class="tfnote">Shows up in your focus</span></span>
+          <span class="tfswitch"><input type="checkbox" class="nt-q"><span></span></span></label>
+        <label class="tflookrow"><span class="tfgrow">Batch add<span class="tfnote">Stay open, keep page + settings</span></span>
+          <span class="tfswitch"><input type="checkbox" class="nt-batch"><span></span></span></label>
+      </div>
+    </div>
+    <div class="ql-err nt-err" hidden></div>
+    <div class="nt-foot"><span class="tfnote nt-note"></span><span class="ql-sp"></span>
+      <button class="tfbtn ghost nt-cancel" type="button">Cancel</button>
+      <button class="tfbtn pri nt-go" type="button">Create task</button></div>
+  </div>
+</div>
+<div class="qlog chpop" role="dialog" aria-label="Quick comment">
+  <div class="ql-card">
+    <div class="ql-row">
+      <span class="ql-ico"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+      <textarea class="ql-in ch-in" rows="1" maxlength="5000" placeholder="Comment on this page…" autocomplete="off" spellcheck="true"></textarea>
+      <button class="ql-more ch-more" type="button" title="Open this page’s thread in the panel">Open thread</button>
+    </div>
+    <div class="ql-err ch-err" hidden></div>
+    <div class="ql-foot"><span class="ch-where"></span><span class="ql-sp"></span>
+      <span class="ql-keys"><kbd>↵</kbd> post <span class="ql-dot">·</span> <kbd>⇧↵</kbd> new line</span></div>
+  </div>
+</div>
+<div class="fpick tkpop" role="dialog" aria-label="Tasks">
+  <div class="fp-card">
+    <div class="fp-head">
+      <svg class="tk-ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input class="tk-q" type="text" placeholder="Search your team’s open tasks" autocomplete="off" spellcheck="false" aria-label="Search tasks">
+      <span class="fp-keys"><kbd>↵</kbd> open <span class="ql-dot">·</span> <kbd>Ctrl ↵</kbd> complete</span></div>
+    <div class="fp-list tk-list" role="listbox" aria-label="Open tasks"></div>
+  </div>
+</div>
 <div class="undotoast" role="status" aria-live="polite"></div>
 <div class="pdfview" role="dialog" aria-modal="true" aria-label="PDF viewer">
   <div class="pdfcard">
@@ -2837,6 +3321,8 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
      again by the drawer's width. -->
 <div class="rig"><div class="rigb">
 <div class="pinmenu"></div>
+<div class="edge wait">
+<div class="presence empty" aria-label="People on this page"></div>
 <button class="toggle" aria-label="Open comments">
   <svg class="tg-chat" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
   <svg class="tg-shut" viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="m9 6 6 6-6 6"/></svg>
@@ -2847,7 +3333,11 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-5.1-7-11a7 7 0 0 1 14 0c0 5.9-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
   <span class="pecount">0</span>
 </button>
-<div class="presence empty" aria-label="People on this page"></div>
+<button class="livetab" aria-label="Go live: files and directions for this page" title="Go live">
+  <svg viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
+  <span class="ltcount"></span>
+</button>
+</div>
 </div>
 <div class="panel" role="complementary" aria-label="TaskFlow">
   <i class="pshadow" aria-hidden="true"></i>
@@ -2963,6 +3453,18 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
       <div class="mctext"></div>
       <div class="mcquote"></div>
       <div class="mcrow"><button class="mccancel">Cancel</button><button class="mcok"></button></div>
+    </div>
+  </div>
+  <div class="qtask" role="dialog" aria-modal="true" aria-label="Task from comment">
+    <div class="mccard qtcard">
+      <span class="eyebrow">Task from comment</span>
+      <input class="tfin qt-title" type="text" maxlength="200" placeholder="Task title" autocomplete="off" aria-label="Task title">
+      <div class="mcquote qt-quote"></div>
+      <label class="tflookrow qt-qrow"><span class="tfgrow">Add to the focus queue</span>
+        <span class="tfswitch"><input type="checkbox" class="qt-q"><span></span></span></label>
+      <div class="tferr qt-err" hidden></div>
+      <div class="mcrow"><button class="tfbtn ghost sm qt-more" type="button">Edit details</button><span class="qt-sp"></span>
+        <button class="mccancel qt-cancel" type="button">Cancel</button><button class="tfbtn pri qt-go" type="button">Create task</button></div>
     </div>
   </div>
   <div class="ctxsheet" role="dialog" aria-modal="true" aria-label="Add context">
@@ -3093,6 +3595,7 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
         <button class="snavb sel" data-sec="you">You</button>
         <button class="snavb" data-sec="look">Appearance</button>
         <button class="snavb" data-sec="panel">Panel</button>
+        <button class="snavb" data-sec="keys">Shortcuts</button>
         <button class="snavb" data-sec="help">Help</button>
       </div>
     </div>
@@ -3226,6 +3729,13 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
         <button class="screset">Reset</button>
       </div>
     </div>
+    <div class="sgroup" data-sec="keys">
+      <div class="sname">Keyboard shortcuts</div>
+      <div class="sdesc">Click a shortcut, then press the keys you want. Backspace turns it off, Esc cancels. They work anywhere on the site, with the panel open or shut. On a Mac, ⌘ works wherever Ctrl is set.</div>
+      <div class="hklist"></div>
+      <div class="hkmsg" aria-live="polite"></div>
+      <button class="acctbtn hkreset" style="margin-top:14px">Reset to defaults</button>
+    </div>
     <div class="sgroup" data-sec="help">
       <div class="sname">Welcome tour</div>
       <div class="sdesc">A quick walkthrough of pinning, annotating, tasks and search.</div>
@@ -3280,7 +3790,7 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
         </button>
       </div>
     </div>
-    <div class="hint"><kbd>Enter</kbd> send <span>\u00b7</span> <kbd>Shift</kbd>+<kbd>Enter</kbd> new line <span>\u00b7</span> <kbd>@</kbd> mention <span>\u00b7</span> <kbd>Ctrl</kbd>+<kbd>/</kbd> toggle</div>
+    <div class="hint"><kbd>Enter</kbd> send <span>\u00b7</span> <kbd>Shift</kbd>+<kbd>Enter</kbd> new line <span>\u00b7</span> <kbd>@</kbd> mention <em class="hint-tog"><span>\u00b7</span> <kbd>Ctrl</kbd>+<kbd>/</kbd> toggle</em></div>
     <div class="dropzone"><div class="dz-card"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8 8"/></svg>Drop to attach</div></div>
   </div>
 
@@ -3425,20 +3935,48 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
   }
 
   /* which edge the panel lives on, and how big the closed tab is */
-  const toggleEl=$('.toggle');
+  const toggleEl=$('.toggle'), edgeEl=$('.edge');
+  /* The strip slides in once, with every section it starts with already in
+     place; after that, a section appearing or leaving glides the strip to its
+     new size instead of making it jump. */
+  let edgeIn=false, edgeH=0;
+  /* both must be in before it shows: the account (if there's a saved
+     session) and the first comments load, which run side by side */
+  let edgeAuth=!TF.has(), edgeData=false;
+  const edgeReady=()=>{if(edgeAuth&&edgeData)revealEdge();};
+  function revealEdge(){
+    if(!edgeEl.classList.contains('wait'))return;
+    edgeEl.classList.remove('wait');
+    const done=e=>{
+      if(e.target!==edgeEl)return;
+      edgeEl.removeEventListener('animationend',done);
+      edgeIn=true;edgeH=edgeEl.offsetHeight;
+    };
+    edgeEl.addEventListener('animationend',done);
+  }
+  setTimeout(revealEdge,8000);   /* never wait longer than this */
+  if('ResizeObserver'in window)new ResizeObserver(()=>{
+    const h=edgeEl.offsetHeight, dh=h-edgeH;
+    if(!edgeIn||!h){edgeH=h;return;}
+    edgeH=h;
+    if(!dh||matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+    const pos=edgeEl.classList.contains('pos-top')?0:edgeEl.classList.contains('pos-bottom')?1:.5;
+    if(!pos)return;   /* pinned at the top: it just grows downward */
+    edgeEl.animate([{translate:`0 ${dh*pos}px`},{translate:'0 0'}],{duration:340,easing:'cubic-bezier(.32,.72,0,1)'});
+  }).observe(edgeEl);
   let side='right', tabsize='m';
   function applySide(v,persist){
     side=v==='left'?'left':'right';
     panel.classList.toggle('left',side==='left');
     toggleEl.classList.toggle('left',side==='left');
+    edgeEl.classList.toggle('left',side==='left');
     try{syncDock();}catch(e){}   /* not ready during boot; later side flips re-dock */
     $$('.sidegroup .seg').forEach(b=>b.classList.toggle('sel',b.dataset.side===side));
     if(persist)localStorage.setItem('dc_side',side);
   }
   function applyTabsize(v,persist){
     tabsize=['s','m','l'].includes(v)?v:'m';
-    toggleEl.classList.remove('sz-s','sz-m','sz-l');
-    toggleEl.classList.add('sz-'+tabsize);
+    [toggleEl,edgeEl].forEach(el=>{el.classList.remove('sz-s','sz-m','sz-l');el.classList.add('sz-'+tabsize);});
     $$('.tabsizegroup .seg').forEach(b=>b.classList.toggle('sel',b.dataset.tabsize===tabsize));
     if(persist)localStorage.setItem('dc_tabsize',tabsize);
   }
@@ -3460,8 +3998,8 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
   let tabpos='middle';
   function applyTabpos(v,persist){
     tabpos=['top','middle','bottom'].includes(v)?v:'middle';
-    toggleEl.classList.remove('pos-top','pos-middle','pos-bottom');
-    toggleEl.classList.add('pos-'+tabpos);
+    edgeEl.classList.remove('pos-top','pos-middle','pos-bottom');
+    edgeEl.classList.add('pos-'+tabpos);
     $$('.tabposgroup .seg').forEach(b=>b.classList.toggle('sel',b.dataset.tabpos===tabpos));
     if(persist)localStorage.setItem('dc_tabpos',tabpos);
   }
@@ -3724,13 +4262,14 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
        consts are initialised */
     if(!user){closeSettings();$('.notifcfg').classList.remove('show');}
     else if(typeof paintBell==='function')paintBell();
-    if(typeof presenceBeat==='function'){try{user?presenceBeat():setPresence([]);}catch(e){}}
+    if(typeof presenceBeat==='function'){try{user?(renderPresence(),presenceBeat()):setPresence([]);}catch(e){}}
     if(!user&&typeof tfReset==='function')tfReset();
     syncMeAva(user);
     gifWatched=null;   /* watch history is per account */
     if(user){
       const st=user.settings||{};
       if(st.mode)localStorage.setItem('dc_mode',st.mode);
+      if(st.hotkeys&&typeof st.hotkeys==='object')try{localStorage.setItem('dc_hotkeys',JSON.stringify(st.hotkeys));}catch(e){}
     }
     /* signed in: the account's width wins and refreshes the local cache;
        signed out or still booting: paint from the cache so there is no jump */
@@ -3748,6 +4287,7 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
     applyNamecolor2(user?(user.settings&&user.settings.namecolor2):(localStorage.getItem('dc_namecolor2')||''),!!user);
     applyTimefmt(user?((user.settings&&user.settings.timefmt)||'relative'):(localStorage.getItem('dc_timefmt')||'relative'),!!user);
     applyTabpos(user?((user.settings&&user.settings.tabpos)||'middle'):(localStorage.getItem('dc_tabpos')||'middle'),!!user);
+    paintHint();
 
     if(cache[ctx])render(cache[ctx]);             /* re-render: own actions appear */
     updateBadges();
@@ -3865,10 +4405,11 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
     $('.rset').classList.add('on');
     sub.textContent='Settings';
     showSec('you');
-    paintAccount();paintLookControls();
+    paintAccount();paintLookControls();paintHotkeys();hkMsg('');
   }
   function closeSettings(){
     if(!panel.classList.contains('settings-open'))return;
+    hkStop();
     panel.classList.remove('settings-open');gearBtn.classList.remove('openm');
     $('.rset').classList.remove('on');
     sub.textContent=viewTitle();
@@ -3963,7 +4504,7 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
   function doLogout(){
     TF.signOut();
     ['dc_width','dc_scale','dc_media','dc_side','dc_tabsize','dc_timefmt','dc_tabpos','dc_accent',
-     'dc_namecolor','dc_namecolor2','dc_tf_look','dc_mode','dc_tflook'].forEach(k=>localStorage.removeItem(k));
+     'dc_namecolor','dc_namecolor2','dc_tf_look','dc_mode','dc_tflook','dc_hotkeys'].forEach(k=>localStorage.removeItem(k));
     tfColors={};
     setAuthed(null);
   }
@@ -4038,6 +4579,7 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
     setCount($('.tab[data-ctx="general"] .tabdot'),ug);
     setCount($('.pages-tab .tabdot'),uo);
     setCount($('.notif-tab .tabdot'),ME?nfNew().length:0);
+    paintLiveTab();
     if(typeof syncTabPins==='function')syncTabPins();
     $('.pagemenu').innerHTML=others.length
       ?others.map(([path,n])=>{
@@ -4187,12 +4729,13 @@ a.tfpage:hover{color:var(--text);text-decoration:underline;text-underline-offset
        were holding got torn down and rebuilt — that is the blinking. */
     const sig=ctx+'|'+(ME?ME.id:0)+'|'+divideAt+'|'+[...picked].sort().join('.')+'|'+[...openDoneRuns].join('.')+'|'+rows.map(r=>
       r.id+':'+r.parent_id+':'+(+r.pinned||0)+':'+r.likes.length+':'+(r.checks?r.checks.length:0)+':'+(r.downs?r.downs.length:0)+':'+(r.dones?r.dones.length:0)+':'+(expandedDone.has(String(r.id))?'x':'')+':'+r.content.length+':'+nameOf(r)
-      +':'+avatarUrlOf(r.user_id)+':'+JSON.stringify(nameStyleOf(r.user_id))+':'+(r.task_id?r.task_id+tfTaskStatus(r.task_id):'')).join(',');
+      +':'+avatarUrlOf(r.user_id)+':'+JSON.stringify(nameStyleOf(r.user_id))+':'+(r.task_id?r.task_id+tfTaskStatus(r.task_id)+taskQueueTag(r.task_id).length:'')).join(',');
     if(searchQ){renderSearch();return;}   /* search mode owns the list */
     if(toTop){toTop.classList.remove('show');toBot.classList.remove('show');}
     if(pinsView){renderPins();return;}    /* so does the all-pins view */
     if(notifView){renderNotifs();return;} /* and the notification centre */
     if(pagesView){renderPagesInbox();return;} /* and the pages inbox */
+    if(liveView){renderLive();return;}        /* and the go-live notes */
     if(!forceBottom&&sig===lastSig){if(typeof syncJump==='function')syncJump();return;}
     lastSig=sig;
     if(!rows.length){
@@ -4956,7 +5499,7 @@ function qrMatrix(text){
      x:'Task turns a comment into a TaskFlow task right here, with the page, text and screenshots filled in. The comment then shows the task’s live status. Select bundles several comments into one task.',
      i:'<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'},
     {t:'Find anything, make it yours',
-     x:'The magnifier searches every comment on every page. Settings let you pick light, dark or system, an accent colour, a background image, the panel side and more.',
+     x:'The magnifier searches every comment on every page. Settings let you pick light, dark or system, an accent colour, a background image, the panel side, your own keyboard shortcuts and more.',
      i:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>'}
   ];
   let obStep=0, obOpen=false;
@@ -5223,14 +5766,9 @@ function qrMatrix(text){
       return p?{id:r.id,r,sel:p.sel,x:+p.x,y:+p.y,app:p.app||''}:null;
     }).filter(Boolean);
   }
-  /* the eye docks under the panel toggle, whichever size/side/position it has */
+  /* the pins section sits in the edge strip under the toggle; it only needs the side */
   function placePinEye(){
-    const r=toggleEl.getBoundingClientRect(), M=hostMap();
-    const left=toggleEl.classList.contains('left');
-    pinEye.classList.toggle('left',left);
-    pinEye.style.top=M.y(r.bottom+10)+'px';   /* same 10px rhythm as the presence rail */
-    pinEye.style.right=left?'auto':'0';
-    pinEye.style.left=left?'0':'auto';
+    pinEye.classList.toggle('left',toggleEl.classList.contains('left'));
   }
   function updatePinEye(){
     const pins=pagePins();
@@ -5238,6 +5776,7 @@ function qrMatrix(text){
     const show=pins.length>0;   /* stays out, docked to the panel, while it's open */
     if(show)placePinEye();
     pinEye.classList.toggle('show',show);
+    try{paintLiveTab();}catch(e){}   /* it docks under the pins tab, or takes its place */
     if(!show)closePinMenu();
     /* the overlay is sticky: it stays (and survives reloads) until the user
        turns it off, whether or not the panel is open */
@@ -5526,13 +6065,14 @@ function qrMatrix(text){
   }
   function gotoComment(id){
     if(view!=='comments')switchView('comments',true);
+    if(liveView){closeLiveView();lastSig=null;if(cache[ctx])render(cache[ctx]);}
     const target=list.querySelector(`.item[data-id="${id}"]`);
     if(!target)return;
     target.scrollIntoView({block:'center'});
     target.classList.remove('flash');void target.offsetWidth;target.classList.add('flash');
   }
   function openSearch(){
-    closePinsView();
+    closePinsView();closeLiveView();
     searchRow.classList.add('show');
     setTimeout(()=>searchQEl.focus(),0);
   }
@@ -5702,7 +6242,7 @@ function qrMatrix(text){
   }
   function openNotifView(){
     if(searchQ)closeSearch();
-    closePinsView();closePagesView();
+    closePinsView();closePagesView();closeLiveView();
     notifView=true;nfSub='new';lastNSig=null;
     $$('.tab[data-ctx]').forEach(x=>x.classList.remove('active'));
     notifTab.classList.add('active');
@@ -5770,7 +6310,7 @@ function qrMatrix(text){
   }
   function openPinsView(){
     if(searchQ)closeSearch();
-    closePagesView();
+    closePagesView();closeLiveView();
     pinsView=true;lastPSig=null;pinsBtn.classList.add('on');
     renderPins();viewIn();
   }
@@ -6007,7 +6547,7 @@ function qrMatrix(text){
   }
   function openPagesView(){
     if(searchQ)closeSearch();
-    closePinsView();closeNotifView();closePinPop();
+    closePinsView();closeNotifView();closePinPop();closeLiveView();
     pagesView=true;lastPgSig=null;
     $$('.tab').forEach(x=>x.classList.remove('active'));
     pagesTab.classList.add('active');
@@ -6019,6 +6559,291 @@ function qrMatrix(text){
     if(!pagesView)return;
     pagesView=false;lastPgSig=null;pagesTab.classList.remove('active');
   }
+  /* ---- go live: what to push for this page, and how to put it live ----
+     Files come from one shared library (a repo path, a link or an upload),
+     so a file is entered once and linked from every page that needs it.
+     Directions are an ordered checklist to tick through while deploying;
+     "Reset ticks" readies them for the next time. Kept in this site's
+     database and fresh for everyone through the long-poll. */
+  let LIVE={files:[],pages:{}}, liveView=false, lastLvSig=null, lvSugOpen=false;
+  const liveTabEl=$('.livetab');
+  /* the go-live section of the edge strip, under the pins; shows unticked steps */
+  function placeLiveTab(){
+    liveTabEl.classList.toggle('left',toggleEl.classList.contains('left'));
+  }
+  function paintLiveTab(){
+    const n=ME?liveTodo():0;
+    liveTabEl.classList.toggle('show',!!ME);
+    liveTabEl.classList.toggle('on',liveView&&isOpen);
+    liveTabEl.querySelector('.ltcount').textContent=n?String(n):'';
+    liveTabEl.title=n?`Go live · ${n} step${n===1?'':'s'} to do`:'Go live: files and directions for this page';
+    if(ME)placeLiveTab();
+  }
+  const livePage=()=>{const p=(LIVE.pages||{})[PAGE];return {files:(p&&p.files)||[],steps:(p&&p.steps)||[]};};
+  /* the library is TaskFlow's Files page (file_entries, uuid ids) when the
+     panel is connected to a team; this site's own table (int ids) keeps
+     links and uploads, which file_entries has no place for */
+  const lvTf=()=>{try{return TFS.team&&Array.isArray(TFS.files)?TFS.files:null;}catch(e){return null;}};
+  const lvJoin=(dir,name)=>{dir=String(dir||'').replace(/[\/\\]+$/,'');name=String(name||'');
+    return !dir?name:!name||dir.split(/[\/\\]/).pop()===name?dir:dir+'/'+name;};
+  function lvFromTf(e){return {id:e.id,tf:1,path:lvJoin(e.path,e.name),note:e.description||'',url:'',section:e.section||''};}
+  const lvLib=()=>{const t=lvTf();return t?[...t,...LIVE.files]:LIVE.files;};
+  const lvSame=(a,b)=>String(a)===String(b);
+  const lvHas=(arr,id)=>arr.some(x=>lvSame(x,id));
+  const liveFile=id=>lvLib().find(f=>lvSame(f.id,id))||null;
+  const liveTodo=()=>livePage().steps.filter(s=>!s.d).length;
+  const liveUses=id=>Object.values(LIVE.pages||{}).filter(p=>lvHas(p.files||[],id)).length;
+  /* a typed path goes onto TaskFlow's Files page, typed by its extension */
+  async function lvTfAdd(path,note){
+    const clean=path.replace(/\\/g,'/').replace(/^\/+/,''), k=clean.lastIndexOf('/');
+    const name=k<0?clean:clean.slice(k+1), dir=k<0?'':clean.slice(0,k);
+    const ext=(name.includes('.')?name.split('.').pop():'').toLowerCase();
+    const type=['jsx','tsx','ts','js','php','json'].includes(ext)?ext:['mjs','cjs'].includes(ext)?'js'
+      :['css','scss','sass','less'].includes(ext)?'css':['html','htm'].includes(ext)?'html':'other';
+    const r=await TF.rest('file_entries?select=id,name,path,section,description',{method:'POST',prefer:'return=representation',
+      body:{team_id:TFS.team,name,path:dir,section:'',description:note||'',type}});
+    const f=lvFromTf((r&&r[0])||{});
+    if(!f.id)throw new Error('TaskFlow didn’t send the new file back.');
+    TFS.files=[...(TFS.files||[]),f];
+    toast(`Added ${name} to TaskFlow’s Files.`);
+    return f;
+  }
+  const lvSid=()=>'s'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  const LV_FILE='<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
+  const LV_LINK='<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
+  /* this page's notes are saved whole; the long-poll brings everyone's back */
+  function liveSave(pg){
+    LIVE.pages=Object.assign({},LIVE.pages,{[PAGE]:{files:pg.files,steps:pg.steps}});
+    if(liveView)renderLive();
+    updateBadges();
+    mutate('dc_live_save',{context:PAGE,files:JSON.stringify(pg.files),steps:JSON.stringify(pg.steps)})
+      .then(j=>{if(j&&!j.success&&j.data&&j.data.msg&&j.data.code!=='auth')toast(j.data.msg);});
+  }
+  /* a path already in the library is linked, not added twice; a pasted
+     http(s) address is kept as a link */
+  async function lvAddFile(path,note,url){
+    path=String(path||'').trim();url=url||'';
+    if(!url&&/^https?:\/\//i.test(path)){url=path;path='';}
+    if(!path&&!url)return false;
+    let f=!url&&lvLib().find(x=>!x.url&&x.path.toLowerCase()===path.toLowerCase());
+    if(!f&&!url&&lvTf()){
+      try{f=await lvTfAdd(path,note);}catch(e){toast(e.message||'Couldn’t add the file to TaskFlow.');return false;}
+    }
+    if(!f){
+      const j=await api('dc_live_file_add',{context:PAGE,path,note:note||'',url});
+      if(!j||!j.success){toast((j&&j.data&&j.data.msg)||'Couldn’t add the file.');return false;}
+      f=j.data.file;
+      LIVE.files=[...LIVE.files.filter(x=>x.id!==f.id),f];
+    }
+    const pg=livePage();
+    if(lvHas(pg.files,f.id)){toast('That file is already on this page.');return true;}
+    liveSave({...pg,files:[...pg.files,f.id]});
+    return true;
+  }
+  function renderLive(){
+    let w=list.querySelector('.lvwrap');
+    if(!w){
+      list.innerHTML=`<div class="lvwrap">
+        <div class="lv-head"><span class="eyebrow">Going live</span><h3>${escHtml(pageLabel())}</h3>
+          <p>What to push for this page and how to put it live.</p></div>
+        <section class="lv-sec"><h5><span>Files<b class="lv-fc"></b></span></h5>
+          <div class="lv-files"></div>
+          <div class="lv-add">
+            <div class="lv-fwrap"><input class="tfin lv-fin" type="text" maxlength="500" placeholder="Path or link, e.g. wp-content/themes/palmer/header.php" autocomplete="off" spellcheck="false" aria-label="File path or link" aria-autocomplete="list">
+              <div class="lv-sug" role="listbox" aria-label="Files in the library"></div></div>
+            <input class="tfin lv-nin" type="text" maxlength="300" placeholder="Note (optional)" autocomplete="off" aria-label="Note">
+            <button class="tfbtn sm lv-fadd" type="button">Add</button>
+            <button class="tfbtn sm ghost lv-fup" type="button" title="Upload an image or PDF">Upload</button>
+          </div>
+          <input class="lv-ffile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" hidden>
+        </section>
+        <section class="lv-sec"><h5><span>Live directions<b class="lv-sc"></b></span><button class="lv-reset" type="button" title="Untick every step, ready for the next deploy">Reset ticks</button></h5>
+          <div class="lv-steps"></div>
+          <div class="lv-add"><textarea class="tfin lv-sin" rows="1" maxlength="2000" placeholder="Add a step, e.g. Clear the WP Rocket cache" aria-label="New step"></textarea>
+            <button class="tfbtn sm lv-sadd" type="button">Add</button></div>
+        </section>
+        <section class="lv-sec"><h5><span>File library<b class="lv-lc"></b></span></h5>
+          <p class="lv-lhint"></p><div class="lv-lib"></div></section>
+      </div>`;
+      w=list.querySelector('.lvwrap');lastLvSig=null;
+      lvWire(w);
+    }
+    const pg=livePage(), tfl=lvTf(), sig=JSON.stringify([LIVE.files,pg,tfl]);
+    if(sig===lastLvSig)return;
+    lastLvSig=sig;
+    const files=pg.files.map(liveFile).filter(Boolean), steps=pg.steps, done=steps.filter(s=>s.d).length;
+    const fpath=f=>f.url?`<a href="${escHtml(f.url)}" target="_blank" rel="noopener"${/\.pdf(\?|#|$)/i.test(f.url)?' data-pdf':''}>${escHtml(f.path)}</a>`:escHtml(f.path);
+    const fmain=f=>`<span class="lv-fmain"><span class="lv-fp">${fpath(f)}</span>${f.note?`<span class="lv-fn">${escHtml(f.note)}</span>`:''}</span>`;
+    w.querySelector('.lv-fc').textContent=files.length||'';
+    w.querySelector('.lv-sc').textContent=steps.length?`${done}/${steps.length}`:'';
+    w.querySelector('.lv-reset').hidden=!done;
+    w.querySelector('.lv-files').innerHTML=files.length?files.map(f=>`<div class="lv-file">${f.url?LV_LINK:LV_FILE}${fmain(f)}
+      <button class="lv-ib" type="button" data-lvcp="${f.id}" title="Copy the ${f.url?'link':'path'}">Copy</button>
+      <button class="lv-ib x" type="button" data-lvx="${f.id}" title="Take off this page" aria-label="Take off this page">✕</button></div>`).join('')
+      :'<div class="lv-none">No files yet. Add the paths to push, paste a link, or upload one.</div>';
+    w.querySelector('.lv-steps').innerHTML=steps.length?steps.map((s,i)=>`<div class="lv-step${s.d?' on':''}">
+      <button class="lv-chk" type="button" data-lvst="${i}" aria-label="${s.d?'Untick':'Tick'} step ${i+1}"><svg viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg></button>
+      <span class="lv-n">${i+1}.</span><span class="lv-st">${fmtText(escHtml(s.t))}</span>
+      ${i?`<button class="lv-ib" type="button" data-lvmv="${i}" title="Move up" aria-label="Move up">↑</button>`:''}
+      <button class="lv-ib x" type="button" data-lvsd="${i}" title="Remove step" aria-label="Remove step">✕</button></div>`).join('')
+      :'<div class="lv-none">No directions yet. Write the steps someone follows to put this page live.</div>';
+    /* TaskFlow's whole codebase map is too long to list: show the files in
+       use on some page, plus this site's links and uploads; search finds the rest */
+    const lib=lvLib().filter(f=>!f.tf||liveUses(f.id)).sort((a,b)=>a.path.localeCompare(b.path));
+    w.querySelector('.lv-lc').textContent=lib.length||'';
+    w.querySelector('.lv-lhint').textContent=tfl?`Search above to find any of the ${tfl.length} file${tfl.length===1?'':'s'} on TaskFlow’s Files page. New paths are added there.`:'';
+    w.querySelector('.lv-lib').innerHTML=lib.length?lib.map(f=>{
+      const n=liveUses(f.id), here=lvHas(pg.files,f.id);
+      return `<div class="lv-lrow">${f.url?LV_LINK:LV_FILE}${fmain(f)}<span class="lv-uses">${n} page${n===1?'':'s'}</span>
+        ${here?'<span class="lv-here">This page</span>':`<button class="lv-ib" type="button" data-lvlink="${f.id}">Add here</button>`}
+        ${f.tf?'':`<button class="lv-ib x" type="button" data-lvdel="${f.id}" title="Delete from the library" aria-label="Delete from the library">✕</button>`}</div>`;
+    }).join(''):`<div class="lv-none">${tfl?'Files linked from any page show here.':'Every file you add lands here, ready to link from other pages.'}</div>`;
+  }
+  function lvWire(w){
+    const fin=w.querySelector('.lv-fin'), nin=w.querySelector('.lv-nin'), sin=w.querySelector('.lv-sin'),
+          ffile=w.querySelector('.lv-ffile'), fup=w.querySelector('.lv-fup');
+    const grow=()=>{sin.style.height='auto';sin.style.height=sin.scrollHeight+'px';};
+    const addFile=()=>{
+      if(!fin.value.trim()){fin.focus();return;}
+      lvAddFile(fin.value,nin.value.trim(),'').then(ok=>{if(ok){fin.value='';nin.value='';fin.focus();}});
+    };
+    const addStep=()=>{
+      const t=sin.value.trim();if(!t){sin.focus();return;}
+      const pg=livePage();
+      liveSave({...pg,steps:[...pg.steps,{id:lvSid(),t,d:0}]});
+      sin.value='';grow();sin.focus();
+    };
+    /* as you type a path, the library is searched first (path, note and
+       link); picking a match links that file instead of adding a new one */
+    const sug=w.querySelector('.lv-sug');
+    let sg={items:[],i:0};
+    const sugClose=()=>{sg={items:[],i:0};lvSugOpen=false;sug.classList.remove('show');sug.innerHTML='';};
+    const hl=(s,q)=>{const k=q?s.toLowerCase().indexOf(q):-1;
+      return k<0?escHtml(s):escHtml(s.slice(0,k))+'<mark>'+escHtml(s.slice(k,k+q.length))+'</mark>'+escHtml(s.slice(k+q.length));};
+    function sugPaint(){
+      const raw=fin.value.trim(), q=raw.toLowerCase(), terms=q.split(/\s+/).filter(Boolean), pg=livePage();
+      if(!terms.length){sugClose();return;}
+      const base=f=>f.path.split(/[\/\\]/).pop().toLowerCase();
+      const rank=f=>base(f).startsWith(terms[0])?0:f.path.toLowerCase().includes(terms[0])?1:2;
+      const hits=lvLib().filter(f=>{const hay=(f.path+' '+f.note+' '+f.url).toLowerCase();return terms.every(t=>hay.includes(t));})
+        .sort((a,b)=>rank(a)-rank(b)||a.path.localeCompare(b.path)).slice(0,8);
+      if(!hits.length){sugClose();return;}
+      const exact=hits.some(f=>f.path.toLowerCase()===q||f.url.toLowerCase()===q);
+      const tf=!!lvTf(), link=/^https?:\/\//i.test(raw);
+      sg.items=[...hits.map(f=>({f,here:lvHas(pg.files,f.id)})),...(exact?[]:[{nu:raw}])];
+      if(sg.i>=sg.items.length)sg.i=0;
+      sug.innerHTML=`<div class="lv-sh">${tf?'From TaskFlow’s Files':'From the file library'}</div>`+sg.items.map((x,j)=>x.nu
+        ?`<button type="button" class="lv-sopt lv-snew${j===sg.i?' sel':''}" data-sj="${j}" role="option">+ Add <b>${escHtml(x.nu)}</b> as a new ${link?'link':tf?'file in TaskFlow':'file'}</button>`
+        :`<button type="button" class="lv-sopt${x.here?' here':''}${j===sg.i?' sel':''}" data-sj="${j}" role="option">${x.f.url?LV_LINK:LV_FILE}`
+          +`<span class="lv-fmain"><span class="lv-fp">${hl(x.f.path,terms[0])}</span>${x.f.note?`<span class="lv-fn">${hl(x.f.note,terms[0])}</span>`:''}</span>`
+          +`<em>${x.here?'On this page':liveUses(x.f.id)+' page'+(liveUses(x.f.id)===1?'':'s')}</em></button>`).join('');
+      sug.classList.add('show');lvSugOpen=true;
+      const s=sug.querySelector('.sel');if(s)s.scrollIntoView({block:'nearest'});
+    }
+    function sugPick(j){
+      const x=sg.items[j];if(!x)return;
+      if(x.nu){sugClose();addFile();return;}
+      if(x.here){toast('That file is already on this page.');return;}
+      const pg=livePage();
+      liveSave({...pg,files:[...pg.files,x.f.id]});
+      fin.value='';nin.value='';sugClose();fin.focus();
+    }
+    fin.addEventListener('input',()=>{sg.i=0;sugPaint();});
+    fin.addEventListener('focus',sugPaint);
+    fin.addEventListener('blur',()=>setTimeout(()=>{if(root.activeElement!==fin)sugClose();},150));
+    sug.addEventListener('mousedown',e=>e.preventDefault());   /* keep the field focused */
+    sug.addEventListener('click',e=>{const b=e.target.closest('[data-sj]');if(b)sugPick(+b.dataset.sj);});
+    fin.addEventListener('keydown',e=>{
+      if(e.isComposing)return;
+      const open=sug.classList.contains('show'), n=sg.items.length;
+      if(open&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
+        e.preventDefault();sg.i=(sg.i+(e.key==='ArrowDown'?1:n-1))%n;sugPaint();return;
+      }
+      if(open&&e.key==='Escape'){e.preventDefault();sugClose();return;}
+      if(e.key==='Enter'){e.preventDefault();open?sugPick(sg.i):addFile();}
+    });
+    nin.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();addFile();}});
+    sin.addEventListener('input',grow);
+    /* Enter adds the step, Shift+Enter is a new line inside it */
+    sin.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();addStep();}});
+    ffile.addEventListener('change',()=>{
+      const file=ffile.files[0];ffile.value='';if(!file)return;
+      const pdf=file.type==='application/pdf';
+      if(!pdf&&!/^image\/(png|jpeg|webp|gif)$/.test(file.type)){toast('Only images and PDFs can be uploaded. Add other files by their path.');return;}
+      if(file.size>(pdf?10:6)*1048576){toast(`That file is over ${pdf?10:6}MB.`);return;}
+      fup.disabled=true;fup.textContent='Uploading…';
+      const fr=new FileReader();
+      fr.onload=()=>api('dc_upload',{type:file.type,data:String(fr.result).split(',')[1],name:file.name}).then(j=>{
+        if(!j||!j.success){toast((j&&j.data&&j.data.msg)||'Upload failed.');return;}
+        return lvAddFile(file.name,nin.value.trim(),j.data.url).then(ok=>{if(ok)nin.value='';});
+      }).catch(()=>toast('Upload failed.')).finally(()=>{fup.disabled=false;fup.textContent='Upload';});
+      fr.readAsDataURL(file);
+    });
+    w.addEventListener('click',e=>{
+      const pdf=e.target.closest('a[data-pdf]');
+      if(pdf){e.preventDefault();openPdf(pdf.href,pdf.textContent);return;}
+      const b=e.target.closest('button');if(!b)return;
+      const d=b.dataset, pg=livePage();
+      if(b.classList.contains('lv-fadd'))return addFile();
+      if(b.classList.contains('lv-sadd'))return addStep();
+      if(b.classList.contains('lv-fup'))return ffile.click();
+      if(b.classList.contains('lv-reset')){
+        liveSave({...pg,steps:pg.steps.map(s=>({...s,d:0}))});
+        undoable('Ticks cleared',()=>liveSave(pg));
+        return;
+      }
+      if(d.lvst!=null){const i=+d.lvst;liveSave({...pg,steps:pg.steps.map((s,j)=>j===i?{...s,d:s.d?0:1}:s)});return;}
+      if(d.lvmv!=null){const i=+d.lvmv,s=pg.steps.slice();[s[i-1],s[i]]=[s[i],s[i-1]];liveSave({...pg,steps:s});return;}
+      if(d.lvsd!=null){const i=+d.lvsd;liveSave({...pg,steps:pg.steps.filter((_,j)=>j!==i)});undoable('Step removed',()=>liveSave(pg));return;}
+      if(d.lvx){liveSave({...pg,files:pg.files.filter(x=>!lvSame(x,d.lvx))});undoable('File taken off this page',()=>liveSave(pg));return;}
+      if(d.lvlink){const f=liveFile(d.lvlink);if(f&&!lvHas(pg.files,f.id))liveSave({...pg,files:[...pg.files,f.id]});return;}
+      if(d.lvcp){
+        const f=liveFile(d.lvcp);if(!f)return;
+        const v=f.url||f.path;
+        (navigator.clipboard?navigator.clipboard.writeText(v):Promise.reject()).then(()=>toast('Copied.')).catch(()=>window.prompt('Copy:',v));
+        return;
+      }
+      if(d.lvdel){
+        const f=liveFile(d.lvdel);if(!f||f.tf)return;
+        const n=liveUses(f.id);
+        const del=()=>{
+          LIVE.files=LIVE.files.filter(x=>x!==f);renderLive();updateBadges();
+          mutate('dc_live_file_del',{context:PAGE,id:f.id}).then(j=>{if(j&&!j.success&&j.data&&j.data.msg)toast(j.data.msg);});
+        };
+        if(!n){del();return;}
+        confirmDialog({title:'Delete this file from the library?',
+          text:`It’s linked from ${n} page${n===1?'':'s'} and comes off ${n===1?'it':'all of them'}.`,
+          quote:f.path,ok:'Delete',tone:'danger',go:del});
+      }
+    });
+  }
+  function openLiveView(){
+    closeSettings();
+    if(view!=='comments')switchView('comments',true);
+    if(searchQ)closeSearch();
+    closePinsView();closeNotifView();closePagesView();closePinPop();
+    liveView=true;lastLvSig=null;
+    $$('.tab').forEach(x=>x.classList.remove('active'));
+    panel.classList.add('live-open');
+    sub.textContent='Going live';
+    list.innerHTML='';renderLive();list.scrollTop=0;viewIn();
+    /* fresh copy of TaskFlow's Files each time this opens */
+    if(ME&&TFS.team&&!TFS.busy.files)tfLoad('files').then(()=>{if(liveView)renderLive();});
+  }
+  function closeLiveView(){
+    if(!liveView)return;
+    liveView=false;lastLvSig=null;
+    panel.classList.remove('live-open');paintLiveTab();
+  }
+  /* opens the panel straight onto this page's go-live notes; again closes it */
+  liveTabEl.onclick=e=>{
+    e.stopPropagation();
+    if(isOpen&&liveView){closePanel();return;}
+    openLiveView();
+    if(!isOpen)open();
+    paintLiveTab();
+  };
+
   /* the active-tab glide follows whichever tab is active */
   const tabsEl=$('.tabs'), glide=$('.tabs .glide');
   let glideReady=false;
@@ -6209,36 +7034,17 @@ function qrMatrix(text){
     rig.style.setProperty('--rx',(isOpen?W:0)+'px');rig.classList.toggle('open',isOpen);
     rigb.style.setProperty('--rm',Mw+'px');rigb.classList.toggle('mopen',menuOn);
     dockPx=(isOpen?W:0)+Mw;
-    [toggleEl,pinEye].forEach(el=>el.classList.toggle('docked',dockPx>0));
+    [toggleEl,pinEye,liveTabEl].forEach(el=>el.classList.toggle('docked',dockPx>0));
+    try{paintLiveTab();}catch(e){}
     toggleEl.setAttribute('aria-label',isOpen?'Close comments':'Open comments');
     try{placePresence();}catch(e){}
   }
+  /* who's here is the top section of the edge strip; avatars scale with the tab size */
   function placePresence(){
     if(!presEl)return;
-    const M=hostMap(), left=side==='left';
-    const tw=toggleEl.offsetWidth||44;
-    presEl.classList.toggle('left',left);
+    presEl.classList.toggle('left',side==='left');
     presEl.classList.toggle('docked',dockPx>0);
-    presEl.style.width=tw+'px';
-    presEl.style.setProperty('--pa',Math.round(tw*.64)+'px');
-    const h=presEl.offsetHeight, w=presEl.offsetWidth, vw=M.s(innerWidth);
-    let x,y;
-    {
-      /* x from layout (offsetLeft ignores the slide-in), y from the rect
-         (the tab's own translateY(-50%) is a transform, which it includes) */
-      const r=toggleEl.getBoundingClientRect();
-      x=left?toggleEl.offsetLeft:toggleEl.offsetLeft+toggleEl.offsetWidth-w;   /* same layer as the tab */
-      y=M.y(r.top)-GAP-h;
-      if(y<12){
-        const below=pinEye.classList.contains('show')?pinEye.getBoundingClientRect():r;
-        y=M.y(below.bottom)+GAP;
-      }
-    }
-    x=Math.max(0,Math.min(x,vw-w));
-    /* the very first placement jumps into place; after that it glides */
-    if(!presPlaced)presEl.style.transition='none';
-    presEl.style.transform=`translate(${Math.round(x)}px,${Math.round(y)}px)`;
-    if(!presPlaced){void presEl.offsetWidth;presEl.style.transition='';presPlaced=true;}
+    presEl.style.setProperty('--pa',Math.round((toggleEl.offsetWidth||44)*.64)+'px');
   }
   function presenceBeat(){
     if(!ME||document.hidden)return;
@@ -6468,8 +7274,9 @@ function qrMatrix(text){
   function closeModConfirm(){modBox.classList.remove('show');mcGo=null;}
   /* verb: 'edit' | 'delete'. Runs go() only after an explicit confirm. */
   /* one confirm dialog for every \u201care you sure\u201d in the panel */
-  function confirmDialog({title,text,quote,ok,tone,go}){
+  function confirmDialog({title,text,quote,ok,no,tone,go}){
     mcTitle.textContent=title;
+    $('.mccancel').textContent=no||'Cancel';
     mcText.textContent=text;
     mcQuote.textContent=quote||'';
     mcQuote.style.display=quote?'':'none';
@@ -6714,6 +7521,7 @@ function qrMatrix(text){
       else (cache.other[r.context]=cache.other[r.context]||[]).push(r);
     });
     typingState=data.typing||{};renderTyping();
+    LIVE=data.live&&Array.isArray(data.live.files)?data.live:{files:[],pages:{}};
     if(data.presence)setPresence(data.presence);
     if(isOpen)markRead(ctx);
     setJoinBaseline();   /* first load for this account = the starting line */
@@ -6722,6 +7530,7 @@ function qrMatrix(text){
     render(cache[ctx]);
     updatePinEye();
     maybeHashGoto();   /* #dc-<id> links, incl. cross-page search results */
+    edgeData=true;edgeReady();
     if(ME)tfLinkedSync();   /* chips for tasks linked from comments */
   }
 
@@ -6786,6 +7595,17 @@ function qrMatrix(text){
     if(ME&&TFS.team&&Date.now()-TFS.at>20000)tfLoadAll();   /* TaskFlow, if it's gone stale */
   }
   function closePanel(){closePinPop();isOpen=false;syncTabPins();showPageBar();panel.classList.remove('open');overlay.classList.remove('show');updatePinEye();syncDock();syncScrollLock();}
+  /* opening from the tab (or its shortcut) always lands on this page's
+     comments, whatever was showing when the panel was shut */
+  function openFresh(){
+    closeSettings();
+    if(searchQ)closeSearch();
+    closePinsView();closeNotifView();closePagesView();closeLiveView();
+    if(view!=='comments')switchView('comments',true);
+    if(ctx!=='page'){ctx='page';cancelReply();clearPicks();restoreDraft();renderTyping();}
+    $$('.tab[data-ctx]').forEach(x=>x.classList.toggle('active',x.dataset.ctx==='page'));
+    open();
+  }
 
   /* scrolling anywhere over the panel stays inside the panel.
      preventDefault kills native page scroll, stopPropagation hides the event
@@ -6901,24 +7721,591 @@ function qrMatrix(text){
   panel.addEventListener('touchend',endSwipe);
   panel.addEventListener('touchcancel',endSwipe);
 
-  /* Ctrl+/ (or Cmd+/) opens and closes the panel from anywhere on the page */
-  window.addEventListener('keydown',e=>{
-    if((e.ctrlKey||e.metaKey)&&(e.key==='/'||e.code==='Slash')){
+  /* ================= keyboard shortcuts =================
+     Each action has one combo, stored as modifiers in a fixed order plus the
+     physical key (e.code), e.g. "Alt+Shift+KeyT", so it survives keyboard
+     layouts. '' turns an action off. Kept in the account's settings and
+     cached in this browser, so the toggle works before sign-in too. On a
+     Mac, Cmd also fires anything bound to Ctrl. */
+  const HK_ACTIONS=[
+    ['toggle','Open / close the panel','From anywhere on the site'],
+    ['chat','Quick chat','A comment box over the page, posted to this page’s thread'],
+    ['newtask','Create a task','TaskFlow’s full new-task form over the page, filed against this page'],
+    ['tasks','Open tasks','Your team’s open tasks in a popup: search, open or complete them'],
+    ['quicklog','Quick log a task','Log something already finished, straight into Completed: type it, press Enter.'],
+    ['focus','Complete a focus task','Your focus list (now + up next) over the page: a number or Enter marks one complete.']
+  ];
+  const HK_DEFAULTS={toggle:'Ctrl+Slash',chat:'Alt+Shift+KeyC',newtask:'Alt+Shift+KeyN',tasks:'Alt+Shift+KeyT',quicklog:'Alt+Shift+KeyL',focus:'Alt+Shift+KeyF'};
+  const HK_RE=/^(Ctrl\+)?(Alt\+)?(Shift\+)?(Meta\+)?(Key[A-Z]|Digit[0-9]|F[1-9]|F1[0-2]|Slash|Period|Comma|Semicolon|Quote|BracketLeft|BracketRight|Backslash|Backquote|Minus|Equal|Space|Enter)$/;
+  /* the browser (or the composer's own formatting keys) gets these first */
+  const HK_RESERVED=['Ctrl+KeyT','Ctrl+KeyW','Ctrl+KeyN','Ctrl+Shift+KeyT','Ctrl+Shift+KeyN','Ctrl+Shift+KeyW','Ctrl+KeyC','Ctrl+KeyV',
+    'Ctrl+KeyX','Ctrl+KeyA','Ctrl+KeyZ','Ctrl+KeyY','Ctrl+KeyF','Ctrl+KeyR','Ctrl+KeyL','Ctrl+KeyP','Ctrl+KeyS','Ctrl+KeyB','Ctrl+KeyI',
+    'Ctrl+KeyE','Ctrl+Shift+KeyI','Ctrl+Shift+KeyJ','Ctrl+Shift+KeyC','F5','F11','F12','Ctrl+F5'];
+  const HK_MODS=['Control','Alt','Shift','Meta','AltGraph','OS','CapsLock','Fn'];
+  const IS_MAC=/Mac|iP(hone|ad|od)/.test(navigator.platform||'');
+  const HK_NAME={Slash:'/',Period:'.',Comma:',',Semicolon:';',Quote:"'",BracketLeft:'[',BracketRight:']',Backslash:'\\',
+    Backquote:'`',Minus:'-',Equal:'=',Space:'Space',Enter:'Enter'};
+  function hkMap(){
+    let own=ME&&ME.settings&&ME.settings.hotkeys;
+    if(!own||typeof own!=='object'){try{own=JSON.parse(localStorage.getItem('dc_hotkeys'))||{};}catch(e){own={};}}
+    const m={};
+    HK_ACTIONS.forEach(([k])=>{const v=own[k];m[k]=typeof v==='string'&&(v===''||HK_RE.test(v))?v:HK_DEFAULTS[k];});
+    return m;
+  }
+  function hkCombo(e,macCtrl){
+    if(!e.code||HK_MODS.includes(e.key))return '';
+    const ctrl=e.ctrlKey||(macCtrl&&e.metaKey), meta=e.metaKey&&!macCtrl;
+    return (ctrl?'Ctrl+':'')+(e.altKey?'Alt+':'')+(e.shiftKey?'Shift+':'')+(meta?'Meta+':'')+e.code;
+  }
+  const hkKeys=c=>c?c.split('+').map(p=>p==='Meta'?(IS_MAC?'⌘':'Win'):p==='Alt'?(IS_MAC?'⌥':'Alt'):p==='Shift'?(IS_MAC?'⇧':'Shift')
+    :/^Key/.test(p)?p.slice(3):/^Digit/.test(p)?p.slice(5):HK_NAME[p]||p):[];
+  const hkHtml=c=>c?hkKeys(c).map(k=>`<kbd>${escHtml(k)}</kbd>`).join(''):'<span class="hk-off">Off</span>';
+
+  /* the composer's hint shows the current toggle */
+  function paintHint(){
+    const h=$('.hint-tog');if(!h)return;
+    const c=hkMap().toggle;
+    h.hidden=!c;
+    h.innerHTML=c?'<span>·</span> '+hkKeys(c).map(k=>'<kbd>'+escHtml(k)+'</kbd>').join('+')+' toggle':'';
+  }
+
+  /* ---- settings: click a shortcut, press the new keys ---- */
+  const hkList=$('.hklist'), hkMsgEl=$('.hkmsg');
+  let hkRec=null;                                   /* {k,btn} while recording */
+  function hkMsg(t,warn){hkMsgEl.textContent=t||'';hkMsgEl.classList.toggle('warn',!!warn);}
+  function paintHotkeys(){
+    const m=hkMap();
+    hkList.innerHTML=HK_ACTIONS.map(([k,l,d])=>`<div class="hkrow"><span class="hk-l"><b>${l}</b><span>${d}</span></span>
+      <button type="button" class="hkkey${m[k]?'':' off'}" data-hk="${k}" aria-label="Change the shortcut for ${l}">${hkHtml(m[k])}</button>
+      <button type="button" class="hkx" data-hkx="${k}" title="${m[k]?'Turn off':'Restore the default'}" aria-label="${m[k]?'Turn off':'Restore the default'}">${m[k]?'✕':'↺'}</button></div>`).join('');
+    paintHint();
+  }
+  function saveHotkeys(m){
+    try{localStorage.setItem('dc_hotkeys',JSON.stringify(m));}catch(e){}
+    if(ME)saveSetting({hotkeys:m});
+    paintHotkeys();
+  }
+  function hkStart(k){
+    hkStop();hkMsg('');
+    const btn=hkList.querySelector(`[data-hk="${k}"]`);if(!btn)return;   /* the list may have just been rebuilt */
+    hkRec={k,btn};
+    btn.classList.add('rec');
+    btn.innerHTML='<span class="hk-rec">Press keys…</span>';
+  }
+  function hkStop(){
+    if(!hkRec)return;
+    hkRec=null;paintHotkeys();
+  }
+  function hkSet(k,c){
+    const m=hkMap();let moved='';
+    if(c)HK_ACTIONS.forEach(([o,l])=>{if(o!==k&&m[o]===c){m[o]='';moved=l;}});
+    m[k]=c;hkRec=null;
+    saveHotkeys(m);
+    hkMsg(moved?`That was the shortcut for “${moved}”, which is now off.`:'',!!moved);
+  }
+  function hkRecordKey(e){
+    e.preventDefault();e.stopPropagation();
+    const plain=!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey;
+    if(e.key==='Escape'&&plain){hkStop();return;}
+    if((e.key==='Backspace'||e.key==='Delete')&&plain){hkSet(hkRec.k,'');return;}
+    if(HK_MODS.includes(e.key)){
+      const held=[e.ctrlKey&&'Ctrl',e.altKey&&'Alt',e.shiftKey&&'Shift',e.metaKey&&'Meta'].filter(Boolean);
+      hkRec.btn.innerHTML=held.length?hkKeys(held.join('+')+'+KeyX').slice(0,-1).map(k=>`<kbd>${escHtml(k)}</kbd>`).join('')+'<span class="hk-rec">+ …</span>'
+        :'<span class="hk-rec">Press keys…</span>';
+      return;
+    }
+    const c=hkCombo(e,false);
+    if(!HK_RE.test(c)){hkMsg('That key can’t be used. Try a letter, a number or an F-key.',true);return;}
+    if(!/^F\d+$/.test(c.split('+').pop())&&!/(Ctrl|Alt|Meta)\+/.test(c)){
+      hkMsg('Add Ctrl, '+(IS_MAC?'⌥ or ⌘':'Alt or Win')+' so it can’t fire while you’re typing.',true);return;
+    }
+    if(HK_RESERVED.includes(c)){hkMsg('Your browser (or the comment box) already uses that one. Pick another.',true);return;}
+    hkSet(hkRec.k,c);
+  }
+  hkList.addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;
+    if(b.dataset.hk){hkRec&&hkRec.k===b.dataset.hk?hkStop():hkStart(b.dataset.hk);return;}
+    if(b.dataset.hkx){const k=b.dataset.hkx;hkSet(k,hkMap()[k]?'':HK_DEFAULTS[k]);}
+  });
+  $('.hkreset').onclick=()=>{hkRec=null;saveHotkeys({...HK_DEFAULTS});hkMsg('Back to the defaults.');};
+  /* clicking anywhere else stops recording */
+  panel.addEventListener('click',e=>{if(hkRec&&!e.composedPath().includes(hkRec.btn))hkStop();},true);
+
+  /* ---- quick log: something already done, logged straight into Completed,
+     like TaskFlow's own quick log. Credited to you unless someone else is
+     picked; the page field takes any page name or URL ---- */
+  const qlEl=$('.qlog'), qlIn=$('.ql-in'), qlErr=$('.ql-err'), qlWhen=$('.ql-when'), qlPgIn=$('.ql-pgin'), qlBy=$('.ql-by');
+  /* the team, with you first; keeps the current pick when the list refreshes */
+  function qlByOpts(){
+    const names=[...new Set([ME&&ME.name,...TFS.members.map(fullName)].filter(Boolean))];
+    const keep=qlBy.value;
+    qlBy.innerHTML=names.map(n=>`<option value="${escHtml(n)}">${escHtml(n)}${ME&&n===ME.name?' (you)':''}</option>`).join('');
+    qlBy.value=names.includes(keep)?keep:(ME?ME.name:'');
+  }
+  qlBy.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();qlSave();}});
+  let qlBusy=false, qlWhenSet=false, qlRun=0;
+  /* batch mode: logging keeps the box open for the next one; remembered here */
+  const qlKeep=$('.ql-keep'), qlBatch=$('.ql-batch');
+  try{qlKeep.checked=localStorage.getItem('dc_ql_batch')==='1';}catch(e){}
+  qlBatch.classList.toggle('on',qlKeep.checked);
+  qlKeep.addEventListener('change',()=>{
+    qlBatch.classList.toggle('on',qlKeep.checked);
+    try{localStorage.setItem('dc_ql_batch',qlKeep.checked?'1':'0');}catch(e){}
+    qlIn.focus();
+  });
+  /* the box grows with each line, up to a few */
+  const qlGrow=()=>{qlIn.style.height='auto';qlIn.style.height=Math.min(qlIn.scrollHeight,180)+'px';};
+  qlIn.addEventListener('input',qlGrow);
+  /* the time it was logged: now, in local time, editable before saving */
+  const localStamp=d=>ymdLocal(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  qlWhen.addEventListener('input',()=>{qlWhenSet=true;});
+  qlWhen.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();qlSave();}});
+  /* the page as stored: a path becomes a full URL on this site; a name
+     ("Checkout") or a full URL is kept as typed, like TaskFlow's own quick log */
+  function qlPageVal(){
+    const v=qlPgIn.value.trim();
+    return v&&v[0]==='/'?ORIGIN+v:v;
+  }
+  /* suggestions: this page, pages with comments, pages on open tasks */
+  function qlPageOpts(){
+    const seen=new Set(), opts=[];
+    const add=v=>{const s=shortPage(v);if(s&&s!=='No page'&&!seen.has(s)){seen.add(s);opts.push(s);}};
+    add(HERE_URL);
+    Object.keys(cache.other).filter(c=>c[0]==='/'&&c.indexOf('/wp-admin:')!==0).forEach(c=>add(ORIGIN+c));
+    (TFS.tasks||[]).forEach(t=>{if(t.page)add(t.page);});
+    $('#ql-pages').innerHTML=opts.slice(0,60).map(s=>`<option value="${escHtml(s)}"></option>`).join('');
+  }
+  $('.ql-here').onclick=e=>{e.preventDefault();qlPgIn.value=shortPage(HERE_URL);qlIn.focus();};
+  qlPgIn.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!e.isComposing){e.preventDefault();qlSave();}
+  });
+  function openQuickLog(){
+    qlErr.hidden=true;qlIn.disabled=false;
+    qlPgIn.value='';qlPageOpts();qlWhenSet=false;qlRun=0;
+    qlBy.value='';qlByOpts();
+    if(!TFS.members.length&&TFS.team)tfLoad('members').then(qlByOpts);
+    const now=new Date();qlWhen.value=localStamp(now);qlWhen.max=localStamp(new Date(now.getTime()+864e5*365));
+    qlEl.classList.add('show');
+    setTimeout(()=>{qlGrow();qlIn.focus();qlIn.select();},30);
+  }
+  function closeQuickLog(){qlEl.classList.remove('show');}
+  /* the first line is the title; any lines under it stay in the description */
+  const qlText=()=>qlIn.value.replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+  const qlTitle=v=>clip((v.split('\n').map(x=>x.replace(/\s+/g,' ').trim()).find(Boolean))||'',200);
+  /* Enter logs; with "Log another" on, the box stays open with the same page
+     (and time, if it was changed) for the next one */
+  async function qlSave(){
+    const v=qlText(), keep=qlKeep.checked;
+    if(!v||qlBusy)return;
+    if(!ME||!TFS.team){closeQuickLog();return;}
+    qlBusy=true;qlIn.disabled=true;qlErr.hidden=true;
+    const now=new Date().toISOString(), title=qlTitle(v);
+    const picked=qlWhen.value?new Date(qlWhen.value):null;   /* datetime-local is read as local time */
+    const when=picked&&!isNaN(picked.getTime())?picked.toISOString():now;
+    const who=qlBy.value||ME.name;
+    const payload={team_id:TFS.team,status:'completed',page:qlPageVal(),feedback:plainToHtml(v),
+      noticed_by:who,completed_by:who,roi:'medium',complexity:'medium',assignee_id:null,due_date:null,
+      subtasks:[],attachments:[],png_url:null,date_received:when,date_completed:when,updated_at:now,created_by:ME.sb_uid};
+    try{
+      const t=await insertTask(payload,title,v);
+      placeTask(t);                                   /* into Done, not the open list */
+      awardCompleted({complexity:t.complexity,roi:t.roi,status:'completed'});
+      qlIn.value='';qlGrow();
+      if(keep){
+        qlRun++;
+        qlIn.disabled=false;qlIn.focus();
+        if(!qlWhenSet)qlWhen.value=localStamp(new Date());
+      }else closeQuickLog();
+      railBadges();tfRepaint();
+      undoable(keep?`Logged as completed · ${qlRun} so far`:'Logged as completed',()=>{
+        TF.rest(`tasks?id=eq.${encodeURIComponent(t.id)}`,{method:'DELETE'}).then(()=>{
+          TFS.tasks=(TFS.tasks||[]).filter(x=>x!==t);
+          if(TFS.done)TFS.done=TFS.done.filter(x=>x!==t);
+          delete TFS.extra[t.id];
+          if(tv.open===t.id)tv.open=null;
+          railBadges();tfRepaint();
+        }).catch(err=>toast('Couldn’t remove it: '+err.message));
+      });
+    }catch(e){
+      qlErr.textContent=e.message||'Could not log the task.';qlErr.hidden=false;
+      qlIn.disabled=false;qlIn.focus();
+    }finally{qlBusy=false;}
+  }
+  /* Enter logs, Shift+Enter is a line break (the textarea's own) */
+  qlIn.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();qlSave();}
+  });
+  $('.ql-more').onclick=()=>{
+    const v=qlText(), t=qlTitle(v), pg=qlPageVal();
+    const rest=v.slice(v.indexOf('\n')+1).trim();
+    closeQuickLog();qlIn.value='';qlGrow();
+    openTaskForm({page:pg,title:t,feedback:v.includes('\n')?rest:''});
+  };
+  document.addEventListener('click',e=>{
+    if(qlEl.classList.contains('show')&&!e.composedPath().includes(qlEl))closeQuickLog();
+  });
+
+  /* ---- focus picker: the focus list (now + up next) as a popup over the
+     page, panel open or shut; a number, or ↑↓ and Enter, completes a task ---- */
+  const fpEl=$('.fpick'), fpList=$('.fp-list');
+  let fpI=0;
+  function paintFocusPick(){
+    if(!fpEl.classList.contains('show'))return;
+    if(TFS.tasks===null||TFS.queue===null){fpList.innerHTML='<div class="fp-empty">Loading your focus…</div>';return;}
+    const items=focusItems();
+    if(!items.length){fpList.innerHTML='<div class="fp-empty">Nothing in focus. Start a task, or queue one from Tasks.</div>';return;}
+    fpI=Math.max(0,Math.min(fpI,items.length-1));
+    fpList.innerHTML=items.map((x,i)=>{
+      const t=x.t, st=ST[t.status]||ST.open, txt=clip(taskTitle(t),140);
+      return `<button type="button" class="fp-row${i===fpI?' sel':''}" data-fpi="${i}" role="option" aria-selected="${i===fpI}" style="--c:var(${st.v});animation-delay:${Math.min(i,8)*25}ms">
+        <span class="fp-n">${i<9?i+1:''}</span><span class="tfchk" aria-hidden="true">${ICO.check}</span>
+        <span class="fp-main"><span class="fp-txt">${txt?escHtml(txt):'<i>Untitled task</i>'}</span>
+          <span class="fp-meta">${x.now?st.l:'Up next'}${t.page?' · '+escHtml(shortPage(t.page)):''}</span></span></button>`;
+    }).join('');
+    const s=fpList.querySelector('.sel');if(s)s.scrollIntoView({block:'nearest'});
+  }
+  function fpComplete(i){
+    const x=focusItems()[i];if(!x)return;
+    const row=fpList.querySelector(`[data-fpi="${i}"]`);
+    if(row){row.classList.add('done');row.style.animation='none';}
+    setTimeout(()=>{setTaskStatus(x.t.id,'completed');paintFocusPick();fpEl.focus();},220);
+  }
+  function openFocusPick(){
+    closeQuickLog();fpI=0;
+    fpEl.classList.add('show');paintFocusPick();
+    if(TFS.tasks===null||TFS.queue===null||Date.now()-TFS.at>20000)tfLoadAll().then(paintFocusPick);
+    setTimeout(()=>fpEl.focus(),30);
+  }
+  const closeFocusPick=()=>fpEl.classList.remove('show');
+  fpEl.addEventListener('keydown',e=>{
+    const n=focusItems().length;
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      e.preventDefault();if(n){fpI=(fpI+(e.key==='ArrowDown'?1:n-1))%n;paintFocusPick();}return;
+    }
+    if(e.key==='Enter'){
       e.preventDefault();
+      if(!n)return;
+      if(e.shiftKey){const x=focusItems()[fpI];closeFocusPick();if(x)openTaskView(x.t.id);}
+      else fpComplete(fpI);
+      return;
+    }
+    if(/^[1-9]$/.test(e.key)&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();const i=+e.key-1;if(i<n){fpI=i;fpComplete(i);}}
+  });
+  fpList.addEventListener('click',e=>{
+    const b=e.target.closest('[data-fpi]');if(!b)return;
+    fpI=+b.dataset.fpi;
+    e.shiftKey?(closeFocusPick(),openTaskView(focusItems()[fpI].t.id)):fpComplete(fpI);
+  });
+  document.addEventListener('click',e=>{
+    if(fpEl.classList.contains('show')&&!e.composedPath().includes(fpEl))closeFocusPick();
+  });
+
+  /* ---- new task popup: the same task TaskFlow's own New task sheet makes
+     (title, page, description, checklist, status, ROI, complexity, noticed
+     by, assignee, due date, attachments, queue, batch add), over the page ---- */
+  const ntEl=$('.ntpop'), ntTitle=$('.nt-title'), ntPg=$('.nt-pg'), ntDesc=$('.nt-desc'), ntSubIn=$('.nt-subin'),
+        ntErr=$('.nt-err'), ntAs=$('.nt-as'), ntQ=$('.nt-q'), ntBatch=$('.nt-batch'), ntNoticed=$('.nt-noticed'),
+        ntDoneBy=$('.nt-doneby'), ntDue=$('.nt-due'), ntGo=$('.nt-go'), ntFile=$('.nt-file');
+  const NT={status:'open',roi:'medium',complexity:'medium',subs:[],atts:[],up:0,busy:false,count:0};
+  const ntCap=s=>s[0].toUpperCase()+s.slice(1);
+  function ntPaint(){
+    const done=NT.status==='completed';
+    $('.nt-status').innerHTML=['open','in_progress','on_hold','completed'].map(k=>
+      `<button type="button" class="opt${NT.status===k?' is-on':''}" data-nst="${k}" style="--c:var(${ST[k].v})"><span class="dot"></span>${ST[k].l}</button>`).join('');
+    $('.nt-roi').innerHTML=['critical','high','medium','low'].map(v=>`<button type="button" data-nroi="${v}" class="${NT.roi===v?'sel':''}">${ntCap(v)}</button>`).join('');
+    $('.nt-cx').innerHTML=['high','medium','low'].map(v=>`<button type="button" data-ncx="${v}" class="${NT.complexity===v?'sel':''}">${ntCap(v)}</button>`).join('');
+    $('.nt-donerow').hidden=!done;
+    $('.nt-qrow').hidden=done;
+    $('.nt-subs').innerHTML=NT.subs.map((s,i)=>`<div class="tfsub"><span class="nt-bul"></span><span>${escHtml(s)}</span>`
+      +`<button type="button" class="tfx" data-nsubx="${i}" aria-label="Remove item">✕</button></div>`).join('');
+    $('.nt-atts').innerHTML=NT.atts.map((a,i)=>`<span class="tfachip">${a.kind==='image'
+        ?`<img src="${escHtml(a.url)}" alt="${escHtml(a.name)}">`
+        :`<a class="tffile" href="${escHtml(a.url)}" target="_blank" rel="noopener">${escHtml(a.name)}</a>`}`
+      +`<button type="button" data-natx="${i}" aria-label="Remove attachment">✕</button></span>`).join('')
+      +(NT.atts.length+NT.up<10?`<button type="button" class="tfbtn sm" data-natadd${NT.up?' disabled':''}>${NT.up?'Uploading…':ICO.plus+'Attach'}</button>`:'');
+    $('.nt-note').textContent=(done?'Lands in Completed':`Lands in ${ST[NT.status].l}${ntQ.checked?' and joins the queue':''}`)
+      +(NT.count?` · ${NT.count} added`:'');
+    $('.nt-cnt').textContent=NT.count?`· Batch · ${NT.count} added`:'';
+    ntGo.innerHTML=NT.busy?'Creating…':(ntBatch.checked?'Create &amp; add another':'Create task')+' <span class="kbd">Ctrl ↵</span>';
+    ntGo.disabled=NT.busy||NT.up>0;
+    $('.nt-cancel').textContent=NT.count?'Done':'Cancel';
+  }
+  function ntPeople(){
+    const keep=ntAs.value;
+    ntAs.innerHTML='<option value="">Unassigned</option>'+TFS.members.map(m=>
+      `<option value="${escHtml(m.id)}">${escHtml(fullName(m))}${ME&&m.id===ME.sb_uid?' (you)':''}</option>`).join('');
+    ntAs.value=TFS.members.some(m=>m.id===keep)?keep:'';
+    $('#nt-people').innerHTML=TFS.members.map(m=>`<option value="${escHtml(fullName(m))}"></option>`).join('');
+  }
+  const ntPage=()=>{const v=ntPg.value.trim();return v&&v[0]==='/'?ORIGIN+v:v;};
+  const ntFitTitle=()=>{ntTitle.style.height='auto';ntTitle.style.height=ntTitle.scrollHeight+'px';};
+  const ntFail=m=>{ntErr.textContent=m;ntErr.hidden=false;};
+  function openNewTask(){
+    Object.assign(NT,{status:'open',roi:'medium',complexity:'medium',subs:[],atts:[],up:0,busy:false,count:0});
+    ntErr.hidden=true;
+    ntTitle.value='';ntDesc.value='';ntSubIn.value='';ntDue.value='';
+    ntPg.value=shortPage(HERE_URL);qlPageOpts();
+    ntNoticed.value=ME.name;ntDoneBy.value=ME.name;
+    ntQ.checked=true;ntBatch.checked=false;   /* TaskFlow's defaults */
+    ntAs.value='';ntPeople();
+    if(!TFS.members.length&&TFS.team)tfLoad('members').then(ntPeople);
+    ntPaint();
+    ntEl.classList.add('show');
+    setTimeout(()=>{ntFitTitle();ntTitle.focus();},30);
+  }
+  const closeNewTask=()=>ntEl.classList.remove('show','dragging');
+  /* images and PDFs, uploaded to this site as they're added */
+  function ntAttach(files){
+    files.filter(f=>IMG_OK.includes(f.type)).slice(0,Math.max(0,10-NT.atts.length-NT.up)).forEach(file=>{
+      const pdf=file.type==='application/pdf';
+      if(file.size>(pdf?10:6)*1048576){ntFail(`“${file.name}” is over ${pdf?10:6}MB.`);return;}
+      NT.up++;ntPaint();
+      const fr=new FileReader();
+      fr.onload=()=>api('dc_upload',{type:file.type,data:String(fr.result).split(',')[1],name:file.name||''}).then(j=>{
+        if(j&&j.success)NT.atts.push({url:j.data.url,name:file.name||(pdf?'Document.pdf':'image.png'),kind:pdf?'pdf':'image'});
+        else ntFail((j&&j.data&&j.data.msg)||'Upload failed.');
+      }).catch(()=>ntFail('Upload failed.')).finally(()=>{NT.up--;ntPaint();});
+      fr.onerror=()=>{NT.up--;ntPaint();};
+      fr.readAsDataURL(file);
+    });
+  }
+  function ntAddSub(){
+    const v=ntSubIn.value.replace(/\s+/g,' ').trim();
+    if(!v)return;
+    NT.subs.push(v);ntSubIn.value='';ntPaint();ntSubIn.focus();
+  }
+  async function ntSave(){
+    if(NT.busy||NT.up)return;
+    if(ntSubIn.value.trim())ntAddSub();
+    const title=ntTitle.value.replace(/\s+/g,' ').trim(), desc=ntDesc.value.trim();
+    if(!title&&!desc){ntFail('Give the task a title.');ntTitle.focus();return;}
+    const done=NT.status==='completed';
+    NT.busy=true;ntErr.hidden=true;ntPaint();
+    try{
+      const f=formFrom({title,feedback:desc,page:ntPage(),noticed:ntNoticed.value.trim()||ME.name,queue:ntQ.checked&&!done});
+      Object.assign(f,{status:NT.status,roi:NT.roi,complexity:NT.complexity,assignee:ntAs.value,due:ntDue.value,
+        checklist:NT.subs.join('\n'),atts:NT.atts.slice(),completedBy:ntDoneBy.value.trim()||ME.name});
+      await saveTaskForm(f);
+      railBadges();tfRepaint();
+      if(ntBatch.checked){
+        /* batch: clear what was written, keep the page and the settings */
+        NT.count++;NT.subs=[];NT.atts=[];
+        ntTitle.value='';ntDesc.value='';ntFitTitle();
+        toast('Task added — ready for the next one');
+        setTimeout(()=>ntTitle.focus(),30);
+      }else{
+        closeNewTask();
+        toast(done?'Logged as completed.':f.queue?'Task created and added to the queue.':'Task created in TaskFlow.');
+      }
+    }catch(e){ntFail(e.message||'Could not create the task.');}
+    finally{NT.busy=false;ntPaint();}
+  }
+  ntTitle.addEventListener('input',()=>{
+    if(/\n/.test(ntTitle.value))ntTitle.value=ntTitle.value.replace(/\n/g,' ');
+    ntFitTitle();
+  });
+  ntEl.addEventListener('keydown',e=>{
+    if(e.isComposing||e.key!=='Enter')return;
+    if(e.ctrlKey||e.metaKey){e.preventDefault();ntSave();return;}
+    if(e.target===ntTitle||e.target===ntPg){e.preventDefault();ntDesc.focus();return;}
+    if(e.target===ntSubIn){e.preventDefault();ntAddSub();}
+  });
+  ntEl.addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;
+    const d=b.dataset;
+    if(d.nst){NT.status=d.nst;ntPaint();return;}
+    if(d.nroi){NT.roi=d.nroi;ntPaint();return;}
+    if(d.ncx){NT.complexity=d.ncx;ntPaint();return;}
+    if(d.nsubx!=null){NT.subs.splice(+d.nsubx,1);ntPaint();return;}
+    if(d.natx!=null){NT.atts.splice(+d.natx,1);ntPaint();return;}
+    if(d.natadd!=null){ntFile.click();return;}
+    if(b.classList.contains('nt-here')){e.preventDefault();ntPg.value=shortPage(HERE_URL);ntDesc.focus();return;}
+    if(b.classList.contains('nt-x')||b.classList.contains('nt-cancel')){closeNewTask();return;}
+    if(b===ntGo)ntSave();
+  });
+  [ntQ,ntBatch].forEach(el=>el.addEventListener('change',ntPaint));
+  ntFile.addEventListener('change',()=>{ntAttach([...ntFile.files]);ntFile.value='';});
+  ntEl.addEventListener('paste',e=>{
+    const files=[...(e.clipboardData&&e.clipboardData.items||[])].filter(i=>i.kind==='file').map(i=>i.getAsFile()).filter(Boolean);
+    if(!files.length)return;
+    e.preventDefault();ntAttach(files);
+  });
+  let ntDrag=0;
+  const ntHasFiles=e=>[...(e.dataTransfer&&e.dataTransfer.types||[])].includes('Files');
+  ntEl.addEventListener('dragenter',e=>{if(!ntHasFiles(e))return;e.preventDefault();ntDrag++;ntEl.classList.add('dragging');});
+  ntEl.addEventListener('dragover',e=>{if(ntHasFiles(e)){e.preventDefault();e.dataTransfer.dropEffect='copy';}});
+  ntEl.addEventListener('dragleave',()=>{if(--ntDrag<=0){ntDrag=0;ntEl.classList.remove('dragging');}});
+  ntEl.addEventListener('drop',e=>{
+    if(!ntHasFiles(e))return;
+    e.preventDefault();ntDrag=0;ntEl.classList.remove('dragging');ntAttach([...e.dataTransfer.files]);
+  });
+
+  /* ---- quick chat popup: a comment on this page without opening the panel;
+     what's typed stays put between opens until it's posted ---- */
+  const chEl=$('.chpop'), chIn=$('.ch-in'), chErr=$('.ch-err');
+  let chBusy=false;
+  const chGrow=()=>{chIn.style.height='auto';chIn.style.height=Math.min(chIn.scrollHeight,180)+'px';};
+  chIn.addEventListener('input',chGrow);
+  function openChatPop(){
+    chErr.hidden=true;chIn.disabled=false;
+    $('.ch-where').textContent='Posts to '+pageLabel();
+    chEl.classList.add('show');
+    setTimeout(()=>{chGrow();chIn.focus();},30);
+  }
+  const closeChatPop=()=>chEl.classList.remove('show');
+  function chSend(){
+    const v=chIn.value.trim();
+    if(!v||chBusy||!ME)return;
+    const c=v+'\n[meta]'+b64e(JSON.stringify(metaNow()))+'[/meta]';
+    chBusy=true;chIn.disabled=true;chErr.hidden=true;inflight++;
+    api('dc_post',{content:c,parent_id:0},'page').then(j=>{
+      if(j&&j.success){chIn.value='';chGrow();closeChatPop();toast('Posted to this page.');}
+      else{chErr.textContent=(j&&j.data&&j.data.msg)||'Could not post.';chErr.hidden=false;}
+    }).catch(()=>{chErr.textContent='Could not post.';chErr.hidden=false;})
+      .finally(()=>{chBusy=false;chIn.disabled=false;inflight--;load();});
+  }
+  chIn.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();chSend();}});
+  /* Open thread: the panel on this page, carrying over anything typed */
+  $('.ch-more').onclick=()=>{
+    const v=chIn.value;
+    closeChatPop();
+    if(!isOpen)open();
+    if(view!=='comments')switchView('comments',true);
+    closeSettings();
+    if(searchQ)closeSearch();
+    if(ctx!=='page'||notifView||pagesView||pinsView||liveView){const t=$('.tab[data-ctx="page"]');if(t)t.click();}
+    setTimeout(()=>{
+      if(v.trim()&&!textEl.value.trim()){textEl.value=v;autoGrow();saveDraft();chIn.value='';chGrow();}
+      textEl.focus();
+    },120);
+  };
+
+  /* ---- tasks popup: the team's open tasks, yours first; type to search,
+     Enter opens one in the panel, Ctrl+Enter or the circle completes it ---- */
+  const tkEl=$('.tkpop'), tkQ=$('.tk-q'), tkList=$('.tk-list');
+  let tkI=0, tkFresh=false;
+  const TK_RANK={in_progress:0,open:1,on_hold:2};
+  function tkItems(){
+    const q=tkQ.value.trim().toLowerCase(), me=ME&&ME.sb_uid;
+    const rk=t=>t.status in TK_RANK?TK_RANK[t.status]:3;
+    return (TFS.tasks||[]).filter(t=>!q||[taskTitle(t),htmlText(t.feedback),t.page||''].join(' ').toLowerCase().includes(q))
+      .slice().sort((a,b)=>((b.assignee_id===me)-(a.assignee_id===me))||(rk(a)-rk(b))).slice(0,60);
+  }
+  function paintTasksPop(){
+    if(!tkEl.classList.contains('show'))return;
+    if(TFS.tasks===null){tkList.innerHTML='<div class="fp-empty">Loading tasks…</div>';return;}
+    const items=tkItems();
+    if(!items.length){tkList.innerHTML=`<div class="fp-empty">${tkQ.value.trim()?'No tasks match that search.':'No open tasks. Nice.'}</div>`;return;}
+    tkI=Math.max(0,Math.min(tkI,items.length-1));
+    tkList.innerHTML=items.map((t,i)=>{
+      const st=ST[t.status]||ST.open, m=tfMember(t.assignee_id), txt=clip(taskTitle(t),140);
+      return `<div class="fp-row${i===tkI?' sel':''}" data-tki="${i}" role="option" aria-selected="${i===tkI}" style="--c:var(${st.v});${tkFresh?`animation-delay:${Math.min(i,8)*25}ms`:'animation:none'}">
+        <button type="button" class="tfchk" data-tkdone="${i}" title="Mark complete" aria-label="Mark task complete">${ICO.check}</button>
+        <span class="fp-main"><span class="fp-txt">${txt?escHtml(txt):'<i>Untitled task</i>'}</span>
+          <span class="fp-meta">${st.l}${t.page?' · '+escHtml(shortPage(t.page)):''}${m?' · '+escHtml(fullName(m)):''}</span></span></div>`;
+    }).join('');
+    tkFresh=false;
+    const s=tkList.querySelector('.sel');if(s)s.scrollIntoView({block:'nearest'});
+  }
+  function tkComplete(i){
+    const t=tkItems()[i];if(!t)return;
+    const row=tkList.querySelector(`[data-tki="${i}"]`);if(row)row.classList.add('done');
+    setTimeout(()=>{setTaskStatus(t.id,'completed');paintTasksPop();tkQ.focus();},220);
+  }
+  function tkOpen(i){const t=tkItems()[i];if(!t)return;closeTasksPop();openTaskView(t.id);}
+  function openTasksPop(){
+    tkQ.value='';tkI=0;tkFresh=true;
+    tkEl.classList.add('show');paintTasksPop();
+    if(TFS.tasks===null||Date.now()-TFS.at>20000)tfLoadAll().then(paintTasksPop);
+    setTimeout(()=>tkQ.focus(),30);
+  }
+  const closeTasksPop=()=>tkEl.classList.remove('show');
+  tkQ.addEventListener('input',()=>{tkI=0;paintTasksPop();});
+  tkQ.addEventListener('keydown',e=>{
+    if(e.isComposing)return;
+    const n=tkItems().length;
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      e.preventDefault();if(n){tkI=(tkI+(e.key==='ArrowDown'?1:n-1))%n;paintTasksPop();}return;
+    }
+    if(e.key==='Enter'){e.preventDefault();if(!n)return;(e.ctrlKey||e.metaKey)?tkComplete(tkI):tkOpen(tkI);}
+  });
+  tkList.addEventListener('mousedown',e=>{if(e.target.closest('[data-tki]'))e.preventDefault();});   /* keep the search focused */
+  tkList.addEventListener('click',e=>{
+    const d=e.target.closest('[data-tkdone]');if(d){tkI=+d.dataset.tkdone;tkComplete(tkI);return;}
+    const r=e.target.closest('[data-tki]');if(r)tkOpen(+r.dataset.tki);
+  });
+
+  /* every shortcut popup: one at a time, closed by Esc or a click outside */
+  const POPS=[['quicklog',qlEl,closeQuickLog],['focus',fpEl,closeFocusPick],['newtask',ntEl,closeNewTask],
+    ['chat',chEl,closeChatPop],['tasks',tkEl,closeTasksPop]];
+  const closePops=keep=>POPS.forEach(([k,,c])=>{if(k!==keep)c();});
+  document.addEventListener('click',e=>{
+    const p=e.composedPath();
+    [[ntEl,closeNewTask],[chEl,closeChatPop],[tkEl,closeTasksPop]].forEach(([el,c])=>{if(el.classList.contains('show')&&!p.includes(el))c();});
+  });
+
+  /* ---- the actions ---- */
+  function hkRun(k){
+    const needTF=k==='newtask'||k==='tasks'||k==='quicklog'||k==='focus';
+    if(needTF&&!(ME&&TF_READY&&ME.sb_uid)){
+      if(!isOpen)open();
+      if(!ME)setTimeout(()=>$('.aemail').focus(),120);
+      toast(ME?'TaskFlow isn’t connected on this site yet.':'Sign in with TaskFlow first.');
+      return;
+    }
+    if(needTF&&!TFS.team){toast('Join a TaskFlow team first.');return;}
+    if(k==='chat'&&!ME){
+      if(!isOpen)open();
+      setTimeout(()=>$('.aemail').focus(),120);
+      return;
+    }
+    closePops(k);
+    const flip=(el,openFn,closeFn)=>el.classList.contains('show')?closeFn():openFn();
+    if(k==='toggle'){
       /* keyboard toggles are for speed: same motion, a quicker 220ms */
       rig.classList.add('kb');overlay.classList.add('kb');clearTimeout(rig._kb);
       rig._kb=setTimeout(()=>{rig.classList.remove('kb');overlay.classList.remove('kb');},600);
-      panel.classList.contains('open')?closePanel():open();
+      panel.classList.contains('open')?closePanel():openFresh();
       if(panel.classList.contains('open'))setTimeout(()=>textEl.focus(),120);
+    }else if(k==='chat'){
+      flip(chEl,openChatPop,closeChatPop);
+    }else if(k==='newtask'){
+      flip(ntEl,openNewTask,closeNewTask);
+    }else if(k==='tasks'){
+      flip(tkEl,openTasksPop,closeTasksPop);
+    }else if(k==='quicklog'){
+      flip(qlEl,openQuickLog,closeQuickLog);
+    }else if(k==='focus'){
+      flip(fpEl,openFocusPick,closeFocusPick);
+    }
+  }
+  /* true when the event was a shortcut (or was swallowed by recording one) */
+  function hkHandle(e){
+    if(hkRec){hkRecordKey(e);return true;}
+    if(e.repeat||e.isComposing||(e.getModifierState&&e.getModifierState('AltGraph')))return false;
+    const m=hkMap(), tries=[hkCombo(e,false)];
+    if(IS_MAC&&e.metaKey&&!e.ctrlKey)tries.push(hkCombo(e,true));
+    const hit=HK_ACTIONS.find(([k])=>m[k]&&tries.includes(m[k]));
+    if(!hit)return false;
+    e.preventDefault();e.stopPropagation();
+    hkRun(hit[0]);
+    return true;
+  }
+
+  window.addEventListener('keydown',e=>{
+    if(hkHandle(e))return;
+    if(e.key==='Escape'){
+      const p=POPS.find(([,el])=>el.classList.contains('show'));
+      if(p){p[2]();e.stopPropagation();return;}
     }
     /* the pins list beside the panel takes the first Esc */
     if(e.key==='Escape'&&panel.classList.contains('open')&&!pinMenu.classList.contains('show')
-      &&!addMenu.classList.contains('show')&&!ctxBox.classList.contains('show'))closePanel();
+      &&!addMenu.classList.contains('show')&&!ctxBox.classList.contains('show')&&!qtBox.classList.contains('show')&&!lvSugOpen)closePanel();
   },true);
 
   $('.toggle').onclick=e=>{
     if(e.composedPath().includes($('.tglpin'))){e.stopPropagation();floatOn?closePinFloat():openPinFloat();return;}
-    isOpen?closePanel():open();
+    isOpen?closePanel():openFresh();
   };
   $('.close').onclick=closePanel;
   overlay.onclick=closePanel;
@@ -6940,7 +8327,7 @@ function qrMatrix(text){
     if(view!=='comments')switchView('comments',true);
     $$('.tab[data-ctx]').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');ctx=t.dataset.ctx;
-    closeNotifView();closePagesView();
+    closeNotifView();closePagesView();closeLiveView();
     closePinPop();
     closeSettings();
     sub.textContent=ctx==='page'?pageLabel():'All pages';
@@ -7112,6 +8499,12 @@ function qrMatrix(text){
     if(box){togglePick(box.dataset.id);return;}
     const ps=e.composedPath().find(n=>n.classList&&n.classList.contains('pickstart'));
     if(ps){togglePick(ps.dataset.id);return;}
+    const tdn=e.composedPath().find(n=>n.dataset&&n.dataset.taskdone);
+    if(tdn){
+      const tk=tfTaskById(tdn.dataset.taskdone);
+      if(tk)setTaskStatus(tk.id,tk.status==='completed'?'open':'completed');
+      return;
+    }
     const tf=e.composedPath().find(n=>n.classList&&n.classList.contains('task'));
     if(tf){
       const rec=(cache[ctx]||[]).find(r=>r.id==tf.dataset.id);
@@ -7129,7 +8522,7 @@ function qrMatrix(text){
          and linked back to this comment (Shift-click still builds the URL) */
       if(TF_READY&&ME&&ME.sb_uid&&!e.shiftKey){
         if(rec.task_id){openTaskView(rec.task_id);return;}
-        openTaskForm({feedback:body,page:pageUrl,noticed:nameOf(rec),attachments:imgs.slice(0,10),link:[rec.id]});
+        openQuickTask({feedback:body,page:pageUrl,noticed:nameOf(rec),attachments:imgs.slice(0,10),link:[rec.id]});
         return;
       }
       const q=new URLSearchParams({
@@ -7264,7 +8657,7 @@ function qrMatrix(text){
       :ORIGIN+first.context;
     if(TF_READY&&ME&&ME.sb_uid){
       const who=[...new Set(rows.map(nameOf))].join(', ');
-      openTaskForm({feedback:parts.join('\n\n'),page:pageUrl,noticed:who,attachments:imgs.slice(0,10),link:rows.map(r=>r.id)});
+      openQuickTask({feedback:parts.join('\n\n'),page:pageUrl,noticed:who,attachments:imgs.slice(0,10),link:rows.map(r=>r.id)});
       clearPicks();
       return;
     }
@@ -7603,7 +8996,7 @@ function qrMatrix(text){
      is ready for live carries the files to push, and "Live" lists what went
      out. */
   const TFS={team:null,members:[],tasks:null,done:null,extra:{},tried:new Set(),
-    reviews:null,live:null,defaults:null,queue:null,err:{},busy:{},at:0,noTitle:false};
+    reviews:null,live:null,defaults:null,queue:null,files:null,err:{},busy:{},at:0,noTitle:false};
   let view='comments';
   /* team-wide, like the TaskFlow app; the page only seeds new items and is
      linked on every row */
@@ -7630,6 +9023,7 @@ function qrMatrix(text){
     if(view!=='comments')return VIEW_TITLES[view];
     if(typeof notifView!=='undefined'&&notifView)return 'Notifications';
     if(typeof pagesView!=='undefined'&&pagesView)return 'All pages';
+    if(liveView)return 'Going live';
     return ctx==='page'?pageLabel():'General';
   }
 
@@ -7771,9 +9165,22 @@ function qrMatrix(text){
   function tfTaskStatus(id){const t=tfTaskById(id);return t?t.status:'';}
   function taskChip(r){
     if(!r.task_id||!TF_READY||!ME)return '';
-    const t=tfTaskById(r.task_id), st=t&&ST[t.status];
-    return `<button class="taskchip" data-taskid="${escHtml(r.task_id)}"${st?` style="--c:var(${st.v})"`:''}>`
-      +(st?`<i></i>Task · ${st.l}`:`${ICO.check.replace('<svg','<svg aria-hidden="true"')}TaskFlow task`)+'</button>';
+    const t=tfTaskById(r.task_id), st=t&&ST[t.status], done=!!t&&t.status==='completed', id=escHtml(r.task_id);
+    /* tick the task off (or reopen it) right on the comment */
+    return '<span class="taskrow">'
+      +(t?`<button class="taskdone${done?' on':''}" data-taskdone="${id}" title="${done?'Reopen the task':'Mark the task done'}" aria-label="${done?'Reopen task':'Mark task done'}">${ICO.check}</button>`:'')
+      +`<button class="taskchip" data-taskid="${id}"${st?` style="--c:var(${st.v})"`:''}>`
+      +(st?`<i></i>Task · ${st.l}`:`${ICO.check.replace('<svg','<svg aria-hidden="true"')}TaskFlow task`)+'</button>'
+      +taskQueueTag(r.task_id)+'</span>';
+  }
+  /* "in the focus queue", with its place in line */
+  function taskQueueTag(id){
+    const q=(TFS.queue||[]).slice().sort((a,b)=>(a.position||0)-(b.position||0));
+    const i=q.findIndex(x=>x.task_id===id);
+    if(i<0)return '';
+    return `<span class="taskq" title="In the focus queue · #${i+1} up next">`
+      +'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h11M10 12h11M10 18h11M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>'
+      +`#${i+1}</span>`;
   }
   function dueInfo(d,status){
     if(!d)return null;
@@ -7803,6 +9210,9 @@ function qrMatrix(text){
         TFS.tasks=await taskRest(`tasks?select={SEL}&team_id=eq.${t}&status=neq.completed&order=date_received.desc&limit=500`)||[];
       }else if(what==='queue'){
         TFS.queue=await TF.rest(`queue?select=id,task_id,position&team_id=eq.${t}&order=position`)||[];
+      }else if(what==='files'){   /* TaskFlow's Files page: Go live searches and adds here */
+        const r=await TF.rest(`file_entries?select=id,name,path,section,description&team_id=eq.${t}&order=name&limit=2000`);
+        TFS.files=(r||[]).map(lvFromTf);
       }else if(what==='done'){
         TFS.done=await taskRest(`tasks?select={SEL}&team_id=eq.${t}&status=eq.completed&order=date_completed.desc.nullslast&limit=100`)||[];
       }else if(what==='reviews'){
@@ -7831,6 +9241,7 @@ function qrMatrix(text){
     TFS.at=Date.now();
     const jobs=['members','tasks','queue','reviews'];
     if(TFS.done!==null||tv.status==='done')jobs.push('done');
+    if(TFS.files!==null||liveView)jobs.push('files');
     tfLoading=Promise.all(jobs.map(tfLoad)).then(tfLinkedSync).then(tfAfterData).finally(()=>{tfLoading=null;});
     return tfLoading;
   }
@@ -7858,7 +9269,7 @@ function qrMatrix(text){
     railBadges();renderFocus();
     if(view!=='comments'&&!editing())renderTf(false);
     if(view==='review'&&rv.open&&!editing())rvLoadThread(rv.open);
-    if(view==='comments'&&cache[ctx])render(cache[ctx]);   /* task chips; no-op when unchanged */
+    if(view==='comments'&&cache[ctx])render(cache[ctx]);   /* task chips, or the go-live Files list; no-op when unchanged */
     if(panel.classList.contains('settings-open'))paintAccount();
   }
   const waitingOnMe=p=>p.status==='pending'&&p.reviewers.includes(ME.sb_uid);
@@ -7899,9 +9310,6 @@ function qrMatrix(text){
     gLoad();
     scanConnect();
     await tfLoadAll();
-    let v='';try{v=localStorage.getItem('dc_view')||'';}catch(e){}
-    if(v==='golive')v='review';
-    if(v&&v!=='comments'&&view==='comments'&&VIEW_TITLES[v])switchView(v,true);
   }
   function tfSwitchTeam(id){
     if(!id||id===TFS.team||!ME)return;
@@ -8133,13 +9541,17 @@ function qrMatrix(text){
     if(!isOpen)open();
     if(view!=='tasks')switchView('tasks');else{tfBar.dataset.sig='';renderTf(true);}
   }
-  function openTaskForm(pre){
-    if(!ME||!TF_READY)return;
+  /* a new-task form's state; shared by the full form and the quick prompt */
+  function formFrom(pre){
     pre=pre||{};
-    tv.open=null;
-    tv.form={title:pre.title!=null?pre.title:titleFrom(pre.feedback),feedback:pre.feedback||'',page:pre.page||HERE_URL,noticed:pre.noticed||ME.name,
+    return {title:pre.title!=null?pre.title:titleFrom(pre.feedback),feedback:pre.feedback||'',page:pre.page!=null?pre.page:HERE_URL,noticed:pre.noticed||ME.name,
       roi:'medium',complexity:'medium',assignee:'',due:'',checklist:'',queue:!!pre.queue,
       atts:(pre.attachments||[]).slice(0,10),link:(pre.link||[]).map(String),err:'',busy:false,up:0};
+  }
+  function openTaskForm(pre){
+    if(!ME||!TF_READY)return;
+    tv.open=null;
+    tv.form=formFrom(pre);
     if(!isOpen)open();
     if(view!=='tasks')switchView('tasks');else{tfBar.dataset.sig='';renderTf(true);}
     setTimeout(()=>{const f=tfBody.querySelector('[data-ff="title"]');if(f&&!tv.form.title)f.focus();},80);
@@ -8168,7 +9580,9 @@ function qrMatrix(text){
       <span class="tflabel">Checklist <span class="tfnote">· optional, one item per line</span></span>
       <textarea class="tfin" data-ff="checklist" rows="3" placeholder="Check mobile layout&#10;Update copy">${escHtml(f.checklist)}</textarea>
       <span class="tflabel">Images</span>
-      <div class="tfatt">${f.atts.map((u,i)=>`<span class="tfachip"><img src="${escHtml(u)}" data-lb="${escHtml(u)}" alt=""><button type="button" data-attdel="${i}" aria-label="Remove">✕</button></span>`).join('')}
+      <div class="tfatt">${f.atts.map((a,i)=>{const u=a.url||a;return `<span class="tfachip">${a.kind&&a.kind!=='image'
+          ?`<a class="tffile" href="${escHtml(u)}" target="_blank" rel="noopener" style="padding-right:30px">${escHtml(a.name||'File')}</a>`
+          :`<img src="${escHtml(u)}" data-lb="${escHtml(u)}" alt="">`}<button type="button" data-attdel="${i}" aria-label="Remove">✕</button></span>`;}).join('')}
         ${f.atts.length<10?`<button type="button" class="tfbtn sm" data-act="attadd"${f.up?' disabled':''}>${f.up?'Uploading…':ICO.plus+'Image'}</button>`:''}</div>
       <input class="tfattfile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
       ${f.link.length?`<div class="tfnote" style="margin-top:12px">Linked to ${f.link.length} comment${f.link.length===1?'':'s'} — ${f.link.length===1?'it':'they'}’ll show this task’s status.</div>`:''}
@@ -8184,48 +9598,104 @@ function qrMatrix(text){
     const f=tv.form;if(!f||f.busy)return;
     if(!f.title.trim()&&!f.feedback.trim()){f.err='Give it a title or a description first.';renderTaskForm(false);return;}
     f.busy=true;f.err='';renderTaskForm(false);
-    const now=new Date().toISOString();
-    const atts=f.atts.map(u=>({url:u,name:decodeURIComponent(u.split('/').pop().split('?')[0]||'image'),kind:'image'}));
-    const title=clip(f.title.trim(),200);
-    /* without a title column the title leads the description, so nothing is lost */
-    const body=f.feedback.trim();
-    const payload={
-      team_id:TFS.team,status:'open',page:(f.page.trim()||HERE_URL),feedback:plainToHtml(body||title),
-      noticed_by:f.noticed.trim()||ME.name,roi:f.roi,complexity:f.complexity,
-      assignee_id:f.assignee||null,due_date:f.due||null,
-      subtasks:f.checklist.split('\n').map(x=>x.trim()).filter(Boolean).map(text=>({id:newSubId(),text,done:false})),
-      attachments:atts,png_url:atts[0]?atts[0].url:null,
-      date_received:now,updated_at:now,created_by:ME.sb_uid
-    };
-    const withTitle=()=>({...payload,title:title||null});
-    const noTitle=()=>({...payload,feedback:plainToHtml(title&&body&&!body.startsWith(title)?title+'\n\n'+body:(body||title))});
     try{
-      let r;
-      if(TFS.noTitle)r=await taskRest('tasks?select={SEL}',{method:'POST',body:noTitle(),prefer:'return=representation'});
-      else{
-        try{r=await taskRest('tasks?select={SEL}',{method:'POST',body:withTitle(),prefer:'return=representation'});}
-        catch(e){
-          if(!colMissing(e,'title'))throw e;
-          TFS.noTitle=true;
-          r=await taskRest('tasks?select={SEL}',{method:'POST',body:noTitle(),prefer:'return=representation'});
-        }
-      }
-      const t=r&&r[0];if(!t)throw new Error('TaskFlow didn’t send the new task back.');
-      (TFS.tasks=TFS.tasks||[]).unshift(t);
-      awardCreated();
-      if(f.queue)await queueAdd(t.id,true);
-      if(f.link.length){
-        await api('dc_tasklink',{ids:f.link.join(','),task_id:t.id});
-        allRows().forEach(c=>{if(f.link.includes(String(c.id)))c.task_id=t.id;});
-        f.link.forEach(id=>api('dc_tasked',{id}));   /* lets each author know */
-        lastSig=null;
-      }
+      const t=await saveTaskForm(f);
       tv.form=null;tv.open=t.id;
       renderTf(true);railBadges();
       toast('Task created in TaskFlow.');
     }catch(e){
       f.busy=false;f.err=e.message||'Could not create the task.';renderTaskForm(false);
     }
+  }
+  /* create the task a form describes: queue it and link the comments it came
+     from if asked; throws on failure */
+  async function saveTaskForm(f){
+    const now=new Date().toISOString();
+    const atts=f.atts.map(a=>typeof a==='string'?{url:a,name:decodeURIComponent(a.split('/').pop().split('?')[0]||'image'),kind:'image'}:a);
+    const img=atts.find(a=>a.kind==='image');
+    const title=clip(f.title.trim(),200);
+    /* without a title column the title leads the description, so nothing is lost */
+    const body=f.feedback.trim();
+    const status=ST[f.status]?f.status:'open', done=status==='completed';
+    const payload={
+      team_id:TFS.team,status,page:f.page.trim(),feedback:plainToHtml(body||title),
+      noticed_by:f.noticed.trim()||ME.name,roi:f.roi,complexity:f.complexity,
+      assignee_id:f.assignee||null,due_date:f.due||null,
+      subtasks:f.checklist.split('\n').map(x=>x.trim()).filter(Boolean).map(text=>({id:newSubId(),text,done:false})),
+      attachments:atts,png_url:img?img.url:null,
+      date_received:now,updated_at:now,created_by:ME.sb_uid
+    };
+    if(done){payload.date_completed=now;payload.completed_by=(f.completedBy||'').trim()||ME.name;}
+    const t=await insertTask(payload,title,body);
+    if(done){placeTask(t);awardCompleted({complexity:t.complexity,roi:t.roi,status:'open'});}
+    if(f.queue&&!done)await queueAdd(t.id,true);
+    if(f.link.length){
+      await api('dc_tasklink',{ids:f.link.join(','),task_id:t.id});
+      allRows().forEach(c=>{if(f.link.includes(String(c.id)))c.task_id=t.id;});
+      f.link.forEach(id=>api('dc_tasked',{id}));   /* lets each author know */
+      lastSig=null;
+    }
+    return t;
+  }
+
+  /* ---- quick task from a comment: a small prompt with the title filled in
+     and a queue switch; "Edit details" opens the full form with the same
+     values ---- */
+  const qtBox=$('.qtask'), qtTitle=$('.qt-title'), qtQ=$('.qt-q'), qtErr=$('.qt-err'), qtGo=$('.qt-go'), qtQuote=$('.qt-quote');
+  let qtPre=null;
+  function openQuickTask(pre){
+    if(!ME||!TF_READY)return;
+    qtPre=pre||{};
+    const fb=String(qtPre.feedback||'');
+    qtTitle.value=titleFrom(fb);
+    qtQuote.textContent=clip(fb.replace(/\s+/g,' ').trim(),220);
+    qtQuote.style.display=fb.trim()?'':'none';
+    qtQ.checked=false;qtErr.hidden=true;qtGo.disabled=false;qtGo.textContent='Create task';
+    qtBox.classList.add('show');
+    /* focused with the cursor at the end, never pre-selected */
+    setTimeout(()=>{qtTitle.focus();const n=qtTitle.value.length;qtTitle.setSelectionRange(n,n);},40);
+  }
+  function closeQuickTask(){qtBox.classList.remove('show');qtPre=null;}
+  const qtForm=()=>({...qtPre,title:qtTitle.value.trim(),queue:qtQ.checked});
+  async function qtCreate(){
+    if(!qtPre||qtGo.disabled)return;
+    const f=formFrom(qtForm());
+    if(!f.title&&!f.feedback.trim()){qtErr.textContent='Give it a title first.';qtErr.hidden=false;qtTitle.focus();return;}
+    qtGo.disabled=true;qtGo.textContent='Creating…';qtErr.hidden=true;
+    try{
+      await saveTaskForm(f);
+      closeQuickTask();railBadges();tfRepaint();
+      toast(f.queue?'Task created and added to the queue.':'Task created in TaskFlow.');
+    }catch(e){
+      qtErr.textContent=e.message||'Could not create the task.';qtErr.hidden=false;
+      qtGo.disabled=false;qtGo.textContent='Create task';
+    }
+  }
+  qtGo.onclick=qtCreate;
+  $('.qt-cancel').onclick=closeQuickTask;
+  $('.qt-more').onclick=()=>{const p=qtForm();closeQuickTask();openTaskForm(p);};
+  qtBox.addEventListener('click',e=>{if(e.target===qtBox)closeQuickTask();});
+  qtTitle.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();qtCreate();}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&qtBox.classList.contains('show'))closeQuickTask();});
+  /* insert a task as the signed-in person; shared by the full form and quick
+     log. Without a title column the title leads the description instead. */
+  async function insertTask(payload,title,body){
+    const withTitle=()=>({...payload,title:title||null});
+    const noTitle=()=>({...payload,feedback:plainToHtml(title&&body&&!body.startsWith(title)?title+'\n\n'+body:(body||title))});
+    let r;
+    if(TFS.noTitle)r=await taskRest('tasks?select={SEL}',{method:'POST',body:noTitle(),prefer:'return=representation'});
+    else{
+      try{r=await taskRest('tasks?select={SEL}',{method:'POST',body:withTitle(),prefer:'return=representation'});}
+      catch(e){
+        if(!colMissing(e,'title'))throw e;
+        TFS.noTitle=true;
+        r=await taskRest('tasks?select={SEL}',{method:'POST',body:noTitle(),prefer:'return=representation'});
+      }
+    }
+    const t=r&&r[0];if(!t)throw new Error('TaskFlow didn’t send the new task back.');
+    (TFS.tasks=TFS.tasks||[]).unshift(t);
+    awardCreated();
+    return t;
   }
   /* TaskFlow's own rules on a status change: completing drops it from the
      queue, and leaving "in progress" promotes the next queued task */
@@ -8790,6 +10260,7 @@ function qrMatrix(text){
     return out;
   }
   function renderFocus(){
+    try{paintFocusPick();paintTasksPop();}catch(e){}   /* the popups follow the same data */
     const show=!!(ME&&TF_READY&&TFS.team);
     focusEl.hidden=!show;
     if(!show)return;
@@ -9215,6 +10686,7 @@ function qrMatrix(text){
   applyLook();   /* the cached TaskFlow look, before anything paints */
   setAuthed(null);
   if(TF.has()){
+    loadAll();   /* comments don't wait on the account check */
     /* fresh: re-read the TaskFlow profile so a new name or photo shows at once */
     api('dc_me',{fresh:1}).then(j=>{
       if(j&&j.success){setAuthed(j.data.user);tfAfterLogin();}
@@ -9222,7 +10694,7 @@ function qrMatrix(text){
         TF.signOut(true);
         if(j.data.code==='team')toast(j.data.msg);
       }
-    }).catch(()=>{}).finally(loadAll);
+    }).catch(()=>{}).finally(()=>{edgeAuth=true;edgeReady();loadAll();});
   }else{
     loadAll();
   }

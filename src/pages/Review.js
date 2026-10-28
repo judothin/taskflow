@@ -29,7 +29,6 @@ import './Review.css';
 // Any one of those reviewers marks it "Reviewed — ready for live" or "Needs
 // work" (which has to say what). The author fixes it and resubmits, starting
 // the next round. Once it's reviewed it sits in the Ready for live tab.
-// (The Go Live list is its own page again, at /go-live.)
 //
 // The rules live in the database (supabase-review-migration.sql) — the
 // buttons here only mirror them.
