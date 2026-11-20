@@ -511,13 +511,18 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
       <>
         <p className="rv-verdict-q">You're a reviewer on this. How does it look?</p>
         <div className="rv-verdict-actions">
-          <button type="button" className="btn btn-primary btn-lg" disabled={busy}
+          <button type="button" className="btn btn-lg rv-btn-ok" disabled={busy}
             onClick={() => act(() => decideReview(post.id, 'approved'), 'Marked ready for live')}>
             <Icon name="check" /> Reviewed — ready for live
           </button>
-          <button type="button" className="btn btn-lg" disabled={busy} onClick={() => setMode('needs_work')}>
+          <button type="button" className="btn btn-lg rv-btn-warn" disabled={busy} onClick={() => setMode('needs_work')}>
             <Icon name="alert" /> Needs work
           </button>
+          {isUrl(post.url) && (
+            <a className="btn btn-lg rv-btn-page" href={post.url} target="_blank" rel="noreferrer">
+              Open page <Icon name="arrowUpRight" />
+            </a>
+          )}
         </div>
       </>
     );
@@ -529,7 +534,7 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
           onChange={e => setNote(e.target.value)} placeholder="Be specific so it can be fixed in one go…"
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) e.stopPropagation(); }} />
         <div className="rv-verdict-actions">
-          <button type="button" className="btn btn-primary btn-lg" disabled={busy || !note.trim()}
+          <button type="button" className="btn btn-lg rv-btn-warn is-solid" disabled={busy || !note.trim()}
             onClick={() => act(() => decideReview(post.id, 'needs_work', note), 'Sent back — needs work')}>
             {busy ? <span className="spinner" /> : 'Send back — needs work'}
           </button>

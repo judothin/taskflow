@@ -208,11 +208,38 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 14px;
-  padding: 22px 22px 22px;
-  border-radius: var(--r-xl);
-  background: var(--surface-2);
+  /* Flush with the link, description and reviewers above — no inset card. */
+  padding: 0;
   transform-origin: top center;
 }
+
+/* Verdict buttons: green signs it off, amber sends it back. */
+.rv-btn-ok {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+  font-weight: 600;
+}
+.rv-btn-ok:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--success) 88%, #000);
+  border-color: color-mix(in srgb, var(--success) 88%, #000);
+}
+.rv-btn-warn {
+  background: var(--warning-soft);
+  border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+  color: var(--warning);
+  font-weight: 600;
+}
+.rv-btn-warn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warning) 22%, transparent);
+  border-color: var(--warning);
+}
+.rv-btn-warn.is-solid { background: var(--warning); border-color: var(--warning); color: #fff; }
+.rv-btn-warn.is-solid:hover:not(:disabled) { background: color-mix(in srgb, var(--warning) 88%, #000); }
+/* The dark palette's green and amber are light, so text goes dark on them. */
+:root[data-theme="dark"] .rv-btn-ok,
+:root[data-theme="dark"] .rv-btn-warn.is-solid { color: #0b1a10; }
+.rv-btn-page { margin-left: auto; text-decoration: none; }
 .rv-detail .sheet-main > .rv-verdict { animation: rv-verdict-in 0.46s var(--ease-spring) both; }
 .rv-verdict-q { font-size: 15.5px; font-weight: 500; color: var(--text); }
 .rv-verdict-line { display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: var(--text); }
@@ -231,7 +258,7 @@
 }
 .rv-verdict .textarea { min-height: 84px; }
 .rv-verdict .notice { width: 100%; }
-.rv-verdict-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.rv-verdict-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; }
 .rv-verdict-waiting { background: transparent; border: 1px dashed var(--border-strong); padding: 16px 18px; }
 
 @keyframes rv-verdict-in {
@@ -344,7 +371,9 @@
   .rv-detail .sheet-main { padding-top: 20px; }
   .rv-detail .sheet-main > * + * { margin-top: 24px; }
 
-  .rv-verdict { padding: 18px 16px; align-items: stretch; }
+  .rv-verdict { align-items: stretch; }
+  .rv-verdict-waiting { padding: 16px; }
+  .rv-btn-page { margin-left: 0; }
   .rv-verdict-actions { flex-direction: column; }
   .rv-verdict-actions .btn { width: 100%; }
 
