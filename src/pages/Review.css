@@ -257,6 +257,63 @@
   word-break: break-word;
 }
 .rv-verdict .textarea { min-height: 84px; }
+
+/* Needs-work checklist: edited in the verdict form, read in the note. */
+.rv-note-text { white-space: pre-wrap; word-break: break-word; }
+.rv-note-text + .rv-ck-list { margin-top: 8px; }
+.rv-ck-box {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin-top: 3px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--control);
+}
+.rv-ck-list { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.rv-ck-item {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  white-space: normal;
+  animation: tf-rise 0.34s var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+.rv-ck-edit { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.rv-ck-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  animation: tf-rise 0.3s var(--ease-spring) backwards;
+}
+.rv-ck-row .rv-ck-box { margin-top: 0; }
+.rv-ck-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color var(--dur-1) ease;
+}
+.rv-ck-input:focus { border-bottom-color: var(--accent); }
+.rv-ck-x {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: var(--r-xs);
+  color: var(--text-4);
+  transition: color var(--dur-1) ease, transform var(--dur-1) var(--ease-spring);
+}
+.rv-ck-x:hover { color: var(--danger); }
+.rv-ck-x:active { transform: scale(0.9); }
+.rv-ck-add { align-self: flex-start; margin-left: -10px; }
+.rv-ck-hint { font-size: 12.5px; margin-top: -6px; animation: tf-fade-in var(--dur-3) ease both; }
+.rv-ck-task { margin-top: 10px; white-space: nowrap; animation: tf-rise 0.34s var(--ease-spring) backwards; }
+@media (max-width: 768px) { .rv-ck-input { font-size: 16px; } }
 .rv-verdict .notice { width: 100%; }
 .rv-verdict-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; }
 .rv-verdict-waiting { background: transparent; border: 1px dashed var(--border-strong); padding: 16px 18px; }

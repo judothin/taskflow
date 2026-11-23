@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { awardTaskCreatedXp, awardTaskCompletedXp } from '../lib/xp';
-import { asSubtasks, cleanSubtasks } from '../lib/subtasks';
+import { asSubtasks, cleanSubtasks, makeSubtask } from '../lib/subtasks';
 import { taskTitle, taskBodyHtml, isUrl } from '../lib/taskText';
 import { tasksChanged, queueChanged } from '../lib/events';
 import {
@@ -84,7 +84,9 @@ export default function TaskSheet({ task, prefill, users = [], onClose, onSaved,
     complexity: task?.complexity || 'medium',
     assignee_id: task?.assignee_id || seed?.assignee_id || '',
     due_date: task?.due_date || '',
-    subtasks: asSubtasks(task?.subtasks),
+    // prefill.subtasks: plain strings (e.g. a review's needs-work checklist).
+    subtasks: isEdit ? asSubtasks(task?.subtasks)
+      : (Array.isArray(seed?.subtasks) ? seed.subtasks.filter(x => typeof x === 'string' && x.trim()).map(x => makeSubtask(x.trim())) : []),
   }));
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 

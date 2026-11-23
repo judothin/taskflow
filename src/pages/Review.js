@@ -68,6 +68,83 @@ const linkText = (u) => (isUrl(u) ? shortUrl(u) : u);
 const nameOr = (p, fallback = 'Someone') => fullName(p) || fallback;
 const sameSet = (a, b) => [...a].sort().join() === [...b].sort().join();
 
+// Needs-work feedback can carry a checklist. It rides inside the note as
+// "- [ ] item" lines after the free text, so the RPC and the database need
+// nothing new, and older clients still show readable text.
+const CHECK_LINE = /^\s*[-*]\s*\[[ xX]?\]\s+(.+)$/;
+function parseNote(note) {
+  const text = []; const items = [];
+  (note || '').split('\n').forEach(line => {
+    const m = line.match(CHECK_LINE);
+    if (m) items.push(m[1].trim()); else text.push(line);
+  });
+  return { text: text.join('\n').trim(), items: items.filter(Boolean) };
+}
+function composeNote(text, items) {
+  const list = items.map(i => i.trim()).filter(Boolean).map(i => `- [ ] ${i}`);
+  return [text.trim(), list.join('\n')].filter(Boolean).join('\n\n');
+}
+
+// A note as it reads: the free text, then its checklist.
+function NoteView({ note, className }) {
+  const { text, items } = parseNote(note);
+  return (
+    <div className={className}>
+      {text && <div className="rv-note-text">{text}</div>}
+      {items.length > 0 && (
+        <ul className="rv-ck-list">
+          {items.map((it, i) => (
+            <li key={`${i}-${it}`} className="rv-ck-item" style={{ '--i': Math.min(i, 10) }}>
+              <span className="rv-ck-box" aria-hidden="true" />
+              <span>{it}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// The checklist half of the needs-work form. Enter adds the next item,
+// Backspace on an empty one removes it.
+function ChecklistInput({ items, onChange }) {
+  const refs = useRef([]);
+  const focus = (i) => setTimeout(() => refs.current[i]?.focus(), 0);
+  const setAt = (i, v) => onChange(items.map((x, j) => (j === i ? v : x)));
+  const add = (at = items.length) => { const next = [...items]; next.splice(at, 0, ''); onChange(next); focus(at); };
+  return (
+    <div className="rv-ck-edit">
+      {items.map((it, i) => (
+        <div key={i} className="rv-ck-row">
+          <span className="rv-ck-box" aria-hidden="true" />
+          <input
+            ref={el => { refs.current[i] = el; }}
+            className="rv-ck-input"
+            value={it}
+            placeholder="Something to fix…"
+            aria-label={`Checklist item ${i + 1}`}
+            onChange={e => setAt(i, e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); add(i + 1); }
+              else if (e.key === 'Backspace' && !it) {
+                e.preventDefault();
+                onChange(items.filter((_, j) => j !== i));
+                if (i > 0) focus(i - 1);
+              }
+            }}
+          />
+          <button type="button" className="rv-ck-x" onClick={() => onChange(items.filter((_, j) => j !== i))} aria-label="Remove item">
+            <Icon name="x" size={12} />
+          </button>
+        </div>
+      ))}
+      <button type="button" className="btn btn-ghost btn-sm rv-ck-add" onClick={() => add()}>
+        <Icon name="plus" /> Add checklist item
+      </button>
+    </div>
+  );
+}
+
 // A task title from free text: its first line, cut at a word near 120 chars.
 function titleFrom(text) {
   const line = (text || '').split('\n').map(l => l.trim()).find(Boolean) || '';
@@ -398,7 +475,7 @@ function Timeline({ loaded, events, comments, members, uid, onDeleteComment, onM
               <Avatar person={who} name={nameOr(who)} size={24} />
               <div className="rv-tl-body">
                 <div className="rv-tl-line"><strong>{nameOr(who)}</strong> {EVENT_TEXT[e.kind]?.(e) || e.kind}</div>
-                {e.note && <div className="rv-tl-note">{e.note}</div>}
+                {e.note && <NoteView note={e.note} className="rv-tl-note" />}
                 <div className="rv-tl-time">
                   <span title={longDate(e.created_at)}>{ago(e.created_at)}</span>
                   {e.note && (
@@ -451,6 +528,7 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
   const [thread, setThread] = useState({ events: [], comments: [], loaded: false });
   const [mode, setMode] = useState(null); // 'needs_work' | 'resubmit'
   const [note, setNote] = useState('');
+  const [checks, setChecks] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [comment, setComment] = useState('');
@@ -486,11 +564,11 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
   }, [post.id, loadThread]);
 
   // Status changed under us (another reviewer decided) — drop a half-open form.
-  useEffect(() => { setMode(null); setNote(''); setError(''); }, [post.status]);
+  useEffect(() => { setMode(null); setNote(''); setChecks([]); setError(''); }, [post.status]);
 
   const act = async (fn, done) => {
     setBusy(true); setError('');
-    try { await fn(); setMode(null); setNote(''); if (done) toast(done); }
+    try { await fn(); setMode(null); setNote(''); setChecks([]); if (done) toast(done); }
     catch (e) { setError(e.message || 'Something went wrong.'); }
     finally { setBusy(false); }
   };
@@ -524,10 +602,13 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
     const note = fromNote ? text : (post.status === 'needs_work' ? lastNeedsWork?.note || '' : '');
     const noticer = fromNote ? members[by] : (post.status === 'needs_work' && lastNeedsWork ? members[lastNeedsWork.actor] : null);
     const ref = `From review: "${post.title}" · round ${post.round}`;
+    // A checklist in the note becomes the task's subtasks; the rest is its body.
+    const { text: body, items } = parseNote(note);
     openNewTask({
-      title: fromNote ? titleFrom(text) : post.title,
+      title: fromNote ? titleFrom(body || items[0]) : post.title,
       page: post.url || '',
-      feedback: note.trim() ? `${note.trim()}\n\n${ref}` : ref,
+      feedback: body ? `${body}\n\n${ref}` : ref,
+      ...(items.length ? { subtasks: items } : {}),
       ...(fullName(noticer) ? { noticed: fullName(noticer) } : {}),
       ...(members[post.created_by] ? { assignee_id: post.created_by } : {}),
       ...(!fromNote && post.screenshots?.length ? { uploaded: post.screenshots.map(url => ({ url, kind: 'image' })) } : {}),
@@ -570,12 +651,17 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
         <textarea id="rv-nw-note" className="textarea" rows={3} autoFocus value={note}
           onChange={e => setNote(e.target.value)} placeholder="Be specific so it can be fixed in one go…"
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) e.stopPropagation(); }} />
+        <ChecklistInput items={checks} onChange={setChecks} />
+        {checks.some(c => c.trim()) && (
+          <p className="rv-ck-hint t-3">Each item becomes a subtask if this is turned into a task.</p>
+        )}
         <div className="rv-verdict-actions">
-          <button type="button" className="btn btn-lg rv-btn-warn is-solid" disabled={busy || !note.trim()}
-            onClick={() => act(() => decideReview(post.id, 'needs_work', note), 'Sent back — needs work')}>
+          <button type="button" className="btn btn-lg rv-btn-warn is-solid"
+            disabled={busy || !composeNote(note, checks)}
+            onClick={() => act(() => decideReview(post.id, 'needs_work', composeNote(note, checks)), 'Sent back — needs work')}>
             {busy ? <span className="spinner" /> : 'Send back — needs work'}
           </button>
-          <button type="button" className="btn btn-ghost btn-lg" onClick={() => { setMode(null); setNote(''); }} disabled={busy}>Cancel</button>
+          <button type="button" className="btn btn-ghost btn-lg" onClick={() => { setMode(null); setNote(''); setChecks([]); }} disabled={busy}>Cancel</button>
         </div>
       </>
     );
@@ -623,7 +709,16 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
             {post.decided_at && <span className="t-3"> · {ago(post.decided_at)}</span>}
           </span>
         </p>
-        {lastNeedsWork?.note && <blockquote className="rv-verdict-note">{lastNeedsWork.note}</blockquote>}
+        {lastNeedsWork?.note && (
+          <blockquote className="rv-verdict-note">
+            <NoteView note={lastNeedsWork.note} />
+            {parseNote(lastNeedsWork.note).items.length > 0 && (
+              <button type="button" className="btn btn-sm rv-ck-task" onClick={() => makeTask({ text: lastNeedsWork.note, by: lastNeedsWork.actor })}>
+                <Icon name="plus" /> Make task with subtasks
+              </button>
+            )}
+          </blockquote>
+        )}
         {mode === 'resubmit' ? (
           <>
             <label className="rv-verdict-q" htmlFor="rv-rs-note">What did you change? <span className="t-3">Optional</span></label>
