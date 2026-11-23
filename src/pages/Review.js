@@ -496,7 +496,7 @@ function Timeline({ loaded, events, comments, members, uid, onDeleteComment, onM
             <Avatar person={who} name={nameOr(who)} size={24} />
             <div className="rv-tl-body">
               <div className="rv-tl-line"><strong>{nameOr(who)}</strong> <span className="t-3">commented</span></div>
-              <div className="rv-tl-text">{c.content}</div>
+              <NoteView note={c.content} className="rv-tl-text" />
               <div className="rv-tl-time">
                 <span title={longDate(c.created_at)}>{ago(c.created_at)}</span>
                 <button type="button" className="rv-tl-act" onClick={() => onMakeTask({ text: c.content, by: c.user_id })}>
@@ -532,6 +532,7 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [comment, setComment] = useState('');
+  const [commentChecks, setCommentChecks] = useState([]);
   const [posting, setPosting] = useState(false);
   const [sent, setSent] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -574,13 +575,16 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
   };
 
   const postComment = async () => {
-    const text = comment.trim();
+    // Same "- [ ] item" format as needs-work notes, so a comment's checklist
+    // also becomes subtasks when it's made into a task.
+    const text = composeNote(comment, commentChecks);
     if (!text || posting) return;
     setPosting(true);
     setSent(s => s + 1);
     try {
       await addReviewComment({ postId: post.id, teamId, userId: uid, content: text });
       setComment('');
+      setCommentChecks([]);
       setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
     } catch (e) { setError(e.message || 'Could not post comment.'); }
     finally { setPosting(false); }
@@ -803,22 +807,35 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
             <div ref={endRef} />
           </div>
           <form className="rv-comment" onSubmit={(e) => { e.preventDefault(); postComment(); }}>
-            <input
-              className="input"
-              value={comment}
-              onChange={e => setComment(e.target.value)}
-              placeholder="Write a comment…"
-              aria-label="Write a comment"
-            />
-            <button
-              key={sent}
-              type="submit"
-              className={`btn btn-primary btn-icon rv-send ${sent ? 'is-sent' : ''}`}
-              disabled={!comment.trim() || posting}
-              aria-label="Send comment"
-            >
-              <Icon name="send" size={15} />
-            </button>
+            {commentChecks.length > 0 && <ChecklistInput items={commentChecks} onChange={setCommentChecks} />}
+            <div className="rv-comment-row">
+              <button
+                type="button"
+                className={`btn btn-icon rv-comment-ck ${commentChecks.length ? 'is-on' : ''}`}
+                onClick={() => setCommentChecks(c => (c.length ? c : ['']))}
+                disabled={commentChecks.length > 0}
+                aria-label="Add a checklist"
+                title="Add a checklist — items become subtasks if this is made into a task"
+              >
+                <Icon name="list" size={15} />
+              </button>
+              <input
+                className="input"
+                value={comment}
+                onChange={e => setComment(e.target.value)}
+                placeholder={commentChecks.length ? 'Add a note (optional)…' : 'Write a comment…'}
+                aria-label="Write a comment"
+              />
+              <button
+                key={sent}
+                type="submit"
+                className={`btn btn-primary btn-icon rv-send ${sent ? 'is-sent' : ''}`}
+                disabled={!composeNote(comment, commentChecks) || posting}
+                aria-label="Send comment"
+              >
+                <Icon name="send" size={15} />
+              </button>
+            </div>
           </form>
         </>
       )}

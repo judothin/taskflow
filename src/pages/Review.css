@@ -405,12 +405,18 @@
 
 .rv-comment {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 10px;
   padding: 14px 18px 16px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
-.rv-comment .input { height: 42px; flex: 1; }
+.rv-comment-row { display: flex; gap: 8px; }
+.rv-comment .input { height: 42px; flex: 1; min-width: 0; }
+.rv-comment-ck { --btn-h: 42px; flex-shrink: 0; color: var(--text-3); }
+.rv-comment-ck.is-on { color: var(--accent); border-color: var(--accent); }
+.rv-comment-ck.is-on:disabled { opacity: 1; }
+.rv-comment .rv-ck-edit { max-height: 180px; overflow-y: auto; }
 .rv-send { --btn-h: 42px; flex-shrink: 0; overflow: hidden; }
 .rv-send.is-sent svg { animation: rv-fly 0.6s var(--ease-out); }
 @keyframes rv-fly {
