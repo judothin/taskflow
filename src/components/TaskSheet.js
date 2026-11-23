@@ -82,15 +82,20 @@ export default function TaskSheet({ task, prefill, users = [], onClose, onSaved,
     status: task?.status || seed?.status || 'open',
     roi: task?.roi || 'medium',
     complexity: task?.complexity || 'medium',
-    assignee_id: task?.assignee_id || '',
+    assignee_id: task?.assignee_id || seed?.assignee_id || '',
     due_date: task?.due_date || '',
     subtasks: asSubtasks(task?.subtasks),
   }));
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // A new task can start with files that are already uploaded (e.g. a
+  // review post's screenshots): prefill.uploaded = [{ url, name?, kind? }].
   const [existing, setExisting] = useState(() => (task?.attachments?.length
     ? task.attachments
-    : task?.png_url ? [{ url: task.png_url, name: 'screenshot.png', kind: 'image' }] : []));
+    : task?.png_url ? [{ url: task.png_url, name: 'screenshot.png', kind: 'image' }]
+      : Array.isArray(seed?.uploaded) ? seed.uploaded.slice(0, 10).map(a => ({
+        url: a.url, name: a.name || fileNameFromUrl(a.url) || 'screenshot.png', kind: a.kind || kindOf(a.name || fileNameFromUrl(a.url) || 'x.png'),
+      })) : []));
   const [pending, setPending] = useState([]);
   const [addToQueue, setAddToQueue] = useState(true);
   const [batch, setBatch] = useState(false);

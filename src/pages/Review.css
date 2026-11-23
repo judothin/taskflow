@@ -325,6 +325,22 @@
 .rv-tl-del:hover { color: var(--danger); }
 .rv-tl-del.is-armed { color: var(--danger); font-weight: 600; animation: tf-wiggle 0.42s var(--ease-out); }
 @media (hover: none) { .rv-tl-del { opacity: 1; } }
+/* "Make task" on a comment / needs-work note — revealed on hover like Delete. */
+.rv-tl-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12.5px;
+  color: var(--text-4);
+  border-radius: var(--r-xs);
+  padding: 0 4px;
+  opacity: 0;
+  transition: color var(--dur-1) ease, opacity var(--dur-1) ease, transform var(--dur-1) var(--ease-spring);
+}
+.rv-tl-item:hover .rv-tl-act, .rv-tl-act:focus-visible { opacity: 1; }
+.rv-tl-act:hover { color: var(--accent); }
+.rv-tl-act:active { transform: scale(0.96); }
+@media (hover: none) { .rv-tl-act { opacity: 1; } }
 .rv-tl-empty { font-size: 14px; animation: tf-fade-in var(--dur-3) ease both; }
 .rv-tl-skel { display: flex; flex-direction: column; gap: 16px; }
 .rv-tl-skel-row { display: flex; align-items: center; gap: 12px; }

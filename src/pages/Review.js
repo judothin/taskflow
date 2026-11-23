@@ -7,6 +7,7 @@ import { TopBarPortal } from '../context/HeaderActionsContext';
 import { fetchTeamMembers } from '../lib/teams';
 import { searchRank } from '../lib/fuzzySearch';
 import useFlipRows from '../lib/useFlipRows';
+import { openNewTask } from '../lib/events';
 import {
   Icon, Sheet, Dialog, ConfirmDialog, Tabs, toast,
   Avatar, AvatarStack, PageHeader, Empty, SearchInput, Dropzone, Lightbox, SheetLabel, SkeletonRows,
@@ -66,6 +67,14 @@ const EVENT_TEXT = {
 const linkText = (u) => (isUrl(u) ? shortUrl(u) : u);
 const nameOr = (p, fallback = 'Someone') => fullName(p) || fallback;
 const sameSet = (a, b) => [...a].sort().join() === [...b].sort().join();
+
+// A task title from free text: its first line, cut at a word near 120 chars.
+function titleFrom(text) {
+  const line = (text || '').split('\n').map(l => l.trim()).find(Boolean) || '';
+  if (line.length <= 120) return line;
+  const cut = line.slice(0, 120);
+  return `${cut.slice(0, cut.lastIndexOf(' ') > 60 ? cut.lastIndexOf(' ') : 120)}…`;
+}
 
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
@@ -357,7 +366,7 @@ function DefaultsDialog({ teamId, members, value, canEdit, uid, onClose, onSaved
 }
 
 // ── Activity: events and comments, interleaved ────────────────
-function Timeline({ loaded, events, comments, members, uid, onDeleteComment }) {
+function Timeline({ loaded, events, comments, members, uid, onDeleteComment, onMakeTask }) {
   const [armed, setArmed] = useState(null);
   const items = useMemo(() => [
     ...events.map(e => ({ kind: 'event', at: e.created_at, key: `e-${e.id}`, e })),
@@ -390,7 +399,14 @@ function Timeline({ loaded, events, comments, members, uid, onDeleteComment }) {
               <div className="rv-tl-body">
                 <div className="rv-tl-line"><strong>{nameOr(who)}</strong> {EVENT_TEXT[e.kind]?.(e) || e.kind}</div>
                 {e.note && <div className="rv-tl-note">{e.note}</div>}
-                <div className="rv-tl-time" title={longDate(e.created_at)}>{ago(e.created_at)}</div>
+                <div className="rv-tl-time">
+                  <span title={longDate(e.created_at)}>{ago(e.created_at)}</span>
+                  {e.note && (
+                    <button type="button" className="rv-tl-act" onClick={() => onMakeTask({ text: e.note, by: e.actor })}>
+                      <Icon name="plus" size={12} /> Make task
+                    </button>
+                  )}
+                </div>
               </div>
             </li>
           );
@@ -406,6 +422,9 @@ function Timeline({ loaded, events, comments, members, uid, onDeleteComment }) {
               <div className="rv-tl-text">{c.content}</div>
               <div className="rv-tl-time">
                 <span title={longDate(c.created_at)}>{ago(c.created_at)}</span>
+                <button type="button" className="rv-tl-act" onClick={() => onMakeTask({ text: c.content, by: c.user_id })}>
+                  <Icon name="plus" size={12} /> Make task
+                </button>
                 {mine && (
                   <button
                     type="button"
@@ -496,6 +515,24 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
   const lastNeedsWork = [...thread.events].reverse().find(e => e.kind === 'needs_work');
   const waitingOn = post.reviewers.filter(id => id !== uid).map(id => fullName(members[id])).filter(Boolean);
   const fromGoLive = !!post.golive_id && !post.decided_by;
+
+  // New task, filled in from this post: its link as the page, the author as
+  // assignee (they're the one fixing it), and a pointer back to the review.
+  // `text`/`by` come from a comment or needs-work note when there is one.
+  const makeTask = ({ text, by } = {}) => {
+    const fromNote = typeof text === 'string';
+    const note = fromNote ? text : (post.status === 'needs_work' ? lastNeedsWork?.note || '' : '');
+    const noticer = fromNote ? members[by] : (post.status === 'needs_work' && lastNeedsWork ? members[lastNeedsWork.actor] : null);
+    const ref = `From review: "${post.title}" · round ${post.round}`;
+    openNewTask({
+      title: fromNote ? titleFrom(text) : post.title,
+      page: post.url || '',
+      feedback: note.trim() ? `${note.trim()}\n\n${ref}` : ref,
+      ...(fullName(noticer) ? { noticed: fullName(noticer) } : {}),
+      ...(members[post.created_by] ? { assignee_id: post.created_by } : {}),
+      ...(!fromNote && post.screenshots?.length ? { uploaded: post.screenshots.map(url => ({ url, kind: 'image' })) } : {}),
+    });
+  };
 
   const copyFiles = async () => {
     if (await copyText(files.map(f => f.path).join('\n'))) {
@@ -666,6 +703,7 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
               members={members}
               uid={uid}
               onDeleteComment={(id) => deleteReviewComment(id).catch(e => setError(e.message))}
+              onMakeTask={makeTask}
             />
             <div ref={endRef} />
           </div>
@@ -773,16 +811,21 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
         </div>
       )}
 
-      {canManage && (
-        <div className="rv-manage">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onEdit(post)}>
-            <Icon name="edit" /> Edit post
-          </button>
-          <button type="button" className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(true)}>
-            <Icon name="trash" /> Delete
-          </button>
-        </div>
-      )}
+      <div className="rv-manage">
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => makeTask()} title="New task, filled in from this post">
+          <Icon name="plus" /> Add task
+        </button>
+        {canManage && (
+          <>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onEdit(post)}>
+              <Icon name="edit" /> Edit post
+            </button>
+            <button type="button" className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(true)}>
+              <Icon name="trash" /> Delete
+            </button>
+          </>
+        )}
+      </div>
 
       {zoom && <Lightbox src={zoom} onClose={() => setZoom(null)} />}
       {confirmDelete && (
