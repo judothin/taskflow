@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import useDraft from '../lib/useDraft';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
@@ -45,15 +46,30 @@ const imagesOf = (s) => (s.images?.length ? s.images : s.png_url ? [s.png_url] :
 function ReviewSheet({ submission, users, onClose, onDone }) {
   const { user } = useAuth();
   const pending = submission.status === 'pending';
-  const [title, setTitle] = useState(submission.title || '');
-  const [page, setPage] = useState(submission.page || '');
-  const [feedback, setFeedback] = useState(submission.feedback || '');
-  const [noticedBy, setNoticedBy] = useState(submission.noticed_by || '');
-  const [roi, setRoi] = useState('medium');
-  const [complexity, setComplexity] = useState('medium');
-  const [assigneeId, setAssigneeId] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [notes, setNotes] = useState(submission.notes || '');
+  // Edits made while triaging are kept as a draft until it's approved or
+  // declined (lib/useDraft). Reviewed submissions are read-only: no draft.
+  const [d, setD, draft] = useDraft(pending ? `submission:${submission.id}` : null, () => ({
+    title: submission.title || '',
+    page: submission.page || '',
+    feedback: submission.feedback || '',
+    noticedBy: submission.noticed_by || '',
+    roi: 'medium',
+    complexity: 'medium',
+    assigneeId: '',
+    dueDate: '',
+    notes: submission.notes || '',
+  }));
+  const field = (k) => (v) => setD(prev => ({ ...prev, [k]: typeof v === 'function' ? v(prev[k]) : v }));
+  const { title, page, feedback, noticedBy, roi, complexity, assigneeId, dueDate, notes } = d;
+  const setTitle = field('title');
+  const setPage = field('page');
+  const setFeedback = field('feedback');
+  const setNoticedBy = field('noticedBy');
+  const setRoi = field('roi');
+  const setComplexity = field('complexity');
+  const setAssigneeId = field('assigneeId');
+  const setDueDate = field('dueDate');
+  const setNotes = field('notes');
   const [imgs, setImgs] = useState(() => imagesOf(submission).map(url => ({ url })));
   const [zoom, setZoom] = useState(null);
   const [saving, setSaving] = useState(null); // 'approve' | 'decline'
@@ -126,6 +142,7 @@ function ReviewSheet({ submission, users, onClose, onDone }) {
       );
       if (subErr) throw subErr;
       tasksChanged();
+      draft.clear();
       toast('Task created', task ? { action: { label: 'Open', onClick: () => openTask(task) } } : {});
       onDone();
     } catch (err) {
@@ -149,6 +166,7 @@ function ReviewSheet({ submission, users, onClose, onDone }) {
       );
       if (subErr) throw subErr;
       setConfirmDecline(false);
+      draft.clear();
       toast('Submission declined');
       onDone();
     } catch (err) {

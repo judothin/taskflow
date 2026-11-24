@@ -6,6 +6,7 @@ import { awardTaskCreatedXp, awardTaskCompletedXp } from '../lib/xp';
 import { asSubtasks, cleanSubtasks, makeSubtask } from '../lib/subtasks';
 import { taskTitle, taskBodyHtml, isUrl } from '../lib/taskText';
 import { tasksChanged, queueChanged } from '../lib/events';
+import useDraft from '../lib/useDraft';
 import {
   Sheet, Segmented, StatusPicker, SheetLabel, CheckRow, Dropzone, Lightbox, Avatar, Icon,
   ConfirmDialog, Dialog, ROIS, COMPLEXITIES, STATUSES, STATUS_LABEL, longDate, shortDate, ago, fullName, toast,
@@ -36,6 +37,16 @@ let pid = 0;
 const nextId = () => `pf_${Date.now().toString(36)}_${pid++}`;
 const fileNameFromUrl = (u) => { try { return decodeURIComponent(new URL(u).pathname.split('/').pop() || ''); } catch { return ''; } };
 const plainToHtml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').split(/\r?\n/).join('<br>');
+// A short stable id for a prefill, so each distinct "new task from X" keeps
+// its own draft (and a blank new task keeps another).
+function prefillKey(seed) {
+  if (!seed) return 'blank';
+  const { ts, ...rest } = seed;
+  const str = JSON.stringify(rest);
+  let h = 0;
+  for (let i = 0; i < str.length; i += 1) h = (h * 31 + str.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
 const stripHtml = (h) => (h || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
 
 async function fetchRemoteImage(url) {
@@ -74,7 +85,12 @@ export default function TaskSheet({ task, prefill, users = [], onClose, onSaved,
   const myName = profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() : '';
   const titleRef = useRef(null);
 
-  const [form, setForm] = useState(() => ({
+  // Typed text is kept as a draft until the task saves (see lib/useDraft).
+  // An edit's draft is tied to the task's updated_at, so it's dropped if the
+  // task changed somewhere else in the meantime.
+  const [form, setForm, draft] = useDraft(
+    isGuest ? null : (isEdit ? `task:${task.id}` : `task:new:${prefillKey(seed)}`),
+    () => ({
     title: isEdit ? taskTitle(task) : (seed?.title || ''),
     page: task?.page || seed?.page || '',
     feedback: isEdit ? taskBodyHtml(task) : (seed?.feedback ? plainToHtml(seed.feedback) : ''),
@@ -87,7 +103,9 @@ export default function TaskSheet({ task, prefill, users = [], onClose, onSaved,
     // prefill.subtasks: plain strings (e.g. a review's needs-work checklist).
     subtasks: isEdit ? asSubtasks(task?.subtasks)
       : (Array.isArray(seed?.subtasks) ? seed.subtasks.filter(x => typeof x === 'string' && x.trim()).map(x => makeSubtask(x.trim())) : []),
-  }));
+    }),
+    { version: isEdit ? (task.updated_at || null) : null },
+  );
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   // A new task can start with files that are already uploaded (e.g. a
@@ -285,11 +303,12 @@ export default function TaskSheet({ task, prefill, users = [], onClose, onSaved,
       if (!isEdit && batch) {
         setBatchCount(c => c + 1);
         toast('Task added — ready for the next one');
-        setForm(f => ({ ...f, title: '', feedback: '', subtasks: [] }));
+        draft.clear({ ...form, title: '', feedback: '', subtasks: [] });
         setExisting([]);
         setPending(prev => { prev.forEach(p => p.preview && URL.revokeObjectURL(p.preview)); return []; });
         setTimeout(() => titleRef.current?.focus(), 30);
       } else {
+        draft.clear();
         toast(isEdit ? (becomingDone ? 'Task completed' : 'Changes saved') : 'Task created');
         onSaved?.(saved);
         onClose();
@@ -308,6 +327,7 @@ export default function TaskSheet({ task, prefill, users = [], onClose, onSaved,
     if (err) { setConfirmDelete(false); fail(err.message); return; }
     await supabase.from('queue').delete().eq('task_id', task.id);
     tasksChanged(); queueChanged();
+    draft.clear();
     toast('Task deleted');
     onSaved?.(null);
     onClose();

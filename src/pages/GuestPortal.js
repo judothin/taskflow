@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import useDraft from '../lib/useDraft';
 import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchGuestTeamInfo } from '../lib/teams';
@@ -31,7 +32,8 @@ function Bar() {
 
 export default function GuestPortal() {
   const { slug } = useParams();
-  const [form, setForm] = useState(EMPTY);
+  // A guest's half-written feedback survives a refresh (lib/useDraft).
+  const [form, setForm, draft] = useDraft(`guest-feedback:${slug || 'default'}`, EMPTY);
   const [images, setImages] = useState([]); // [{ file, preview }]
   const [error, setError] = useState('');
   const [errTick, setErrTick] = useState(0);
@@ -112,6 +114,7 @@ export default function GuestPortal() {
         ({ error: insertError } = await supabase.from('submissions').insert({ ...rest, feedback: `${title}\n\n${rest.feedback}` }));
       }
       if (insertError) throw insertError;
+      draft.clear();
       setSuccess(true);
     } catch (err) {
       fail(err.message || 'Failed to send. Please try again.');
@@ -122,7 +125,7 @@ export default function GuestPortal() {
 
   const reset = () => {
     setSuccess(false);
-    setForm(f => ({ ...EMPTY, noticed_by: f.noticed_by }));
+    draft.clear({ ...EMPTY, noticed_by: form.noticed_by });
     images.forEach(i => URL.revokeObjectURL(i.preview));
     setImages([]);
     setError('');

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import useDraft from '../lib/useDraft';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useTeam } from '../context/TeamContext';
@@ -49,13 +50,16 @@ function TypeBadge({ type }) {
 // Also used from Context, to add a file and link it in one go.
 export function FileSheet({ entry, sections, teamId, onClose, onSaved, onDelete }) {
   const editing = !!entry?.id;
-  const [form, setForm] = useState(() => (entry ? {
+  // Typed fields are kept as a draft until saved (lib/useDraft). Picked
+  // images aren't: they're local files until upload.
+  const [form, setForm, draft] = useDraft(editing ? `file:${entry.id}` : (entry ? null : 'file:new'), () => (entry ? {
     name: entry.name || '',
     path: entry.path || '',
     section: entry.section || '',
     description: entry.description || '',
     type: entry.type || detectType(entry.name) || 'other',
-  } : { ...EMPTY_FORM, ...(sections.length === 1 ? { section: sections[0] } : {}) }));
+  } : { ...EMPTY_FORM, ...(sections.length === 1 ? { section: sections[0] } : {}) }),
+  { version: editing ? (entry.updated_at || null) : null });
   const [images, setImages] = useState(() => (entry?.images || []).map(url => ({ preview: url, file: null, url })));
   const [errors, setErrors] = useState({});
   const [shake, setShake] = useState(0);
@@ -145,11 +149,12 @@ export function FileSheet({ entry, sections, teamId, onClose, onSaved, onDelete 
       onSaved(data || { ...entry, ...payload });
       toast(editing ? 'File updated' : `Added ${payload.name}`);
       if (again) {
-        setForm({ ...EMPTY_FORM, path: payload.path, section: payload.section, type: payload.type });
+        draft.clear({ ...EMPTY_FORM, path: payload.path, section: payload.section, type: payload.type });
         setImages([]);
         setSavedCount(n => n + 1);
         setTimeout(() => nameRef.current?.focus(), 0);
       } else {
+        draft.clear();
         onClose();
       }
     } catch (err) {

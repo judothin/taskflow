@@ -7,6 +7,7 @@ import { fetchTeamMembers } from '../lib/teams';
 import { awardTaskCreatedXp, awardTaskCompletedXp } from '../lib/xp';
 import { tasksChanged } from '../lib/events';
 import FeedbackEditor from '../components/FeedbackEditor';
+import useDraft from '../lib/useDraft';
 import {
   Sheet, Icon, Avatar, Segmented, SheetLabel, CheckRow, toast, fullName, ROIS, COMPLEXITIES,
 } from '../ui';
@@ -30,12 +31,16 @@ function useQuickLog({ onLogged }) {
   const { activeTeamId } = useTeam();
   const myName = fullName(profile);
   const [members, setMembers] = useState(null);
-  const [title, setTitle] = useState('');
-  const [page, setPage] = useState('');
-  const [feedback, setFeedback] = useState('');
+  // What's typed is kept as a draft until it's logged (lib/useDraft).
+  const [d, setD, draft] = useDraft('quick-log', { title: '', page: '', feedback: '', roi: 'medium', complexity: 'medium' });
+  const field = (k) => (v) => setD(prev => ({ ...prev, [k]: typeof v === 'function' ? v(prev[k]) : v }));
+  const { title, page, feedback, roi, complexity } = d;
+  const setTitle = field('title');
+  const setPage = field('page');
+  const setFeedback = field('feedback');
+  const setRoi = field('roi');
+  const setComplexity = field('complexity');
   const [completedBy, setCompletedBy] = useState(myName ? [myName] : []);
-  const [roi, setRoi] = useState('medium');
-  const [complexity, setComplexity] = useState('medium');
   const [another, setAnother] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -99,8 +104,7 @@ function useQuickLog({ onLogged }) {
 
     // Keep the page and people (often several logs for one area); clear
     // what was done.
-    setTitle('');
-    setFeedback('');
+    draft.clear({ ...d, title: '', feedback: '' });
     setEditorKey(k => k + 1);
     onLogged?.(row);
     return true;

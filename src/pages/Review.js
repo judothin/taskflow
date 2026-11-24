@@ -8,6 +8,7 @@ import { fetchTeamMembers } from '../lib/teams';
 import { searchRank } from '../lib/fuzzySearch';
 import useFlipRows from '../lib/useFlipRows';
 import { openNewTask } from '../lib/events';
+import useDraft from '../lib/useDraft';
 import {
   Icon, Sheet, Dialog, ConfirmDialog, Tabs, toast,
   Avatar, AvatarStack, PageHeader, Empty, SearchInput, Dropzone, Lightbox, SheetLabel, SkeletonRows,
@@ -209,12 +210,30 @@ function ReviewerPick({ members, value, onChange, uid, readOnly }) {
 // ── New / edit post sheet ─────────────────────────────────────
 function ComposerSheet({ post, teamId, members, defaults, uid, onClose, onSaved }) {
   const editing = !!post;
-  const [title, setTitle] = useState(post?.title || '');
-  const [url, setUrl] = useState(post?.url || '');
-  const [description, setDescription] = useState(post?.description || '');
-  const [files, setFiles] = useState(post?.files || '');
-  const [shots, setShots] = useState(post?.screenshots || []);
-  const [reviewers, setReviewerIds] = useState(post?.reviewers || defaults);
+  // Everything typed is kept as a draft until it posts (lib/useDraft).
+  // `reviewers: null` means "the team defaults", which load async — so an
+  // untouched new post isn't mistaken for a draft once they arrive.
+  const [d, setD, draft] = useDraft(
+    editing ? `review-post:${post.id}` : 'review-post:new',
+    () => ({
+      title: post?.title || '',
+      url: post?.url || '',
+      description: post?.description || '',
+      files: post?.files || '',
+      shots: post?.screenshots || [],
+      reviewers: editing ? post.reviewers : null,
+    }),
+    { version: editing ? (post.updated_at || null) : null },
+  );
+  const field = (k) => (v) => setD(prev => ({ ...prev, [k]: typeof v === 'function' ? v(prev[k]) : v }));
+  const { title, url, description, files, shots } = d;
+  const reviewers = d.reviewers ?? defaults;
+  const setTitle = field('title');
+  const setUrl = field('url');
+  const setDescription = field('description');
+  const setFiles = field('files');
+  const setShots = field('shots');
+  const setReviewerIds = field('reviewers');
   const [uploading, setUploading] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -223,12 +242,6 @@ function ComposerSheet({ post, teamId, members, defaults, uid, onClose, onSaved 
   const titleRef = useRef(null);
   const linkRef = useRef(null);
   useAutoGrow(titleRef, title);
-
-  // Defaults load async; fill them in if nobody has been picked by hand yet.
-  const touched = useRef(false);
-  useEffect(() => {
-    if (!editing && !touched.current && defaults.length) setReviewerIds(defaults);
-  }, [defaults, editing]);
 
   const addShots = useCallback(async (list) => {
     const images = list.filter(f => f.type?.startsWith('image/'));
@@ -269,10 +282,12 @@ function ComposerSheet({ post, teamId, members, defaults, uid, onClose, onSaved 
         if ('files' in post || files.trim()) patch.files = files.trim();
         await updateReview(post.id, patch);
         if (!sameSet(reviewers, post.reviewers)) await setReviewers(post.id, reviewers);
+        draft.clear();
         toast('Post updated');
         onSaved(post.id);
       } else {
         const id = await createReview({ teamId, title: title.trim(), url, description, screenshots: shots, reviewers, files });
+        draft.clear();
         toast('Posted for review');
         onSaved(id);
       }
@@ -305,7 +320,7 @@ function ComposerSheet({ post, teamId, members, defaults, uid, onClose, onSaved 
             members={members}
             value={reviewers}
             uid={uid}
-            onChange={(v) => { touched.current = true; setReviewerIds(v); }}
+            onChange={setReviewerIds}
           />
         </div>
       )}
@@ -526,13 +541,24 @@ function Timeline({ loaded, events, comments, members, uid, onDeleteComment, onM
 // ── Post detail sheet ─────────────────────────────────────────
 function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onMarkLive, onUndoLive }) {
   const [thread, setThread] = useState({ events: [], comments: [], loaded: false });
-  const [mode, setMode] = useState(null); // 'needs_work' | 'resubmit'
-  const [note, setNote] = useState('');
-  const [checks, setChecks] = useState([]);
+  // The open verdict form and the comment box are kept as drafts. The verdict
+  // draft belongs to this status and round: once someone decides or it's
+  // resubmitted, a half-written note for the old state no longer applies.
+  const blankVerdict = { mode: null, note: '', checks: [] };
+  const [verdictD, setVerdictD, verdictDraft] = useDraft(
+    `review-verdict:${post.id}`, blankVerdict, { version: `${post.status}:${post.round}` },
+  );
+  const { mode, note, checks } = verdictD; // mode: 'needs_work' | 'resubmit' | null
+  const verdictField = (k) => (v) => setVerdictD(prev => ({ ...prev, [k]: typeof v === 'function' ? v(prev[k]) : v }));
+  const setMode = verdictField('mode');
+  const setNote = verdictField('note');
+  const setChecks = verdictField('checks');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [comment, setComment] = useState('');
-  const [commentChecks, setCommentChecks] = useState([]);
+  const [commentD, setCommentD, commentDraft] = useDraft(`review-comment:${post.id}`, { text: '', checks: [] });
+  const { text: comment, checks: commentChecks } = commentD;
+  const setComment = (v) => setCommentD(prev => ({ ...prev, text: v }));
+  const setCommentChecks = (v) => setCommentD(prev => ({ ...prev, checks: typeof v === 'function' ? v(prev.checks) : v }));
   const [posting, setPosting] = useState(false);
   const [sent, setSent] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -565,11 +591,12 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
   }, [post.id, loadThread]);
 
   // Status changed under us (another reviewer decided) — drop a half-open form.
-  useEffect(() => { setMode(null); setNote(''); setChecks([]); setError(''); }, [post.status]);
+  // (the verdict draft resets itself — its version is the status and round)
+  useEffect(() => { setError(''); }, [post.status]);
 
   const act = async (fn, done) => {
     setBusy(true); setError('');
-    try { await fn(); setMode(null); setNote(''); setChecks([]); if (done) toast(done); }
+    try { await fn(); verdictDraft.clear(blankVerdict); if (done) toast(done); }
     catch (e) { setError(e.message || 'Something went wrong.'); }
     finally { setBusy(false); }
   };
@@ -583,8 +610,7 @@ function DetailSheet({ post, members, uid, isAdmin, teamId, onClose, onEdit, onM
     setSent(s => s + 1);
     try {
       await addReviewComment({ postId: post.id, teamId, userId: uid, content: text });
-      setComment('');
-      setCommentChecks([]);
+      commentDraft.clear({ text: '', checks: [] });
       setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
     } catch (e) { setError(e.message || 'Could not post comment.'); }
     finally { setPosting(false); }

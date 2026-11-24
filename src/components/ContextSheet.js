@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import useDraft from '../lib/useDraft';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
@@ -69,10 +70,24 @@ export default function ContextSheet({ entry = null, files: filesProp, teamTags:
   const { activeTeamId } = useTeam();
   const editing = !!entry?.id;
 
-  const [subject, setSubject] = useState(entry?.subject || '');
-  const [description, setDescription] = useState(entry?.description || '');
-  const [fileIds, setFileIds] = useState(Array.isArray(entry?.file_ids) ? entry.file_ids : []);
-  const [tags, setTags] = useState(() => tagsOf(entry));
+  // Kept as a draft until it saves (lib/useDraft); an edit's draft is tied to
+  // the entry's updated_at.
+  const [d, setD, draft] = useDraft(
+    entry?.id ? `context:${entry.id}` : 'context:new',
+    () => ({
+      subject: entry?.subject || '',
+      description: entry?.description || '',
+      fileIds: Array.isArray(entry?.file_ids) ? entry.file_ids : [],
+      tags: tagsOf(entry),
+    }),
+    { version: entry?.id ? (entry.updated_at || null) : null },
+  );
+  const field = (k) => (v) => setD(prev => ({ ...prev, [k]: typeof v === 'function' ? v(prev[k]) : v }));
+  const { subject, description, fileIds, tags } = d;
+  const setSubject = field('subject');
+  const setDescription = field('description');
+  const setFileIds = field('fileIds');
+  const setTags = field('tags');
   const [fileQuery, setFileQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -192,6 +207,7 @@ export default function ContextSheet({ entry = null, files: filesProp, teamTags:
     if (err) { setError(err.message); setShake(s => s + 1); return; }
 
     const row = data || { ...entry, ...base };
+    draft.clear();
     window.dispatchEvent(new CustomEvent(CONTEXT_CHANGED, { detail: { id: row.id } }));
     if (tagsDropped && tags.length) {
       toast('Saved without tags. Tags need the context migration first.', { icon: 'alert', duration: 6000 });
