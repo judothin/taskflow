@@ -4,7 +4,8 @@
 // There is one design (src/styles/). On top of it each person picks:
 //   mode           'light' | 'dark' | 'system'   (default light)
 //   accent         a hex colour, or unset for ink (black / white)
-//   background     an image URL, shown behind frosted-glass surfaces
+//   background     an image or video URL, shown behind frosted-glass surfaces
+//                  (videos loop muted; mp4 / mov / webm, up to 10 MB)
 //   glassOpacity   0.1–0.98  how solid the surfaces over the image are
 //   glassBlur      px        blur on the image
 //   bgTint         hex       a colour wash over the image…
@@ -62,6 +63,39 @@ export function contrastText(hex) {
   return lum > 168 ? '#141414' : '#ffffff';
 }
 
+// ── Video backgrounds ──
+// Told apart by the file extension in the URL (uploads keep theirs).
+export const VIDEO_EXT = ['mp4', 'm4v', 'mov', 'webm'];
+export const isVideoUrl = (url) => /\.(mp4|m4v|mov|webm)(\?|#|$)/i.test(url || '');
+export const MAX_BG_IMAGE_BYTES = 5 * 1024 * 1024;
+export const MAX_BG_VIDEO_BYTES = 10 * 1024 * 1024;
+const reducedMotion = () => {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+};
+
+// One muted, looping <video> inside the background layer. Kept (not
+// rebuilt) while the same URL stays active, so changing other settings
+// doesn't restart it. With reduced motion it shows its first frame, still.
+function setBgVideo(layer, url) {
+  let v = layer.querySelector('video');
+  if (!url) { if (v) v.remove(); return; }
+  if (!v) {
+    v = document.createElement('video');
+    v.className = 'tf-bg-video';
+    v.muted = true;
+    v.defaultMuted = true;
+    v.loop = true;
+    v.playsInline = true;
+    v.setAttribute('playsinline', '');
+    v.setAttribute('muted', '');
+    v.preload = 'auto';
+    layer.appendChild(v);
+  }
+  if (v.getAttribute('src') !== url) v.setAttribute('src', url);
+  if (reducedMotion()) { v.autoplay = false; v.pause(); }
+  else { v.autoplay = true; const p = v.play(); if (p && p.catch) p.catch(() => {}); }
+}
+
 // ── Background image cache (the active image as a data URI) ──
 const BG_CACHE_KEY = 'tf-bg-active';
 export function loadBgCache() {
@@ -74,7 +108,7 @@ export function clearBgCache(url) {
   } catch { /* ignore */ }
 }
 export async function cacheBackgroundImage(url) {
-  if (!url) return;
+  if (!url || isVideoUrl(url)) return; // videos are far too big for localStorage
   const existing = loadBgCache();
   if (existing && existing.url === url) return;
   try {
@@ -112,7 +146,7 @@ export function clearThemeColors(clearBackground = true) {
   document.body.classList.remove('has-bg-image');
   if (clearBackground) {
     const layer = document.getElementById('tf-bg-layer');
-    if (layer) layer.style.backgroundImage = '';
+    if (layer) { layer.style.backgroundImage = ''; setBgVideo(layer, null); }
   }
 }
 
@@ -139,15 +173,21 @@ export function applyThemeColors(colors) {
     const tintOp = Math.min(Math.max(Number(c.bgTintOpacity) || 0, 0), MAX_BG_TINT_OPACITY);
     const tintHex = parseHex(c.bgTint) ? c.bgTint : DEFAULT_BG_TINT;
     if (tintOp > 0) root.style.setProperty('--bg-tint', rgba(tintHex, tintOp));
-    const cached = loadBgCache();
-    const src = cached && cached.url === c.background ? cached.data : c.background;
     const layer = bgLayer();
-    const next = `url("${src}")`;
-    if (layer.style.backgroundImage !== next) layer.style.backgroundImage = next;
+    if (isVideoUrl(c.background)) {
+      layer.style.backgroundImage = '';
+      setBgVideo(layer, c.background);
+    } else {
+      setBgVideo(layer, null);
+      const cached = loadBgCache();
+      const src = cached && cached.url === c.background ? cached.data : c.background;
+      const next = `url("${src}")`;
+      if (layer.style.backgroundImage !== next) layer.style.backgroundImage = next;
+    }
     document.body.classList.add('has-bg-image');
   } else {
     const layer = document.getElementById('tf-bg-layer');
-    if (layer) layer.style.backgroundImage = '';
+    if (layer) { layer.style.backgroundImage = ''; setBgVideo(layer, null); }
   }
 }
 

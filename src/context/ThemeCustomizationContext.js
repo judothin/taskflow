@@ -101,7 +101,9 @@ export function ThemeCustomizationProvider({ children }) {
     if (backgrounds.length >= MAX_BACKGROUNDS) throw new Error(`You can save up to ${MAX_BACKGROUNDS} backgrounds.`);
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const path = `backgrounds/${uid}/${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from('task-images').upload(path, file, { upsert: true });
+    const contentType = file.type || (ext === 'mov' ? 'video/quicktime' : undefined);
+    const { error: upErr } = await supabase.storage.from('task-images')
+      .upload(path, file, { upsert: true, ...(contentType ? { contentType } : {}) });
     if (upErr) throw upErr;
     const { data } = supabase.storage.from('task-images').getPublicUrl(path);
     const url = data.publicUrl;

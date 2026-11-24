@@ -105,6 +105,15 @@ h1, h2, h3, h4, h5 { font-weight: 600; letter-spacing: -0.015em; line-height: 1.
   transition: opacity var(--dur-4) ease;
 }
 body.has-bg-image #tf-bg-layer { opacity: 1; }
+/* A video background fills the layer the way a cover image does. */
+.tf-bg-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
 body.has-bg-image::after {
   content: '';
   position: fixed;

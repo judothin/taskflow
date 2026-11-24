@@ -13,6 +13,7 @@ import ColorSwatches, { PERSON_COLORS } from '../components/ColorSwatches';
 import { SettingRow, Toggle, Range } from '../components/SettingsControls';
 import {
   ACCENTS, FONT_SCALES, DEFAULT_BG_TINT, MAX_BG_TINT_OPACITY, contrastText,
+  VIDEO_EXT, isVideoUrl, MAX_BG_IMAGE_BYTES, MAX_BG_VIDEO_BYTES,
 } from '../lib/themeColors';
 import { SETTINGS_SECTIONS as SECTIONS, resolveSettingsSection } from '../lib/settingsSections';
 import './Settings.css';
@@ -391,8 +392,12 @@ function AppearanceSection() {
 
   const upload = async (file) => {
     if (!file) return;
-    if (!file.type.startsWith('image/')) { setBgError('That isn’t an image.'); return; }
-    if (file.size > 5 * 1024 * 1024) { setBgError('Image must be 5 MB or smaller.'); return; }
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const video = file.type.startsWith('video/') || VIDEO_EXT.includes(ext);
+    if (video && !VIDEO_EXT.includes(ext)) { setBgError('Videos need to be MP4, MOV or WebM.'); return; }
+    if (!video && !file.type.startsWith('image/')) { setBgError('That isn’t an image or a video.'); return; }
+    if (video && file.size > MAX_BG_VIDEO_BYTES) { setBgError('Videos must be 10 MB or smaller.'); return; }
+    if (!video && file.size > MAX_BG_IMAGE_BYTES) { setBgError('Images must be 5 MB or smaller.'); return; }
     setBgError(''); setBusy(true);
     try {
       const url = await uploadBackground(file);
@@ -465,7 +470,7 @@ function AppearanceSection() {
           )}
         </SettingRow>
 
-        <SettingRow label="Background" desc="An image behind frosted-glass surfaces. Synced to your account." top col>
+        <SettingRow label="Background" desc="An image or looping video behind frosted-glass surfaces. Synced to your account." top col>
           <div
             className="st-bg-grid"
             onDragOver={(e) => { if (Array.from(e.dataTransfer?.types || []).includes('Files')) { e.preventDefault(); setOver(true); } }}
@@ -486,12 +491,20 @@ function AppearanceSection() {
                 role="button"
                 tabIndex={0}
                 className={`st-bg-tile ${active === bg.url ? 'is-on' : ''}`}
-                style={{ backgroundImage: `url("${bg.url}")`, '--i': i + 1 }}
+                style={{ ...(isVideoUrl(bg.url) ? {} : { backgroundImage: `url("${bg.url}")` }), '--i': i + 1 }}
                 onClick={() => setBackground(bg.url)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBackground(bg.url); } }}
                 aria-pressed={active === bg.url}
                 aria-label="Use this background"
               >
+                {isVideoUrl(bg.url) && (
+                  <>
+                    <video className="st-bg-vid" src={bg.url} muted loop playsInline preload="metadata"
+                      onMouseEnter={e => { const p = e.currentTarget.play(); if (p && p.catch) p.catch(() => {}); }}
+                      onMouseLeave={e => e.currentTarget.pause()} />
+                    <span className="st-bg-kind"><Icon name="play" size={10} stroke={2.6} /> Video</span>
+                  </>
+                )}
                 {active === bg.url && <span className="st-bg-on"><Icon name="check" size={12} stroke={2.8} /></span>}
                 <button
                   type="button"
@@ -516,9 +529,9 @@ function AppearanceSection() {
           </div>
           <div className="st-bg-meta">
             <span className="mono">{backgrounds.length}/{maxBackgrounds}</span>
-            <span>saved · drop an image here, up to 5 MB</span>
+            <span>saved · drop an image (up to 5 MB) or an MP4, MOV or WebM video (up to 10 MB)</span>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; upload(f); }} />
+          <input ref={fileRef} type="file" accept="image/*,video/mp4,video/quicktime,video/webm,.mp4,.m4v,.mov,.webm" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; upload(f); }} />
           <ErrorNote msg={bgError} />
         </SettingRow>
 

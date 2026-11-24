@@ -22,7 +22,16 @@
   -webkit-backdrop-filter: saturate(1.4) blur(14px);
   backdrop-filter: saturate(1.4) blur(14px);
 }
-body.has-bg-image .rail { background: var(--surface); }
+/* Over a background the rail, top bar and phone tab bar are glass like the
+   cards, with the person's tint mixed in. The page area shows the tinted
+   backdrop directly, so without this the bars read as plain dark/light. */
+body.has-bg-image .rail,
+body.has-bg-image .topbar,
+body.has-bg-image .tabbar {
+  background:
+    linear-gradient(var(--bg-tint, transparent), var(--bg-tint, transparent)),
+    var(--surface);
+}
 .rail-logo {
   display: grid;
   place-items: center;
@@ -108,7 +117,6 @@ body.has-bg-image .rail { background: var(--surface); }
   -webkit-backdrop-filter: saturate(1.4) blur(14px);
   backdrop-filter: saturate(1.4) blur(14px);
 }
-body.has-bg-image .topbar { background: var(--surface); }
 .crumb { display: flex; align-items: center; gap: 14px; min-width: 0; font-size: 15.5px; }
 .crumb-root { font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
 .crumb-sep { color: var(--text-4); font-weight: 300; }

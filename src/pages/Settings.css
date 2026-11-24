@@ -226,6 +226,24 @@
   transition: transform 0.3s var(--ease-spring), box-shadow 0.3s var(--ease-spring), border-color var(--dur-1) ease;
 }
 .st-bg-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.st-bg-vid { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.st-bg-kind {
+  position: absolute;
+  left: 7px;
+  bottom: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font: 500 10.5px/1.6 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+  animation: tf-pop 0.36s var(--ease-spring) both;
+}
 .st-bg-tile:active { transform: scale(0.96); }
 .st-bg-tile.is-on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
 .st-bg-none {
